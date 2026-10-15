@@ -59,6 +59,7 @@ pre{background:var(--bg);border:1px solid var(--line);padding:10px;border-radius
 svg text{fill:var(--mute);font:11px var(--font)}
 .notice{border-left:3px solid var(--warn);background:var(--soft);padding:8px 12px;border-radius:0 7px 7px 0;font-size:13px;margin:0 0 10px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}.kpis div{background:var(--soft);padding:8px 10px;border-radius:7px}.kpis small{display:block;color:var(--mute);font-size:11px}
+.cadview{height:300px;margin:12px 0;border:1px solid var(--line);border-radius:6px;background:var(--soft);display:flex;align-items:center;justify-content:center;overflow:hidden}.cadview canvas{width:100%;height:100%;display:block}
 </style></head>
 <body>
 <header class="top"><h1>Gripper Finger Designer</h1>
@@ -88,6 +89,7 @@ svg text{fill:var(--mute);font:11px var(--font)}
 <div id="right"><div id="spywrap"><nav class="spy" id="spy" aria-label="Job sections"></nav></div>
 <main id="detail"><div class="card mute">Select or start a job.</div></main></div>
 </div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","three-mesh-bvh":"https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.3/build/index.module.js","three-bvh-csg":"https://cdn.jsdelivr.net/npm/three-bvh-csg@0.0.16/build/index.module.js"}}</script>
 <script>
 const $=s=>document.querySelector(s),B=document.body;let cur=null,es=null,sig='';
 const api=(u,o)=>fetch(u,o).then(r=>r.json());
@@ -151,6 +153,7 @@ function sections(j){const r=j.result,S=[];
   ${r?`<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="big">${pct(r.predicted_success)} <span class="mute" style="font-size:13px;font-weight:400">predicted success · 95% CI ${pct(r.ci_low)}–${pct(r.ci_high)} · re-validated on fresh perturbations</span></div>
   <p><span class="tpl">${esc(r.template)}</span></p>${params(r.params)}
   <p class="mute" style="margin:12px 0 0">Grasp pose</p><pre>${esc(JSON.stringify(r.grasp_pose,null,1))}</pre>
+  <div id="cadview" class="cadview"><span class="mute">Loading 3D preview…</span></div>
   <a href="/api/jobs/${j.id}/scad">Finger CAD (.scad) &#8595;</a> <span class="chip">${j.review&&j.review.status=='approved'?'review approved':'DRAFT — not approved for printing'}</span>`:''}`});
  S.push({id:'progress',t:'Progress',col:1,h:chart(j.trials)});
  S.push({id:'candidates',t:'Top candidates',col:1,h:`<div style="overflow-x:auto"><table><tr><th>#<th>Template<th>Parameters<th class=n>Success<th class=n>Grasps</tr>
@@ -168,12 +171,42 @@ function sections(j){const r=j.result,S=[];
  if(j.meta){const m=j.meta;S.push({id:'record',t:'Run record',col:2,h:`<div class="kpis"><div><small>Runtime</small>${(m.runtime_s/60).toFixed(1)} min</div><div><small>Candidates</small>${m.n_trials} (${m.n_pruned} pruned)</div><div><small>Simulator</small>${esc(m.sim_backend)}</div><div><small>LLM</small>${esc((m.llm.backend||{}).model)}</div><div><small>GPU</small>${esc(m.gpu||'none')}</div><div><small>CPUs</small>${m.cpus}</div></div>`})}
  return S}
 
+
+/* 3D preview: rebuilds the same CSG as make_scad() in app/adapters.py (OpenSCAD coords, Z up). */
+let _cad=null;
+async function mountCad(j){const el=$('#cadview');if(!el)return;
+ try{
+  const THREE=await import('three'),{OrbitControls}=await import('three/addons/controls/OrbitControls.js'),{Brush,Evaluator,SUBTRACTION}=await import('three-bvh-csg');
+  const r=j.result,p=r.params,t=r.template,L=p.finger_length,W=p.pad_width||20,rad=Math.PI/180;
+  const box=(w,d,h)=>{const g=new THREE.BoxGeometry(w,d,h);g.translate(w/2,d/2,h/2);return new Brush(g)};
+  let mesh;
+  if(t==='flat_pad')mesh=box(W,(p.pad_thickness||6)+10,L);
+  else{
+   let body,cut;
+   if(t==='v_groove'){body=box(W,20,L);const h=p.groove_depth*2,g=new THREE.CylinderGeometry(h,0,h,48,1);g.rotateX(Math.PI/2);
+    cut=new Brush(g);const m=new THREE.Matrix4().makeTranslation(W/2,20,L*0.7).multiply(new THREE.Matrix4().makeRotationX(90*rad)).multiply(new THREE.Matrix4().makeRotationZ(45*rad)).multiply(new THREE.Matrix4().makeScale(1,Math.tan(p.groove_angle/2*rad),1));cut.matrix.copy(m)}
+   else{const rr=(j.part.diameter_mm||40)/2*p.pocket_radius_scale+p.pocket_clearance,w=Math.max(W,2*rr+6),d=p.pocket_depth+6;body=box(w,d,L);cut=new Brush(new THREE.SphereGeometry(rr,48,32));cut.matrix.makeTranslation(w/2,d,L*0.7)}
+   cut.matrixAutoUpdate=false;cut.updateMatrixWorld(true);body.updateMatrixWorld(true);
+   mesh=new Evaluator().evaluate(body,cut,SUBTRACTION)}
+  mesh.material=new THREE.MeshStandardMaterial({color:0x76b900,roughness:.55,metalness:.1,side:THREE.DoubleSide});
+  if(_cad){_cad.stop();_cad=null}
+  el.innerHTML='';const W0=el.clientWidth,H0=el.clientHeight;
+  const rd=new THREE.WebGLRenderer({antialias:true,alpha:true});rd.setPixelRatio(devicePixelRatio);rd.setSize(W0,H0);el.appendChild(rd.domElement);
+  const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,W0/H0,.1,2000);cam.up.set(0,0,1);
+  sc.add(new THREE.HemisphereLight(0xffffff,0x888888,1.4));const dl=new THREE.DirectionalLight(0xffffff,2);dl.position.set(60,-80,100);sc.add(dl);
+  sc.add(mesh);const bb=new THREE.Box3().setFromObject(mesh),c=bb.getCenter(new THREE.Vector3()),sz=bb.getSize(new THREE.Vector3()).length();
+  sc.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry,30),new THREE.LineBasicMaterial({color:0x222222})));
+  cam.position.copy(c).add(new THREE.Vector3(sz*.9,-sz*1.1,sz*.7));
+  const oc=new OrbitControls(cam,rd.domElement);oc.target.copy(c);oc.update();
+  let run=true;(function loop(){if(!run||!el.isConnected)return;rd.render(sc,cam);requestAnimationFrame(loop)})();
+  _cad={stop(){run=false;rd.dispose()}};
+ }catch(e){el.innerHTML='<span class="mute">3D preview unavailable ('+esc(String(e.message||e))+')</span>'}}
 function render(force,jump){if(!cur)return;const want=cur;
  const a=document.activeElement;if(!force&&a&&$('#detail').contains(a)&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))return;
  api('/api/jobs/'+cur).then(j=>{if(cur!==want)return;const s=JSON.stringify([j.status,j.stage,j.n_done,j.result&&1,j.review,j.physical.length,j.meta&&1]);if(!force&&s===sig)return;sig=s;
   const S=sections(j),y=scrollY;window._secs=S;
   $('#detail').innerHTML=`<div class="secs">${S.map(x=>`<div class="card sec ${x.wide?'wide':''}" id="s-${x.id}"><h2>${x.t}</h2>${x.h}</div>`).join('')}</div>`;
-  buildNav();if(jump)goto('s-overview');else scrollTo(0,y)})}
+  buildNav();if(jump)goto('s-overview');else scrollTo(0,y);if(j.result)mountCad(j)})}
 function tog(id,o){const v=JSON.parse(store.get('open')||'{}');v[id]=o;store.set('open',JSON.stringify(v))}
 async function post(e,path){e.preventDefault();await fetch(`/api/jobs/${cur}/${path}`,{method:'POST',body:new FormData(e.target)});render(true);return false}
 async function act(a){await api(`/api/jobs/${cur}/${a}`,{method:'POST'});select(cur)}
