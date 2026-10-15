@@ -18,6 +18,7 @@ app/        Finger Designer web app: FastAPI backend + single-file frontend     
 sim/        FANUC ER-4iA Isaac Sim twin (organizer starter v0.5) + sim service    → sim/README.md
 docs/       Event docs, team plan + feedback, references, experiment log         → docs/README.md
 data/       Local datasets (gitignored)                                          → data/README.md
+fanuc_er4ia_hackathon_starter_v05.zip   Untouched copy of the organizer twin download (unpacked in sim/)
 AGENTS.md   Instructions for coding agents (CLAUDE.md and GEMINI.md import it)
 CONTEXT.md  Living project summary
 ```
