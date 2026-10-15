@@ -1,0 +1,31 @@
+#!/bin/sh
+# Blocks commits the event rules forbid: large files, datasets/checkpoints, secrets.
+# Enable once per clone:   git config core.hooksPath .githooks
+# Bypass (only if you are sure):   git commit --no-verify
+MAX_BYTES=$((5 * 1024 * 1024))
+fail=0
+
+for f in $(git diff --cached --name-only --diff-filter=ACMR); do
+    case "$f" in
+        .env.example) ;;
+        .env|.env.*|*/.env|*/.env.*)
+            echo "pre-commit: refusing to commit env file: $f"; fail=1 ;;
+        app/data/*)
+            echo "pre-commit: app/data/ is runtime data, not source: $f"; fail=1 ;;
+        *.pt|*.pth|*.ckpt|*.safetensors|*.onnx|*.engine)
+            echo "pre-commit: model weights/checkpoints don't belong in git: $f"; fail=1 ;;
+    esac
+    size=$(git cat-file -s ":$f" 2>/dev/null || echo 0)
+    if [ "$size" -gt "$MAX_BYTES" ]; then
+        echo "pre-commit: $f is $((size / 1024 / 1024)) MB (limit 5 MB). Store it outside git and document where (data/README.md)."
+        fail=1
+    fi
+done
+
+# Cheap secret scan of added lines.
+if git diff --cached -U0 --diff-filter=ACMR | grep -E '^\+' | grep -qE 'sk-ant-[A-Za-z0-9_-]{20,}|nvapi-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'; then
+    echo "pre-commit: staged changes look like they contain an API key or private key. Remove it (use .env)."
+    fail=1
+fi
+
+[ "$fail" -eq 0 ] || { echo "pre-commit: commit blocked."; exit 1; }

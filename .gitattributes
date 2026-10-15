@@ -1,0 +1,16 @@
+# Normalise text to LF everywhere: the twin's shell scripts must run on Linux (Brev / GB10),
+# and MANIFEST.json hashes the LF versions of the starter files.
+* text=auto eol=lf
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.mp4  binary
+*.zip  binary
+*.stl  binary
+*.step binary
+*.stp  binary
+*.usd  binary
+*.usdc binary
+*.ps1  text eol=crlf

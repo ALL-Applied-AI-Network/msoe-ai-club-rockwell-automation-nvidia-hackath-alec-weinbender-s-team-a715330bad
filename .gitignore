@@ -1,6 +1,54 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Logs and local databases
 *.log
 *.db
 *.db-shm
 *.db-wal
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Web app runtime data (SQLite DB, uploads, generated CAD)
+app/data/
+
+# Local datasets (see data/README.md)
+data/*
+!data/README.md
+
+# Simulation outputs (twin has its own .gitignore for runs/, frames, videos)
+runs/
+*.mp4
+*.usd
+*.usdc
+
+# Model weights / checkpoints
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.engine
+
+# Archives (e.g. the original starter zip; contents live in sim/fanuc_er4ia_sim/)
+*.zip
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Claude Code local settings
+.claude/settings.local.json

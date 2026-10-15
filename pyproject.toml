@@ -1,0 +1,11 @@
+# Tooling config only; each component has its own requirements file
+# (app/requirements.txt, sim/fanuc_er4ia_sim/requirements.txt).
+[tool.ruff]
+target-version = "py311"
+line-length = 140
+extend-exclude = ["sim/fanuc_er4ia_sim"]   # vendored upstream starter
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I"]
+# The app is written in a compact style (one-line ifs, `;`-joined statements).
+ignore = ["E701", "E702", "E731", "E741", "E401"]
