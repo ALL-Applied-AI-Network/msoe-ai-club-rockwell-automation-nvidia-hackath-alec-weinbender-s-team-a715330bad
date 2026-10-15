@@ -1,7 +1,7 @@
 """Simulation service to run next to Isaac Sim (e.g. headless on a Brev GPU instance).
 
     pip install fastapi uvicorn
-    uvicorn sim_server.server:app --host 0.0.0.0 --port 9000
+    cd sim && uvicorn sim_server.server:app --host 0.0.0.0 --port 9000
 Then on the web-app machine:   SIM_BACKEND=http  SIM_URL=http://<instance>:9000/evaluate
 (Reach the instance via a Brev Secure Link or `brev port-forward`; don't expose it publicly.)
 

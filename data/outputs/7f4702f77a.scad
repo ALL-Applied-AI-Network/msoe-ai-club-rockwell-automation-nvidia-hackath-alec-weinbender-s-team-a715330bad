@@ -1,2 +1,0 @@
-// v_groove finger  params={"finger_length": 30.248727985464548, "groove_angle": 104.00722578966771, "groove_depth": 15.50794286362226, "pad_width": 10.343630596416128}
-difference(){cube([10.343630596416128,20,30.248727985464548]); translate([5.171815298208064,20,21.174109589825182]) rotate([90,0,0]) rotate([0,0,45]) scale([1,1.280,1]) cylinder(h=31.01588572724452,r1=0,r2=31.01588572724452,center=true);}

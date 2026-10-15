@@ -1,39 +1,70 @@
-# Finger Designer
+# CAD-to-Fingers
 
-Web front end + job runner bridging the user to the LLM and the simulation/optimization back end.
+**Automated, simulation-validated gripper finger design for new parts.** Alec Weinbender's Team, Rockwell Automation + NVIDIA
+Innovation Lab, Fall 2026, Dataset 3: Grasping and Sorting.
 
-    pip install -r requirements.txt
-    python -m uvicorn app.main:app --port 8000      # open http://localhost:8000
+Give it a new part and a task, and it proposes finger templates with an LLM, then optimizes their dimensions with Bayesian
+optimization. Each candidate is tested with repeated, deliberately mis-localized grasps in the FANUC ER-4iA digital twin.
+The output is printable finger CAD, a grasp pose and a predicted success rate, which we then check against the stock fingers
+on the real arm.
 
-Runs end-to-end out of the box with a **mock** LLM and **mock** simulator. Wire in the real models via env vars:
+Project state, hardware facts and open questions: **[CONTEXT.md](CONTEXT.md)**. Read
+**[docs/notes/things-to-know.md](docs/notes/things-to-know.md)** before you start. All source documents: **[docs/](docs/README.md)**.
 
-| Variable | Effect |
-|---|---|
-| `ANTHROPIC_API_KEY` (+ optional `LLM_MODEL`) | LLM step uses Claude |
-| `LLM_BACKEND=http`, `LLM_URL` | POST `{part,task,k}` -> `{suggestions:[{template,params,rationale}]}` |
-| `SIM_BACKEND=http`, `SIM_URL` | POST `{part,design,offset}` -> `{success:bool}` (one grasp in the ER-4iA twin) |
+## Repository layout
 
-Template/parameter ranges: `app/adapters.py` (`SPACE`). Replace `make_scad` with a real CAD export (e.g. CadQuery -> STEP/STL).
+```text
+app/        Finger Designer web app: FastAPI backend + single-file frontend      → app/README.md
+sim/        FANUC ER-4iA Isaac Sim twin (organizer starter v0.5) + sim service    → sim/README.md
+docs/       Event docs, team plan + feedback, references, experiment log         → docs/README.md
+data/       Local datasets (gitignored)                                          → data/README.md
+AGENTS.md   Instructions for coding agents (CLAUDE.md and GEMINI.md import it)
+CONTEXT.md  Living project summary
+```
 
-## Long-running optimization
-- Each job is a **detached process** (`python -m app.worker <id>`), not a request thread: closing the browser or restarting the API doesn't kill it.
-- Candidates evaluate **in parallel** across CPU cores (ask/tell Bayesian optimization, TPE).
-- **Early pruning**: grasps run in chunks of 10; a candidate stops once its Wilson upper bound can't beat the current best.
-- **Common random numbers**: grasp *i* uses the same camera-error offset for every design => fairer, lower-variance comparison.
-- LLM suggestions are **warm-start trials**; early stopping after 25 candidates with no improvement.
-- **Checkpointed** to SQLite after every trial; interrupted/cancelled jobs can be resumed from the UI.
-- The reported success rate comes from **re-validating the top 3 on fresh perturbations (3x grasps)**, so it isn't inflated by picking the max of many noisy trials.
-- Live progress via Server-Sent Events.
+## Quick start
 
-Further speed-ups when the real sim is plugged in: headless/no-render mode, N simulator instances per worker, GPU-batched
-physics (many grasps per call), lower grasp count in early rounds, and later the stretch-goal surrogate to skip bad candidates.
-For running remotely, point `SIM_URL` at a GPU box, or move `app/worker.py` behind a queue (Celery/RQ) - the DB layer is the only shared state.
+Run the web app locally with the mock LLM and mock simulator:
 
-## Training data for the stretch goal
-Everything is in `data/app.db` and exportable:
-- `GET /api/export/suggestions.jsonl` - each LLM proposal (template, params, rationale, model, raw output) + its simulated success rate + the job's best. Label good/bad (e.g. within X of best) to train the "reject bad LLM suggestions" filter.
-- `GET /api/export/trials.jsonl` - every simulated design (features, success rate, n_grasps, `from_llm`, `chosen_best`) for the instant success-rate predictor.
-Raw LLM responses and uploaded CAD files are kept, so you can re-featurize later (e.g. part geometry embeddings).
+```bash
+cd app
+python -m venv .venv && . .venv/Scripts/activate      # Windows Git Bash; use .venv/bin/activate on Linux/macOS
+pip install -r requirements.txt
+python -m uvicorn backend.main:app --port 8000        # open http://localhost:8000
+```
 
-## Not done yet
-CAD/image parsing (part size is entered manually; the file is stored), real CAD output, auth, and a hardware-validation (stage 5) tracking page.
+Optional real backends are set with environment variables; see [.env.example](.env.example) and [app/README.md](app/README.md).
+The digital twin needs Isaac Sim on a GPU machine (Brev or the MSOE GB10); see [sim/README.md](sim/README.md).
+
+## Team setup (once per clone)
+
+```bash
+git config core.hooksPath .githooks   # enables the pre-commit guard (blocks >5 MB files, .env, checkpoints)
+```
+
+## Event links
+
+- **Event guide** (datasets, compute, rules, judging): <https://msoe-maic.com/library/?article=Rockwell-NVIDIA-Fall-2026>
+- **Team workspace** (team, repo access, submissions): <https://dashboard.all-ai-network.org/j/L36HEH>
+- **Submissions** (team plan, final): <https://dashboard.all-ai-network.org/s/V28NHK>
+- **Slack:** [join](https://join.slack.com/t/rockwellnvidi-wq82211/shared_invite/zt-4bp05nsn9-UW3afFtM9wjzWtZiQoJBHg).
+  Our channel is `#dataset-3-grasping-sorting`; testbed requests go to `#data-and-testbed-requests`.
+
+| When | What |
+| --- | --- |
+| Wed Oct 14, 11:59 PM CT | Team plan: submitted |
+| **Sun Nov 1, 11:59 PM CT** | **Final submission:** ~5 min video, one-page summary, this repo, references |
+| Thu Nov 5, 5:00–8:00 PM | Finals at MSOE Diercks Hall |
+
+## Safety
+
+Nothing in this repo commands the physical robot. Physical tests happen only at CSI, under supervision, after review. No
+printed finger is mounted before it has been reviewed for clearance and safe operation. See
+[docs/references/collect-and-test-your-own-data.md](docs/references/collect-and-test-your-own-data.md).
+
+## Credits
+
+- FANUC ER-4iA digital twin starter v0.5: provided by the hackathon organizers (UWM CSI / MSOE AI Club); see
+  [sim/fanuc_er4ia_sim/](sim/fanuc_er4ia_sim/).
+- NVIDIA Isaac Sim, Cosmos3-Nano; FANUC robot USD from the Isaac Sim asset library.
+- *(Add data, models, code and tools used as the project grows; this list is part of the final submission.)*

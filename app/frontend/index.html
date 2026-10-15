@@ -172,7 +172,7 @@ function sections(j){const r=j.result,S=[];
  return S}
 
 
-/* 3D preview: rebuilds the same CSG as make_scad() in app/adapters.py (OpenSCAD coords, Z up). */
+/* 3D preview: rebuilds the same CSG as make_scad() in app/backend/adapters.py (OpenSCAD coords, Z up). */
 let _cad=null;
 async function mountCad(j){const el=$('#cadview');if(!el)return;
  try{

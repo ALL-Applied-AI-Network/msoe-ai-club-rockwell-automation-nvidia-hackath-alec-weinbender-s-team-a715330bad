@@ -1,4 +1,4 @@
-"""Long-running job process:  python -m app.worker <job_id>
+"""Long-running job process:  python -m backend.worker <job_id>   (run from app/)
 
 Runs detached from the API server (survives API reloads), parallelises candidate
 evaluation across CPU cores, prunes hopeless candidates early, checkpoints every

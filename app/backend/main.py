@@ -21,7 +21,7 @@ def pid_alive(pid):
 def spawn(job_id):
     """Start the optimisation as a detached process so it never blocks (or dies with) the web server."""
     kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
-    p = subprocess.Popen([sys.executable, "-m", "app.worker", job_id], cwd=ROOT,
+    p = subprocess.Popen([sys.executable, "-m", "backend.worker", job_id], cwd=ROOT,
                          stdout=open(db.DATA / "worker.log", "a"), stderr=subprocess.STDOUT, **kw)
     db.update_job(job_id, status="queued", pid=p.pid)
 
@@ -174,4 +174,4 @@ def export_suggestions():
                     "n_grasps": s["n_grasps"], "job_best": s["best"]})
     return jsonl(out)
 
-app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")
+app.mount("/", StaticFiles(directory=ROOT / "frontend", html=True), name="static")
