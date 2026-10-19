@@ -25,13 +25,12 @@ CONTEXT.md  Living project summary
 
 ## Quick start
 
-Run the web app locally with the mock LLM and mock simulator:
+The repo is a [uv](https://docs.astral.sh/uv/) workspace. Run the web app locally with the mock LLM and mock simulator, from
+the repo root:
 
 ```bash
-cd app
-python -m venv .venv && . .venv/Scripts/activate      # Windows Git Bash; use .venv/bin/activate on Linux/macOS
-pip install -r requirements.txt
-python -m uvicorn backend.main:app --port 8000        # open http://localhost:8000
+uv sync --all-packages                                        # one .venv at the root for every component
+uv run --package backend uvicorn api.main:app --port 8000       # open http://localhost:8000
 ```
 
 Optional real backends are set with environment variables; see [.env.example](.env.example) and [app/README.md](app/README.md).

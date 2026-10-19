@@ -37,8 +37,11 @@ Start here when wiring finger designs into simulation:
 
 ## sim_server
 
+A uv workspace member (`sim/sim_server/pyproject.toml`, code in `src/sim_server/server.py`). From the repo root:
+
 ```bash
-cd sim && uvicorn sim_server.server:app --host 0.0.0.0 --port 9000
+uv sync --package sim-server        # on the GPU machine: just this member's dependencies
+uv run --package sim-server uvicorn sim_server.server:app --host 0.0.0.0 --port 9000
 # on the app machine:  SIM_BACKEND=http SIM_URL=http://<host>:9000/evaluate
 ```
 

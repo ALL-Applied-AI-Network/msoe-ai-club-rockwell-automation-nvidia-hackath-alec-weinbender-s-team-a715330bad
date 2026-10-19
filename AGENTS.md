@@ -14,12 +14,14 @@ User instructions take precedence over this file.
 ## Layout
 
 ```text
+pyproject.toml          uv workspace root (member list, ruff config, dev tools); uv.lock is the only lockfile
 app/                    Finger Designer web app (FastAPI + single-file UI)
-  backend/              main.py (API), worker.py (detached optimizer), adapters.py (LLM/sim/CAD), db.py (SQLite)
+  backend/              uv member "backend", package src/api/: routers/ -> services/ -> clients/ (LLM, sim, CAD, database),
+                        models/ (domain), db/ (SQLAlchemy tables + Alembic migrations); tests/ next to src/
   frontend/index.html   UI served at /
 sim/
-  fanuc_er4ia_sim/      Organizer-supplied FANUC ER-4iA Isaac Sim twin, starter v0.5 (vendored; see below)
-  sim_server/           HTTP service that runs next to Isaac Sim and evaluates grasp batches for the app (stub)
+  fanuc_er4ia_sim/      Organizer-supplied FANUC ER-4iA Isaac Sim twin, starter v0.5 (vendored, not a uv member; see below)
+  sim_server/           uv member "sim-server": HTTP service that runs next to Isaac Sim and evaluates grasp batches (stub)
 docs/                   Source documents, references, experiment log
 data/                   Local datasets; contents gitignored except the README
 ```
@@ -27,16 +29,28 @@ data/                   Local datasets; contents gitignored except the README
 ## Commands
 
 ```bash
-# Web app (mock LLM + mock sim), from app/
-pip install -r requirements.txt
-python -m uvicorn backend.main:app --port 8000
+# All uv commands run from the repo root. Install every workspace member + dev tools into the root .venv:
+uv sync --all-packages
+
+# Web app (mock LLM + mock sim). Startup also migrates the database.
+uv run --package backend uvicorn api.main:app --port 8000
+
+# Backend tests (offline; config in the root pyproject.toml)
+uv run pytest
+
+# New database migration, after editing app/backend/src/api/db/tables.py
+uv run --package backend alembic -c app/backend/alembic.ini revision --autogenerate -m "what changed"
+
+# Sim server (on the GPU machine, next to Isaac Sim)
+uv run --package sim-server uvicorn sim_server.server:app --host 0.0.0.0 --port 9000
 
 # Twin host tests (Linux/macOS shell; on Windows use .venv/Scripts/python), from sim/fanuc_er4ia_sim/
 ./bootstrap.sh
 .venv/bin/python -m unittest test_sort_planning test_cube_perception test_cube_pose test_runtime_config
 
-# Lint (config in pyproject.toml; the vendored twin is excluded)
-ruff check .
+# Format and lint (config in the root pyproject.toml; the vendored twin is excluded)
+uv run ruff format .
+uv run ruff check .
 ```
 
 Isaac Sim and Cosmos are **not** installed on dev laptops. They run on Brev or the MSOE GB10 (Rosie). Don't claim that GPU,
@@ -81,8 +95,12 @@ matter, our notes kept separate, truncation marked. Then update the docs index a
 
 ## Code style
 
-- Python 3.11+. Match the surrounding code: the app is deliberately compact (short functions, dense one-liners, few comments
-  that explain *why*). Don't reformat files you aren't otherwise changing.
+- Read [.claude/rules/coding-style.md](.claude/rules/coding-style.md) before adding a component, package, dependency or
+  backend code. It defines the uv workspace layout and the backend's layers: routers, services, clients, models, the
+  database, lifespans, config, logging and tests.
+- Python 3.11+. `uv run ruff format .` is the formatter and `uv run ruff check .` must pass.
 - Units: the twin uses **metres and degrees**; the app's design space uses **millimetres**. Convert explicitly at the
   `sim_server` boundary.
-- Keep the app runnable with mock backends. New real backends go behind env vars in `adapters.py`.
+- Keep the app runnable with mock backends. New real backends go in `clients/` next to a mock, selected by their section
+  in `config.py`.
+- Database changes go through `db/tables.py` plus an Alembic migration. Services query the ORM, never SQL strings.

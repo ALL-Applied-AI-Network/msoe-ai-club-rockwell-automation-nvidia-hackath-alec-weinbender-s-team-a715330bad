@@ -1,6 +1,0 @@
-fastapi>=0.115
-uvicorn[standard]>=0.30
-python-multipart>=0.0.9
-optuna>=4.0
-numpy>=1.26
-anthropic>=0.40   # optional: only used if ANTHROPIC_API_KEY is set

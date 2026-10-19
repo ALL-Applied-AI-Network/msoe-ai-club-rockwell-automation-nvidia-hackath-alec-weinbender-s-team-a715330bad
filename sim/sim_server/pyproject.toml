@@ -1,0 +1,13 @@
+[project]
+name = "sim-server"
+version = "0.1.0"
+description = "HTTP grasp-evaluation service that runs next to Isaac Sim"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"

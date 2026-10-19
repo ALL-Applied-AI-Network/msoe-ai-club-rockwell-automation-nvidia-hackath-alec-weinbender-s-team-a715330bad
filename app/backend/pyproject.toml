@@ -1,0 +1,23 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Finger Designer API and optimizer worker"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "optuna>=4.0",
+    "numpy>=1.26",
+    "anthropic>=0.40",   # only used if ANTHROPIC_API_KEY is set
+    "pydantic-settings>=2.8",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "api"   # importable package: app/backend/src/api

@@ -1,11 +1,27 @@
-# Tooling config only; each component has its own requirements file
-# (app/requirements.txt, sim/fanuc_er4ia_sim/requirements.txt).
+# uv workspace root: member list, shared tool config and dev tools. No [project] table.
+# Each component has its own pyproject.toml; see .claude/rules/coding-style.md.
+# The vendored twin (sim/fanuc_er4ia_sim) is not a member and keeps its own requirements.txt.
+[tool.uv.workspace]
+members = ["app/backend", "sim/sim_server"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 140
+src = ["app/backend/src", "sim/sim_server/src"]   # first-party packages for import sorting
 extend-exclude = ["sim/fanuc_er4ia_sim"]   # vendored upstream starter
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "B", "I"]
-# The app is written in a compact style (one-line ifs, `;`-joined statements).
-ignore = ["E701", "E702", "E731", "E741", "E401"]
+select = ["E", "F", "W", "B", "I", "G"]   # G: log calls take arguments, not f-strings
+
+[tool.pytest.ini_options]
+testpaths = ["app/backend/tests"]
+addopts = ["--import-mode=importlib", "-m", "not integration"]
+markers = ["integration: needs a real LLM or the sim server; deselected by default (run with -m integration)"]
+filterwarnings = ["ignore::optuna.exceptions.ExperimentalWarning"]   # the sampler's group=True option
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]

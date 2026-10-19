@@ -31,13 +31,16 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
 
 ## The app
 
-1. **Paths changed in the repo reorganization.** The old `app/*.py` is now `app/backend/`, `static/index.html` is now
-   `app/frontend/index.html`, and `sim_server/` is now `sim/sim_server/`. Run the app from `app/` with
-   `python -m uvicorn backend.main:app --port 8000`. If you have old local branches, git's rename detection should carry
-   your edits over on merge.
+1. **The backend was restructured (2026-10-19).** It's a uv workspace member at `app/backend/` whose package is
+   `app/backend/src/api/`, split into routers, services, clients, models and a `db/` package (SQLAlchemy + Alembic); see
+   [the coding-style rule](../../.claude/rules/coding-style.md#application-backend). `adapters.py` was split into
+   `clients/` (LLM, sim, CAD) and `models/design.py`; `worker.py`'s optimizer is now `services/optimizer.py`.
+   `sim_server/` is now `sim/sim_server/src/sim_server/`, and `app/requirements.txt` is gone. Run the app from the repo root
+   with `uv run --package backend uvicorn api.main:app --port 8000`. Old local branches touching the backend need manual
+   merging: the code moved and was reformatted.
 2. **Everything you see is mock.** The default LLM and simulator are mocks. The mock grasp model is made up, so **never
    report mock success rates as results.**
-3. **The design space is sized for big parts.** The `SPACE` ranges in `app/backend/adapters.py` (finger length 15–60 mm,
+3. **The design space is sized for big parts.** The `SPACE` ranges in `app/backend/src/api/models/design.py` (finger length 15–60 mm,
    pad width up to 40 mm…) and the form defaults (tennis ball, 67 mm) don't fit a 12 mm gripper. They need re-ranging.
 4. **CAD output is a placeholder** (`make_scad`, OpenSCAD text). The 3D preview in the UI rebuilds the same shapes. Neither is
    a printable, mountable finger yet.

@@ -17,7 +17,7 @@ experiment gets one Markdown file in `docs/experiments/`.
 3. **Never fabricate numbers.** Leave a field as `TODO` and ask the user for anything missing that matters: the baseline,
    attempt counts, the randomization (camera error σ mm/deg, seeds), versions, and whether this was **mock sim, real twin, or
    physical**. Mock-simulator results must be labelled as mock.
-4. Report success rates with attempts, successes and a 95% Wilson interval (`app/backend/worker.py::wilson` computes it).
+4. Report success rates with attempts, successes and a 95% Wilson interval (`app/backend/src/api/services/optimizer.py::wilson` computes it).
    For physical trials, list **every attempt**, including failures and operator interventions.
 5. Note where the large artifacts live (Brev path, shared drive). Don't commit videos or run directories.
 6. Add a row to the index table in `docs/experiments/README.md` with a one-line headline result.

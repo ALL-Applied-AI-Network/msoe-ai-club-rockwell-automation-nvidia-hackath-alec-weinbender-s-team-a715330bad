@@ -45,7 +45,7 @@ Stretch: a surrogate model that predicts success rate instantly to screen candid
 | Web app (UI, job queue, optimizer, LLM step, exports, 3D finger preview) | `app/` | Works end-to-end with **mock** LLM and **mock** sim |
 | Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | **Stub**: `run_grasps` not implemented |
 | Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored as-is from the organizers; not yet run by us |
-| CAD output | `app/backend/adapters.py` `make_scad` | Placeholder OpenSCAD; needs real CAD (e.g. CadQuery → STL/STEP) |
+| CAD output | `app/backend/src/api/clients/cad.py` (`OpenScadCad`) | Placeholder OpenSCAD; needs real CAD (e.g. CadQuery → STL/STEP) |
 
 ## Hardware and twin facts (from `sim/fanuc_er4ia_sim/docs/`)
 
@@ -71,7 +71,7 @@ Stretch: a surrogate model that predicts success rate instantly to screen candid
    eggs) **cannot be grasped** with the current actuator. This is what the organizers meant by "not all of the existing items will
    fit in the fingers". The demo part must fit inside the jaw stroke, or the fingers must be redesigned so the stroke is used
    differently (e.g. offset or angled fingers that change the effective opening).
-3. The app's design space (`SPACE` in `app/backend/adapters.py`) and its default form values assume large parts. They need to be
+3. The app's design space (`SPACE` in `app/backend/src/api/models/design.py`) and its default form values assume large parts. They need to be
    re-ranged for this gripper.
 4. The sim-predicted success rate is unvalidated until we run physical trials, so book CSI time early.
 
@@ -81,6 +81,9 @@ Stretch: a surrogate model that predicts success rate instantly to screen candid
 | --- | --- | --- |
 | 2026-10-14 | Dataset 3, CAD-to-Fingers | Team plan |
 | 2026-10-15 | Repo layout: `app/` (backend + frontend), `sim/` (twin + sim server), `docs/`, `data/` | Repo setup |
+| 2026-10-19 | uv workspace: one `pyproject.toml` per component (`app/backend`, `sim/sim_server`), one root `uv.lock` | Deploy parts separately, keep deps consistent ([rule](.claude/rules/coding-style.md)) |
+| 2026-10-19 | Backend restructured into routers / services / clients / models (package `api`), pydantic-settings config, pytest suite | Testable without HTTP; API contract unchanged ([rule](.claude/rules/coding-style.md#application-backend)) |
+| 2026-10-19 | Database: SQLAlchemy ORM + Alembic migrations, connection via a database client and `DB_URL` | Readable schema, safe schema changes, Postgres-ready; existing `app.db` files are kept |
 
 ## Open questions / action items
 
