@@ -18,29 +18,25 @@ app/        Finger Designer web app: FastAPI backend + single-file frontend     
 sim/        FANUC ER-4iA Isaac Sim twin (organizer starter v0.5) + sim service    → sim/README.md
 docs/       Event docs, team plan + feedback, references, experiment log         → docs/README.md
 data/       Local datasets (gitignored)                                          → data/README.md
-fanuc_er4ia_hackathon_starter_v05.zip   Untouched copy of the organizer twin download (unpacked in sim/)
+SETUP.md    First-time setup: Git, uv, Python, VS Code, then each component
 AGENTS.md   Instructions for coding agents (CLAUDE.md and GEMINI.md import it)
 CONTEXT.md  Living project summary
 ```
 
 ## Quick start
 
-The repo is a [uv](https://docs.astral.sh/uv/) workspace. Run the web app locally with the mock LLM and mock simulator, from
-the repo root:
+**First time here? Follow [SETUP.md](SETUP.md)**: installing Git, uv and Python, cloning, and the one-time setup
+(including the pre-commit guard).
+
+Once you're set up, run the web app with the mock LLM and mock simulator, from the repo root:
 
 ```bash
 uv sync --all-packages                                        # one .venv at the root for every component
 uv run --package backend uvicorn api.main:app --port 8000       # open http://localhost:8000
 ```
 
-Optional real backends are set with environment variables; see [.env.example](.env.example) and [app/README.md](app/README.md).
+Optional real backends are set in `.env`; see [.env.example](.env.example) and [app/README.md](app/README.md).
 The digital twin needs Isaac Sim on a GPU machine (Brev or the MSOE GB10); see [sim/README.md](sim/README.md).
-
-## Team setup (once per clone)
-
-```bash
-git config core.hooksPath .githooks   # enables the pre-commit guard (blocks >5 MB files, .env, checkpoints)
-```
 
 ## Event links
 

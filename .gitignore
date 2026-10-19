@@ -40,10 +40,8 @@ runs/
 *.onnx
 *.engine
 
-# Archives. Exception: the untouched organizer starter zip is kept at the root as a reference copy
-# (its contents are unpacked in sim/fanuc_er4ia_sim/).
+# Archives. The organizer starter is unpacked in sim/fanuc_er4ia_sim/; the original zip is in git history (c7014b1).
 *.zip
-!/fanuc_er4ia_hackathon_starter_v05.zip
 
 # OS / editor
 .DS_Store
