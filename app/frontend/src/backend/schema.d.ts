@@ -38,6 +38,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/compute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Compute
+         * @description Cheap (no provider call): poll it while a session starts or stops.
+         */
+        get: operations["get_compute_api_compute_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/compute/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Instances
+         * @description Every enabled backend's targets, from the providers (a few seconds: the Brev CLI, ssh to the GB10). A backend
+         *     that fails (no VPN, not logged in) is reported in errors, and the others are still listed.
+         */
+        get: operations["list_instances_api_compute_instances_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/compute/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Session
+         * @description Start a Brev instance, or connect the GB10, for the sim. 422 for a backend that isn't enabled, 404 for an unknown
+         *     target, 409 while another target's session is active.
+         */
+        post: operations["start_session_api_compute_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/compute/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Session
+         * @description End the current session: stop its Brev instance, or disconnect the GB10 (its sim server keeps running). 409 when
+         *     none is active.
+         */
+        post: operations["stop_session_api_compute_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/compute/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description Past and current sessions, latest first: when each target was connected, and why it ended.
+         */
+        get: operations["list_sessions_api_compute_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/parts": {
         parameters: {
             query?: never;
@@ -595,6 +698,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/clips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Clips
+         * @description The experiment's clips, newest first.
+         */
+        get: operations["list_clips_api_jobs__job_id__clips_get"];
+        put?: never;
+        /**
+         * Request Clip
+         * @description Film a final design (D1, ..., STOCK, IMP; any case) at one offset, in mm and degrees as the results' grid points
+         *     give them. 202 with the clip, queued; the same design and offset again returns its existing clip, unless that one
+         *     failed. 404 for an unknown job or label; 409 before the final test, for a mock experiment, or when no GPU is ready
+         *     (the message says which).
+         */
+        post: operations["request_clip_api_jobs__job_id__clips_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/clips/{clip_id}.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Clip Video
+         * @description One view's video (H.264 mp4, about 5 s) of a ready clip. 409 while it isn't ready, or when it lacks the view.
+         */
+        get: operations["clip_video_api_jobs__job_id__clips__clip_id__mp4_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/test-plans": {
         parameters: {
             query?: never;
@@ -865,6 +1015,28 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BackendError */
+        BackendError: {
+            /**
+             * Backend
+             * @enum {string}
+             */
+            backend: "mock" | "brev" | "gb10";
+            /** Message */
+            message: string;
+        };
+        /** BackendInfo */
+        BackendInfo: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "mock" | "brev" | "gb10";
+            /** Label */
+            label: string;
+            /** Always On */
+            always_on: boolean;
+        };
         /** BestFinger */
         BestFinger: {
             /** Label */
@@ -950,21 +1122,30 @@ export interface components {
             air_pressure_mpa?: number | null;
             /**
              * @default {
-             *       "face": "-y",
+             *       "face": "+x",
+             *       "face_x_mm": 7.45,
+             *       "jaw_length_mm": 15,
+             *       "jaw_clearance_mm": 0.5,
+             *       "face_size_mm": [
+             *         8,
+             *         15
+             *       ],
              *       "holes": [
              *         {
-             *           "below_root_mm": 10,
+             *           "below_root_mm": 4,
              *           "counterbore_depth_mm": 1,
-             *           "counterbore_diameter_mm": 5.2,
-             *           "diameter_mm": 3.2,
-             *           "x_mm": 6
+             *           "depth_mm": 6,
+             *           "diameter_mm": 2.5,
+             *           "x_mm": 6,
+             *           "y_mm": 0
              *         },
              *         {
-             *           "below_root_mm": 23,
+             *           "below_root_mm": 11,
              *           "counterbore_depth_mm": 1,
-             *           "counterbore_diameter_mm": 5.2,
-             *           "diameter_mm": 3.2,
-             *           "x_mm": 6
+             *           "depth_mm": 6,
+             *           "diameter_mm": 2.5,
+             *           "x_mm": 6,
+             *           "y_mm": 0
              *         }
              *       ],
              *       "locating": []
@@ -1207,6 +1388,141 @@ export interface components {
             blocked: boolean;
             /** Files */
             files: string[];
+        };
+        /** Clip */
+        Clip: {
+            /** Id */
+            id: number;
+            /** Job Id */
+            job_id: string;
+            /** Design */
+            design: string;
+            offset: components["schemas"]["ClipOffset"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "recording" | "ready" | "failed";
+            /** Views */
+            views: ("closeup" | "side")[];
+            /** Outcome */
+            outcome: ("held" | "missed") | null;
+            /** Result */
+            result: ("held" | "missed") | null;
+            /** Matches Result */
+            matches_result: boolean | null;
+            /** Duration S */
+            duration_s: number | null;
+            /** Error */
+            error: string | null;
+            /** Created */
+            created: number;
+            /** Recorded */
+            recorded: number | null;
+        };
+        /**
+         * ClipOffset
+         * @description The camera error the grasp is filmed at, as the results' grid points give it (mm, degrees).
+         */
+        ClipOffset: {
+            /** Dx */
+            dx: number;
+            /** Dy */
+            dy: number;
+            /**
+             * Yaw Deg
+             * @default 0
+             */
+            yaw_deg: number;
+        };
+        /** ClipRequest */
+        ClipRequest: {
+            /** Design */
+            design: string;
+            offset: components["schemas"]["ClipOffset"];
+        };
+        /**
+         * ComputeInstance
+         * @description One target a backend offers, as its provider reports it. status is the provider's own word (Brev: RUNNING,
+         *     STOPPED, DEPLOYING, ...; the GB10: AVAILABLE, or BUSY with other GPU processes) and state what it means here.
+         */
+        ComputeInstance: {
+            /**
+             * Backend
+             * @enum {string}
+             */
+            backend: "mock" | "brev" | "gb10";
+            /** Name */
+            name: string;
+            /** Id */
+            id: string;
+            /** Status */
+            status: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "starting" | "stopping" | "stopped" | "other";
+            /** Gpu */
+            gpu?: string | null;
+            /** Instance Type */
+            instance_type?: string | null;
+            /**
+             * Always On
+             * @default false
+             */
+            always_on: boolean;
+            /** Other Gpu Processes */
+            other_gpu_processes?: number | null;
+        };
+        /** ComputeSession */
+        ComputeSession: {
+            /** Id */
+            id: number;
+            /**
+             * Backend
+             * @enum {string}
+             */
+            backend: "mock" | "brev" | "gb10";
+            /** Instance */
+            instance: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "starting" | "ready" | "stopping" | "stopped" | "failed";
+            /** Message */
+            message?: string | null;
+            /** Pid */
+            pid?: number | null;
+            /**
+             * Stop Requested
+             * @default 0
+             */
+            stop_requested: number;
+            /** Requested */
+            requested: number;
+            /** Ready At */
+            ready_at?: number | null;
+            /** Last Active */
+            last_active?: number | null;
+            /** Stopped At */
+            stopped_at?: number | null;
+            /** Stop Reason */
+            stop_reason?: ("user" | "idle" | "external" | "failed") | null;
+        };
+        /** ComputeStatusResponse */
+        ComputeStatusResponse: {
+            /** Backends */
+            backends: components["schemas"]["BackendInfo"][];
+            /** Managed */
+            managed: boolean;
+            /** Auto Stop Minutes */
+            auto_stop_minutes: number;
+            session: components["schemas"]["ComputeSession"] | null;
+            last: components["schemas"]["ComputeSession"] | null;
+            /** Not Ready Reason */
+            not_ready_reason: string | null;
         };
         /** CreateCellProfileRequest */
         CreateCellProfileRequest: {
@@ -1633,18 +1949,47 @@ export interface components {
         };
         /**
          * FingerMount
-         * @description How a finger bolts to the jaw. The defaults are the twin's photo reconstruction (scene_config.FINGER_MOUNT_HOLES):
-         *     two screws on the blade's centreline, 10 and 23 mm below its root. Measure the real jaw before printing.
+         * @description How a finger bolts to the jaw, in one of two ways:
+         *
+         *     - face "+x": the jaw is a flat tongue beside the blade's root, on its outer side (away from the other finger), as on
+         *       SMC's MHZL2-16D2. The root is cut back to the tongue's inner face, face_x_mm from the blade's inner face with the
+         *       jaws closed, for jaw_length_mm below the root plus jaw_clearance_mm, so the tongue seats against that face and
+         *       its end clears the step. Screws come through the tongue into the blade along x.
+         *     - face "+y" or "-y": the blade bolts flat to the jaw by that face, with screws through its thickness (along y).
+         *
+         *     The defaults are SMC_FLAT_JAW_MOUNT, from SMC's STEP of the gripper (cad/SMC-MHZL2-16D2.step). PHOTO_MOUNT is the
+         *     twin's photo reconstruction, which the STEP's jaw contradicts. Measure the real jaw before printing.
          */
         FingerMount: {
             /**
              * Face
-             * @default -y
+             * @default +x
              * @enum {string}
              */
-            face: "+y" | "-y";
-            /** Face Size Mm */
-            face_size_mm?: [
+            face: "+x" | "+y" | "-y";
+            /**
+             * Face X Mm
+             * @default 7.45
+             */
+            face_x_mm: number;
+            /**
+             * Jaw Length Mm
+             * @default 15
+             */
+            jaw_length_mm: number;
+            /**
+             * Jaw Clearance Mm
+             * @default 0.5
+             */
+            jaw_clearance_mm: number;
+            /**
+             * Face Size Mm
+             * @default [
+             *       8,
+             *       15
+             *     ]
+             */
+            face_size_mm: [
                 number,
                 number
             ] | null;
@@ -1652,17 +1997,19 @@ export interface components {
              * Holes
              * @default [
              *       {
-             *         "below_root_mm": 10,
+             *         "below_root_mm": 4,
              *         "x_mm": 6,
-             *         "diameter_mm": 3.2,
-             *         "counterbore_diameter_mm": 5.2,
+             *         "y_mm": 0,
+             *         "diameter_mm": 2.5,
+             *         "depth_mm": 6,
              *         "counterbore_depth_mm": 1
              *       },
              *       {
-             *         "below_root_mm": 23,
+             *         "below_root_mm": 11,
              *         "x_mm": 6,
-             *         "diameter_mm": 3.2,
-             *         "counterbore_diameter_mm": 5.2,
+             *         "y_mm": 0,
+             *         "diameter_mm": 2.5,
+             *         "depth_mm": 6,
              *         "counterbore_depth_mm": 1
              *       }
              *     ]
@@ -1958,21 +2305,30 @@ export interface components {
             tcp_mm: number;
             /**
              * @default {
-             *       "face": "-y",
+             *       "face": "+x",
+             *       "face_x_mm": 7.45,
+             *       "jaw_length_mm": 15,
+             *       "jaw_clearance_mm": 0.5,
+             *       "face_size_mm": [
+             *         8,
+             *         15
+             *       ],
              *       "holes": [
              *         {
-             *           "below_root_mm": 10,
+             *           "below_root_mm": 4,
              *           "counterbore_depth_mm": 1,
-             *           "counterbore_diameter_mm": 5.2,
-             *           "diameter_mm": 3.2,
-             *           "x_mm": 6
+             *           "depth_mm": 6,
+             *           "diameter_mm": 2.5,
+             *           "x_mm": 6,
+             *           "y_mm": 0
              *         },
              *         {
-             *           "below_root_mm": 23,
+             *           "below_root_mm": 11,
              *           "counterbore_depth_mm": 1,
-             *           "counterbore_diameter_mm": 5.2,
-             *           "diameter_mm": 3.2,
-             *           "x_mm": 6
+             *           "depth_mm": 6,
+             *           "diameter_mm": 2.5,
+             *           "x_mm": 6,
+             *           "y_mm": 0
              *         }
              *       ],
              *       "locating": []
@@ -2028,6 +2384,13 @@ export interface components {
             tilt_tolerance_deg: number | null;
             /** Within Tolerance */
             within_tolerance: number | null;
+        };
+        /** InstancesResponse */
+        InstancesResponse: {
+            /** Instances */
+            instances: components["schemas"]["ComputeInstance"][];
+            /** Errors */
+            errors: components["schemas"]["BackendError"][];
         };
         /**
          * JobCard
@@ -2423,18 +2786,29 @@ export interface components {
         };
         /**
          * MountHole
-         * @description A screw hole through the blade's thickness (along y).
+         * @description A screw hole for the mount. On a +y or -y mount face it goes through the blade's thickness (along y); on the +x
+         *     face it goes into the blade along x, from the face the jaw sits against (see FingerMount).
          */
         MountHole: {
             /** Below Root Mm */
             below_root_mm: number;
-            /** X Mm */
+            /**
+             * X Mm
+             * @default 6
+             */
             x_mm: number;
+            /**
+             * Y Mm
+             * @default 0
+             */
+            y_mm: number;
             /**
              * Diameter Mm
              * @default 3.2
              */
             diameter_mm: number;
+            /** Depth Mm */
+            depth_mm?: number | null;
             /**
              * Counterbore Diameter Mm
              * @default 5.2
@@ -3262,6 +3636,16 @@ export interface components {
             /** Url */
             url: string | null;
         };
+        /** StartSessionRequest */
+        StartSessionRequest: {
+            /**
+             * Backend
+             * @enum {string}
+             */
+            backend: "mock" | "brev" | "gb10";
+            /** Instance */
+            instance: string;
+        };
         /** SurfaceInfo */
         SurfaceInfo: {
             /** Name */
@@ -3588,6 +3972,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetaResponse"];
+                };
+            };
+        };
+    };
+    get_compute_api_compute_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputeStatusResponse"];
+                };
+            };
+        };
+    };
+    list_instances_api_compute_instances_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstancesResponse"];
+                };
+            };
+        };
+    };
+    start_session_api_compute_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputeSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_session_api_compute_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputeSession"];
+                };
+            };
+        };
+    };
+    list_sessions_api_compute_sessions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputeSession"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4646,6 +5154,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_clips_api_jobs__job_id__clips_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Clip"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_clip_api_jobs__job_id__clips_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Clip"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clip_video_api_jobs__job_id__clips__clip_id__mp4_get: {
+        parameters: {
+            query?: {
+                view?: "closeup" | "side";
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                clip_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": unknown;
                 };
             };
             /** @description Validation Error */

@@ -16,6 +16,8 @@ from sqlalchemy import JSON, TypeDecorator, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from api.models.cell_profile import CellProfile
+from api.models.clip import ClipOutcome, ClipStatus
+from api.models.compute import ComputeBackend, SessionStatus, StopReason
 from api.models.job import JobStatus
 from api.models.job_spec import JobSpec
 from api.models.part import Part
@@ -208,6 +210,48 @@ class TestPlanRow(Base):
     rows: Mapped[list[PlannedTrial]] = mapped_column(PydanticJSON(list[PlannedTrial]))
     prediction_status: Mapped[str] = mapped_column(default="pending")
     prediction_error: Mapped[str | None]
+
+
+class ComputeSessionRow(Base):
+    """One GPU instance brought up for the sim and later stopped (api/models/compute.py); kept as a log of GPU time."""
+
+    __tablename__ = "compute_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    backend: Mapped[ComputeBackend]
+    instance: Mapped[str]
+    status: Mapped[SessionStatus]
+    message: Mapped[str | None]
+    pid: Mapped[int | None]  # of the session process (api.compute_worker)
+    stop_requested: Mapped[int] = mapped_column(default=0)
+    requested: Mapped[float] = mapped_column(default=time.time)
+    ready_at: Mapped[float | None]
+    last_active: Mapped[float | None]
+    stopped_at: Mapped[float | None]
+    stop_reason: Mapped[StopReason | None]
+
+
+class ClipRow(Base):
+    """One grasp of a final design, filmed by the sim server (api/models/clip.py). The videos are files under the job's
+    outputs (clips/<id>_<view>.mp4)."""
+
+    __tablename__ = "clips"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[str]
+    design: Mapped[str]  # the final label: D1, ..., STOCK, IMP
+    dx: Mapped[float]  # the offset, mm and degrees
+    dy: Mapped[float]
+    yaw_deg: Mapped[float]
+    status: Mapped[ClipStatus]
+    views: Mapped[list[str]]
+    outcome: Mapped[ClipOutcome | None]
+    result: Mapped[ClipOutcome | None]
+    duration_s: Mapped[float | None]
+    error: Mapped[str | None]
+    pid: Mapped[int | None]  # of its worker (python -m api.worker <job_id> clip <id>)
+    created: Mapped[float] = mapped_column(default=time.time)
+    recorded: Mapped[float | None]
 
 
 class PhysicalTrialRow(Base):

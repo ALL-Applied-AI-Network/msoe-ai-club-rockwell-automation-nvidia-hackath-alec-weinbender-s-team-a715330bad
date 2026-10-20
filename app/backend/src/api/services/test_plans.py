@@ -41,7 +41,7 @@ from api.models.test_plan import (
     trial_id,
     trial_number,
 )
-from api.services import cell_profiles, jobs, printed_fingers, spreadsheets
+from api.services import cell_profiles, compute, jobs, printed_fingers, spreadsheets
 
 logger = logging.getLogger(__name__)
 
@@ -257,16 +257,22 @@ def _rows(
 
 
 def _start_prediction(db: DatabaseClient, config: AppConfig, plan: TestPlan) -> TestPlan:
+    """Start the prediction worker. When the app manages the GPU and it isn't ready, the plan is kept and its prediction
+    marked failed with the reason, for predict-again once the GPU is up."""
     try:
+        compute.claim(db, config)
         jobs.spawn_worker(db, config, plan.job_id, "predict", str(plan.id))
+    except compute.ComputeNotReadyError as e:
+        error = str(e)
     except OSError as e:
         logger.exception("Test plan %s: couldn't start the prediction worker", plan.id)
         error = f"couldn't start the prediction worker: {e}"
-        with db.session() as s:
-            row = s.get(TestPlanRow, plan.id)
-            row.prediction_status, row.prediction_error = "failed", error
-        return plan.model_copy(update={"prediction_status": "failed", "prediction_error": error})
-    return plan
+    else:
+        return plan
+    with db.session() as s:
+        row = s.get(TestPlanRow, plan.id)
+        row.prediction_status, row.prediction_error = "failed", error
+    return plan.model_copy(update={"prediction_status": "failed", "prediction_error": error})
 
 
 def _predicted(planned: PlannedTrial, prediction: tuple[bool, bool | None] | None) -> PlannedTrial:

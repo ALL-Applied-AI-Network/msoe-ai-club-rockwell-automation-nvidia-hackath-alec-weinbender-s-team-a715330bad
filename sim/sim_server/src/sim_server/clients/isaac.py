@@ -26,7 +26,9 @@ batch into chunks of one grasp per environment and hands each chunk to run_chunk
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 import cell as twin_cell  # the vendored twin's cell.py, importable through twin.use_twin()
 import numpy as np
@@ -37,6 +39,7 @@ from isaacsim.core.prims import Articulation, RigidPrim
 from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 from sim_server.clients.env_grid import env_origins, slots_to_envs
+from sim_server.clients.video import Mp4Writer
 from sim_server.models.finger import FingerDesign
 from sim_server.models.grasp import EnvGrasp
 from sim_server.models.outcome import GraspOutcome
@@ -60,6 +63,14 @@ CONTACT_OFFSET = 0.0002  # the twin's sub-millimetre contact offset for the fing
 REST_OFFSET = 0.0  # likewise (cell.small_contact_offsets)
 DEFAULT_PART = Part(shape="box", size=(C.CUBE_EDGE,) * 3, mass=C.CUBE_MASS)  # the stage needs some part before the first batch
 FINGER_COLOR, PART_COLOR = (0.95, 0.55, 0.10), (0.85, 0.70, 0.05)
+# Recording a grasp (record()). The close-up looks across the jaws' closing direction from the side away from the robot,
+# so both fingers show, framing CLOSEUP_WIDTH at the grasp site from CLOSEUP_DISTANCE away, aimed CLOSEUP_AIM_Z above
+# the table so the 0.13 m lift stays in frame. The side view is the twin's own side camera.
+RECORDING_ROOT = "/World/Recording"
+CLOSEUP_DISTANCE, CLOSEUP_WIDTH, CLOSEUP_AIM_Z, CLOSEUP_EYE_Z = 0.35, 0.26, 0.07, 0.08  # metres
+APERTURE_MM = 20.955  # the twin's cameras' horizontal aperture
+HOLD_FRAMES = 30  # a second after the lift, holding it, so a clip shows whether the part stayed
+WARMUP_RENDERS = 30  # before a recording's first frame
 # Isaac Lab's PhysxCfg defaults. Isaac's own GPU buffer defaults are sized for small scenes and overflow (with errors
 # about found/lost pairs or rigid contacts) once there are many articulations, each with ~150 gripper colliders.
 GPU_CAPACITIES = {
@@ -105,6 +116,7 @@ class GraspCell:
         self.env_count = len(self.envs)
         self._part: Part | None = None
         self._fingers: list[tuple | None] = [None] * self.env_count  # FingerDesign.finger_key on each env; None = stock
+        self._cameras: dict[tuple[str, tuple[int, int]], object] = {}  # (view, size) -> isaacsim Camera, made on first use
         self._arm = self._parts = None
         self._author_parts(DEFAULT_PART)
         if self.gpu:
@@ -128,9 +140,43 @@ class GraspCell:
         Isaac and is safe to call from the HTTP thread."""
         return dict(self._description)
 
-    def run_chunk(self, part: Part, grasps: list[EnvGrasp], grip_force: float | None = None) -> list[GraspOutcome]:
+    def record(
+        self, part: Part, grasp: EnvGrasp, grip_force: float | None, views: list[str], size: tuple[int, int], out_dir: Path
+    ) -> tuple[GraspOutcome, int, dict[str, str]]:
+        """One grasp on environment 0, run exactly as run_chunk runs it, with rendering on: each control frame is read
+        from every view's camera and written to out_dir/<view>.mp4, then HOLD_FRAMES more hold the lift so the outcome
+        shows. Returns (the outcome, the frame count, view -> mp4 path)."""
+        cameras = {view: self._camera(view, size) for view in views}
+        writers = {view: Mp4Writer(out_dir / f"{view}.mp4", size, FPS) for view in views}
+
+        def capture() -> None:
+            for view, camera in cameras.items():
+                rgba = camera.get_rgba()
+                if rgba is None or rgba.size == 0:
+                    raise RuntimeError(f"the {view} camera returned no image")
+                writers[view].write(np.ascontiguousarray(rgba[:, :, :3], dtype=np.uint8).tobytes())
+
+        try:
+            [outcome] = self.run_chunk(part, [grasp], grip_force, on_frame=capture, hold_frames=HOLD_FRAMES)
+        finally:
+            for writer in writers.values():
+                writer.close()
+        frames = writers[views[0]].frames
+        return outcome, frames, {view: str(writer.path) for view, writer in writers.items()}
+
+    def run_chunk(
+        self,
+        part: Part,
+        grasps: list[EnvGrasp],
+        grip_force: float | None = None,
+        *,
+        on_frame: Callable[[], None] | None = None,
+        hold_frames: int = 0,
+    ) -> list[GraspOutcome]:
         """grasps[e] runs on environment e; the other environments hold home with their part at the nominal pose. Every
-        plan in a chunk must have the same segments (a batch has one transport)."""
+        plan in a chunk must have the same segments (a batch has one transport). With on_frame (a recording), the stage
+        is rendered once per control frame and on_frame is called after it, and hold_frames more frames hold the last
+        target; the outcome is measured at the same frames either way."""
         self._prepare_stage(part, [grasp.design for grasp in grasps])
         n, geo = self.env_count, self.geometry
         nominal = nominal_pose(part, self.planner.spread_xy, geo.surface_dz, self.planner.site_xy)
@@ -170,11 +216,16 @@ class GraspCell:
         self._set_grip_force(grip_force)
 
         targets = self._tensor(targets)
+        if on_frame is not None:
+            for _ in range(WARMUP_RENDERS):  # renders only, no physics: materials compile, and the first images come back empty
+                self.world.render()
         z_start = lift = z_settled = None
-        for frame in range(first.frames):
-            self._arm.set_joint_position_targets(targets[frame])
-            for _ in range(PHYSICS_STEPS_PER_FRAME):
-                self.world.step(render=False)
+        for frame in range(first.frames + hold_frames):
+            self._arm.set_joint_position_targets(targets[min(frame, first.frames - 1)])
+            for step in range(PHYSICS_STEPS_PER_FRAME):
+                self.world.step(render=on_frame is not None and step == PHYSICS_STEPS_PER_FRAME - 1)
+            if on_frame is not None:
+                on_frame()
             if frame + 1 == approach_end:
                 z_start = self._part_poses()[0][:, 2]
             if frame + 1 == lift_end:
@@ -454,6 +505,42 @@ class GraspCell:
             arm_env = part_env = [0]
         self._arm_slot = {env: slot for slot, env in enumerate(arm_env)}
         self._part_slot = {env: slot for slot, env in enumerate(part_env)}
+
+    # ------------------------------------------------------------------ recording
+
+    def _camera(self, view: str, size: tuple[int, int]):
+        """The view's camera at this size, made on first use and kept: each camera is a render product, so making one per
+        recording would pile them up."""
+        key = (view, size)
+        if key not in self._cameras:
+            from isaacsim.sensors.camera import Camera  # rendering only; a batch never needs it
+
+            path = f"{RECORDING_ROOT}/{view.capitalize()}_{size[0]}x{size[1]}"
+            twin_cell.camera(self.stage, path, self._camera_config(view, size))
+            camera = Camera(prim_path=path, resolution=size)
+            camera.initialize()
+            self._cameras[key] = camera
+            logger.info("Recording camera %s at %dx%d ready", view, *size)
+        return self._cameras[key]
+
+    def _camera_config(self, view: str, size: tuple[int, int]) -> dict:
+        """Where a view's camera sits, as cell.camera() takes it, relative to environment 0 (the record() grasp's)."""
+        ox, oy = self.envs[0].origin
+        if view == "side":
+            eye, look_at = ((x + ox, y + oy, z) for x, y, z in (C.SIDE_CAM["eye"], C.SIDE_CAM["look_at"]))
+            return {**C.SIDE_CAM, "eye": eye, "look_at": look_at, "resolution": size}
+        (sx, sy), (dx, dy) = self.planner.site_xy, self.planner.spread_xy
+        across = (-dy, dx) if -dy * sx + dx * sy >= 0 else (dy, -dx)  # perpendicular to the closing direction, away from the base
+        top = self.geometry.table_top_z
+        aim = (ox + sx, oy + sy, top + CLOSEUP_AIM_Z)
+        return {
+            "eye": (aim[0] + across[0] * CLOSEUP_DISTANCE, aim[1] + across[1] * CLOSEUP_DISTANCE, top + CLOSEUP_EYE_Z),
+            "look_at": aim,
+            "up": (0.0, 0.0, 1.0),
+            "focal_length": CLOSEUP_DISTANCE * APERTURE_MM / CLOSEUP_WIDTH,
+            "horiz_aperture": APERTURE_MM,
+            "resolution": size,
+        }
 
     # ------------------------------------------------------------------ tensors
 

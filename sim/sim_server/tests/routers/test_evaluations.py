@@ -2,6 +2,7 @@
 business logic: the service (services/evaluations.evaluate_batch) is replaced by a fake, and an immediate queue runs jobs on
 the spot (the real SimQueue needs the main thread, which TestClient blocks)."""
 
+import base64
 import json
 from concurrent.futures import Future
 from pathlib import Path
@@ -14,6 +15,7 @@ from sim_server.models.batch import GraspBatch
 from sim_server.models.grasp import GraspPlanError
 from sim_server.models.outcome import BatchOutcome
 from sim_server.models.pose import InHandPose
+from sim_server.models.recording import GraspRecording
 from sim_server.routers import evaluations
 from sim_server.routers.evaluations import EvaluateBatchRequest, to_batch
 from sim_server.sim_queue import SimQueue
@@ -209,6 +211,74 @@ def test_shutting_down_gets_503(service):
     queue.close()
     response = client(queue).post("/evaluate_batch", json={"part": CUBE, "designs": [{"id": "stock"}], "offsets": OFFSETS})
     assert response.status_code == 503
+
+
+def test_a_batch_sent_again_under_its_key_is_answered_without_running_again(service):
+    """The app's retry after a lost connection: same Idempotency-Key, same answer, one run."""
+    body, app = {"part": CUBE, "designs": [{"id": "stock"}], "offsets": OFFSETS}, client()
+    first = app.post("/evaluate_batch", json=body, headers={"Idempotency-Key": "job-1-round-4"})
+    again = app.post("/evaluate_batch", json=body, headers={"Idempotency-Key": "job-1-round-4"})
+
+    assert first.status_code == again.status_code == 200 and again.json() == first.json()
+    assert len(service.calls) == 1
+    app.post("/evaluate_batch", json=body, headers={"Idempotency-Key": "job-1-round-5"})
+    app.post("/evaluate_batch", json=body)  # no key: every request runs
+    assert len(service.calls) == 3
+
+
+@pytest.fixture
+def filming(monkeypatch):
+    """Replaces record_grasp: records its arguments and writes a small "video" per view."""
+    calls = []
+
+    def fake(cell, batch, views, size, out_dir):
+        calls.append((cell, batch, views, size))
+        files = {}
+        for view in views:
+            (out_dir / f"{view}.mp4").write_bytes(f"{view}:{size[0]}x{size[1]}".encode())
+            files[view] = str(out_dir / f"{view}.mp4")
+        pose = InHandPose(dx=0.0004, dy=-0.0001, dz=0.0, tilt_deg=1.0, yaw_deg=0.5)
+        return GraspRecording(held=True, in_hand=pose, held_after_transport=None, frames=147, files=files)
+
+    monkeypatch.setattr(evaluations, "record_grasp", fake)
+    fake.calls = calls
+    return fake
+
+
+def test_record_grasp_films_one_design_at_one_offset_and_returns_the_videos(filming):
+    body = {"part": CUBE, "design": {"id": "stock"}, "offset": OFFSETS[1], "views": ["side", "closeup", "side"]}
+    response = client().post("/record_grasp", json=body | {"width": 640, "height": 360})
+
+    assert response.status_code == 200, response.text
+    answer = response.json()
+    assert (answer["held"], answer["fps"], answer["frames"], answer["duration_s"]) == (True, 30, 147, 4.9)
+    assert answer["in_hand"] == [0.4, -0.1, 0.0, 1.0, 0.5]  # mm and degrees, as /evaluate_batch reports it
+    videos = {view: base64.b64decode(data).decode() for view, data in answer["videos"].items()}
+    assert videos == {"side": "side:640x360", "closeup": "closeup:640x360"}
+    assert answer["sim"] == DESCRIPTION
+    [(cell, batch, views, size)] = filming.calls
+    assert cell == "the cell" and views == ["side", "closeup"] and size == (640, 360)  # repeated views dropped
+    assert len(batch.designs) == len(batch.offsets) == 1 and batch.offsets[0].dx == pytest.approx(0.0015)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"width": 641}, {"height": 100}, {"views": []}, {"views": ["top"]}, {"part": {"shape": "sphere", "mass_g": 3}}],
+    ids=["odd width", "too small", "no views", "unknown view", "bad part"],
+)
+def test_bad_recording_requests_get_422(filming, change):
+    body = {"part": CUBE, "design": {"id": "stock"}, "offset": OFFSETS[0]} | change
+    assert client().post("/record_grasp", json=body).status_code == 422
+    assert filming.calls == []
+
+
+def test_a_recording_the_twin_cant_plan_gets_422(monkeypatch):
+    def unplannable(*args):
+        raise GraspPlanError("IK failed during descend")
+
+    monkeypatch.setattr(evaluations, "record_grasp", unplannable)
+    response = client().post("/record_grasp", json={"part": CUBE, "design": {"id": "stock"}, "offset": OFFSETS[0]})
+    assert response.status_code == 422 and "IK failed" in response.json()["detail"]
 
 
 def test_legacy_evaluate_runs_stock_through_the_batch_path(service):

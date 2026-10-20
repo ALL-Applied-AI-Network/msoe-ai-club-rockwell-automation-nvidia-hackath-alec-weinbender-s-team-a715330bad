@@ -6,7 +6,8 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
     "numpy>=1.26",
-    "uvicorn[standard]>=0.30",
+    "imageio-ffmpeg>=0.5",  # recordings: H.264 mp4 through its bundled ffmpeg (the GPU machines have none)
+    "uvicorn[standard]>=0.29",  # Isaac Sim 6.0.1's pip install pins uvicorn 0.29.0 (the GB10)
 ]
 
 [build-system]

@@ -7,10 +7,15 @@ stock fingers already on the robot. The contract (v2) is section 5 of docs/notes
 server's side is sim/sim_server/src/sim_server/routers/evaluations.py.
 """
 
+import base64
+import http.client
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -30,6 +35,9 @@ TALL = 1.5  # height / width above which a lead-in shoves a part over instead of
 MAX_SQUARING_DEG = 25  # flat pads square up a box turned less than this
 FLAT_MM = 0.05  # a pad face set back less than this is flat: finer than a printer resolves
 CENTRED: InHand = (0.0, 0.0, 0.0, 0.0, 0.0)
+HEALTH_TIMEOUT_S = 5.0
+RECONNECT_POLL_S = 10.0  # while a lost connection is down: how often to ask /health again
+RETRY_STATUSES = (502, 503, 504)  # no server behind a proxy, or the server shutting down to restart
 
 
 class SimError(RuntimeError):
@@ -40,11 +48,29 @@ class SimResponseError(SimError):
     """The sim server's answer doesn't match the batch it was sent (missing rows, wrong lengths or types)."""
 
 
+class _ConnectionLost(Exception):
+    """The request or its answer was lost on the way, rather than the server refusing it: worth sending again. The
+    message is the one to fail with."""
+
+
 class SimSettings(BaseModel):
     """Per-batch settings from the cell profile and the task."""
 
     grip_force_n: float | None = None  # per-jaw force limit on the jaw drive; None: the twin's drive
     transport: Transport | None = None  # a quick move after the lift
+
+
+class SimRecording(BaseModel):
+    """One grasp filmed by the sim server (POST /record_grasp): its outcome and one mp4 per view."""
+
+    held: bool
+    in_hand: InHand | None
+    held_after_transport: bool | None
+    fps: int
+    frames: int
+    duration_s: float
+    videos: dict[str, bytes]  # view ("closeup", "side") -> the mp4
+    sim: dict[str, Any]
 
 
 class SimClient(Protocol):
@@ -59,6 +85,15 @@ class SimClient(Protocol):
 
     def describe(self) -> dict[str, Any]:
         """What the sim ran with (environments, device, physics settings), for run metadata. Empty for the mock."""
+        ...
+
+    def health(self) -> bool:
+        """Is the sim answering? Never raises; the mock always is."""
+        ...
+
+    def record(self, part: Part, finger: Finger | None, offset: dict, settings: SimSettings, views: list[str]) -> SimRecording:
+        """Film one grasp: the finger (None: stock) at one offset, simulated as run_batch would, with these camera views.
+        The mock can't film: SimError."""
         ...
 
     def close(self) -> None: ...
@@ -95,6 +130,12 @@ class MockSim:
 
     def describe(self) -> dict[str, Any]:
         return {}
+
+    def health(self) -> bool:
+        return True
+
+    def record(self, part: Part, finger: Finger | None, offset: dict, settings: SimSettings, views: list[str]) -> SimRecording:
+        raise SimError("the mock sim has no physics or cameras to film a grasp with: clips need the Isaac sim")
 
     def close(self) -> None:
         pass
@@ -191,14 +232,30 @@ def _inner_x(polygon: Polygon, y: float, eps: float = 1e-6) -> float | None:
 
 class HttpSim:
     """The sim server (sim/sim_server) at a base URL. A whole round is one request, so startup and network cost is paid
-    once per round. Holds plain attributes only, so it pickles into the optimizer's process pool."""
+    once per round. Holds plain attributes only, so it pickles into the optimizer's process pool.
+
+    A long run outlives a dropped connection (the VPN, the GPU's port forward, which the GPU session reopens): once the
+    server has answered, a batch whose request or answer is lost waits up to reconnect_s for /health to answer again and
+    is sent again under the same Idempotency-Key, so the server answers from the run it made, or is still making, instead
+    of running it twice. Until the server has answered, a failure is a wrong SIM_URL or a GPU that isn't connected, and
+    fails at once."""
 
     backend = "http"
     badge: SimBackend = "isaac"
 
-    def __init__(self, url: str, timeout_s: float):
-        self.url, self.timeout_s = url.rstrip("/"), timeout_s
+    def __init__(
+        self,
+        url: str,
+        timeout_s: float,
+        reconnect_s: float = 0.0,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self.url, self.timeout_s, self.reconnect_s = url.rstrip("/"), timeout_s, reconnect_s
+        self._sleep, self._clock = sleep, clock
         self._last_sim: dict[str, Any] = {}
+        self._answered = False  # has the server answered this process? Only then is a failed request a lost connection
 
     def run_batch(self, part: Part, fingers: list[Finger | None], offsets: list[dict], settings: SimSettings) -> list[Outcomes]:
         payload = {
@@ -209,6 +266,8 @@ class HttpSim:
             "transport": settings.transport,
         }
         logger.debug("Sim batch: %d designs x %d offsets to %s", len(fingers), len(offsets), self.url)
+        if self.reconnect_s and not self._answered:
+            self.health()  # an answer here makes a connection lost during this first batch worth waiting for
         body = self._post("/evaluate_batch", payload)
         outcomes = _outcomes(body, len(fingers), len(offsets), transport=settings.transport is not None)
         sim = body.get("sim")
@@ -219,20 +278,73 @@ class HttpSim:
         """The server's `sim` block from the last batch (envs, device, physics_dt, friction_combine, ...) and its URL."""
         return {**self._last_sim, "url": self.url}
 
+    def health(self) -> bool:
+        """GET {url}/health answers {"status": "ok"}."""
+        try:
+            with urllib.request.urlopen(f"{self.url}/health", timeout=HEALTH_TIMEOUT_S) as response:
+                ok = json.loads(response.read()).get("status") == "ok"
+        except (OSError, http.client.HTTPException, ValueError, AttributeError):  # unreachable, cut off, not JSON, not an object
+            return False
+        self._answered = self._answered or ok
+        return ok
+
+    def record(self, part: Part, finger: Finger | None, offset: dict, settings: SimSettings, views: list[str]) -> SimRecording:
+        """POST {url}/record_grasp: the grasp run_batch would simulate for this finger at this offset, filmed. A lost
+        connection is retried as a batch's is; the server films it again."""
+        payload = {
+            "part": _part_payload(part),
+            "design": _design_payload(0, finger, part),
+            "offset": {"dx": float(offset["dx"]), "dy": float(offset["dy"]), "yaw_deg": float(offset.get("yaw_deg", 0.0))},
+            "grip_force_n": settings.grip_force_n,
+            "transport": settings.transport,
+            "views": list(views),
+        }
+        if self.reconnect_s and not self._answered:
+            self.health()
+        body = self._post("/record_grasp", payload)
+        videos = body.get("videos")
+        if not isinstance(videos, dict) or not videos:
+            raise SimResponseError(f"the sim server at {self.url} answered a recording without videos")
+        try:
+            decoded = {str(view): base64.b64decode(data, validate=True) for view, data in videos.items()}
+            held = _flag(body.get("held"), "held")
+            after = body.get("held_after_transport")
+            return SimRecording(
+                held=held,
+                in_hand=_pose(body.get("in_hand")) if held else None,
+                held_after_transport=None if after is None else _flag(after, "held_after_transport"),
+                fps=int(body.get("fps", 30)),
+                frames=int(body.get("frames", 0)),
+                duration_s=float(body.get("duration_s", 0.0)),
+                videos=decoded,
+                sim=dict(body.get("sim") or {}),
+            )
+        except (TypeError, ValueError) as e:  # base64, or a number that isn't one
+            raise SimResponseError(f"the sim server at {self.url} answered a recording it can't be read from: {e}") from e
+
     def close(self) -> None:
         pass
 
     def _post(self, path: str, payload: dict) -> dict:
-        request = urllib.request.Request(f"{self.url}{path}", json.dumps(payload).encode(), {"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
-                raw = response.read()
-        except urllib.error.HTTPError as e:
-            raise SimError(f"the sim server at {self.url} answered {e.code}: {_error_detail(e)}") from e
-        except urllib.error.URLError as e:
-            raise SimError(f"can't reach the sim server at {self.url}: {e.reason}") from e
-        except TimeoutError as e:
-            raise SimError(f"the sim server at {self.url} didn't answer within {self.timeout_s:g} s") from e
+        data, key = json.dumps(payload).encode(), uuid.uuid4().hex
+        deadline = None
+        while True:
+            try:
+                raw = self._send(path, data, key)
+                break
+            except _ConnectionLost as e:
+                if not (self.reconnect_s and self._answered):
+                    raise SimError(str(e)) from e
+                if deadline is None:
+                    deadline = self._clock() + self.reconnect_s
+                    logger.warning("%s; waiting up to %g min for it to answer again", e, self.reconnect_s / 60)
+                if not self._wait_for_health(deadline):
+                    raise SimError(
+                        f"{e}, and it didn't answer again within {self.reconnect_s / 60:g} min: reconnect the GPU in the GPU "
+                        "panel, then resume the job"
+                    ) from e
+                logger.info("The sim server at %s answers again; sending the batch again", self.url)
+        self._answered = True
         try:
             body = json.loads(raw)
         except ValueError as e:
@@ -241,9 +353,38 @@ class HttpSim:
             raise SimResponseError(f"the sim server at {self.url} answered with a JSON {type(body).__name__}, not an object")
         return body
 
+    def _send(self, path: str, data: bytes, key: str) -> bytes:
+        """One POST. _ConnectionLost when the request or its answer was lost on the way; SimError when the server
+        refused it or took longer than timeout_s."""
+        headers = {"Content-Type": "application/json", "Idempotency-Key": key}
+        try:
+            with urllib.request.urlopen(urllib.request.Request(f"{self.url}{path}", data, headers), timeout=self.timeout_s) as response:
+                return response.read()
+        except urllib.error.HTTPError as e:
+            message = f"the sim server at {self.url} answered {e.code}: {_error_detail(e)}"
+            if e.code in RETRY_STATUSES:
+                raise _ConnectionLost(message) from e
+            raise SimError(message) from e
+        except TimeoutError as e:
+            raise SimError(f"the sim server at {self.url} didn't answer within {self.timeout_s:g} s") from e
+        except urllib.error.URLError as e:
+            raise _ConnectionLost(f"can't reach the sim server at {self.url}: {e.reason}") from e
+        except (OSError, http.client.HTTPException) as e:  # reset, or cut off mid-answer: the forward went down
+            raise _ConnectionLost(f"lost the connection to the sim server at {self.url}: {e or type(e).__name__}") from e
+
+    def _wait_for_health(self, deadline: float) -> bool:
+        """Ask /health every RECONNECT_POLL_S until it answers (True) or the deadline has passed (False). It's asked at
+        least once, so a laptop that slept past the deadline still finds a server that's back."""
+        while True:
+            self._sleep(RECONNECT_POLL_S)
+            if self.health():
+                return True
+            if self._clock() >= deadline:
+                return False
+
 
 def create_sim_client(config: SimConfig) -> SimClient:
-    client = HttpSim(config.url, config.timeout_s) if config.backend == "http" else MockSim()
+    client = HttpSim(config.url, config.timeout_s, config.reconnect_minutes * 60) if config.backend == "http" else MockSim()
     logger.info("Sim client: %s%s", client.backend, f" at {client.url}" if client.url else "")
     return client
 

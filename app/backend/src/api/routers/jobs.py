@@ -24,7 +24,7 @@ from api.models.results import FingerPreview, JobCard, ResultsView, grasp_pose_t
 from api.models.review import Review
 from api.models.search_plan import JobPlan
 from api.models.task import Task
-from api.services import jobs, results, reviews
+from api.services import compute, jobs, results, reviews
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -264,7 +264,7 @@ def _http_errors() -> Iterator[None]:
         yield
     except (jobs.JobNotFoundError, results.DesignNotFoundError) as e:
         raise HTTPException(404, str(e) or "not found") from None
-    except (jobs.JobNotResumableError, results.ResultsNotReadyError) as e:
+    except (jobs.JobNotResumableError, results.ResultsNotReadyError, compute.ComputeNotReadyError) as e:
         raise HTTPException(409, str(e)) from None
     except results.ExportBlockedError as e:
         raise HTTPException(409, {"message": str(e), "failed_checks": [c.model_dump() for c in e.checks]}) from None

@@ -10,6 +10,7 @@ protocol below.
 
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from sim_server.models.batch import GraspBatch
@@ -18,6 +19,7 @@ from sim_server.models.gripper import GripperGeometry
 from sim_server.models.outcome import BatchOutcome, GraspOutcome
 from sim_server.models.part import Part
 from sim_server.models.pose import InHandPose
+from sim_server.models.recording import RecordView
 from sim_server.robot.poses import in_hand_pose, nominal_pose, true_pose
 from sim_server.services.batches import chunk_grasps, design_warnings, grasp_settings, stock_fits
 
@@ -49,6 +51,12 @@ class Cell(Protocol):
         """grasps[e] runs on environment e; environments past len(grasps) sit idle. grip_force is the per-jaw force
         limit (newtons; None: the twin's drive). The batch's transport is in the grasps' plans. Returns one outcome per
         grasp, with the part's pose at the end of the lift in the base frame."""
+        ...
+
+    def record(
+        self, part: Part, grasp: EnvGrasp, grip_force: float | None, views: list[RecordView], size: tuple[int, int], out_dir: Path
+    ) -> tuple[GraspOutcome, int, dict[RecordView, str]]:
+        """One grasp, as run_chunk runs it, with the cameras on: (its outcome, the frame count, view -> mp4 path)."""
         ...
 
 
@@ -94,7 +102,7 @@ def evaluate_batch(cell: Cell, batch: GraspBatch) -> BatchOutcome:
         outcomes = cell.run_chunk(batch.part, grasps, batch.grip_force)
         for (d, o), outcome in zip(chunk, outcomes, strict=True):
             held[d][o] = bool(outcome.held)
-            in_hand[d][o] = _in_hand(outcome, settings[d], batch.part, planner)
+            in_hand[d][o] = in_hand_of(outcome, settings[d], batch.part, planner)
             if after is not None:
                 after[d][o] = bool(outcome.held_after_transport)
         logger.debug("Chunk %d/%d: %d grasps in %.2f s", n + 1, len(chunks), len(chunk), time.perf_counter() - chunk_started)
@@ -121,7 +129,7 @@ def evaluate_batch(cell: Cell, batch: GraspBatch) -> BatchOutcome:
     )
 
 
-def _in_hand(outcome: GraspOutcome, settings: GraspSettings, part: Part, planner: Planner) -> InHandPose | None:
+def in_hand_of(outcome: GraspOutcome, settings: GraspSettings, part: Part, planner: Planner) -> InHandPose | None:
     """Where a held part sits in the commanded gripper frame at the end of the lift, relative to a centred part
     (half its height above the fingertips' plane, which is tip_height above the part's base)."""
     if not outcome.held or outcome.lift_pose is None:

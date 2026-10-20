@@ -10,6 +10,7 @@ from alembic.migration import MigrationContext
 from api.db.tables import (
     Base,
     CellProfileRow,
+    ComputeSessionRow,
     JobRow,
     PartRow,
     PhysicalTrialRow,
@@ -20,6 +21,7 @@ from api.db.tables import (
     TrialRow,
 )
 from api.models.cell_profile import CellProfileVersion
+from api.models.compute import ComputeSession
 from api.models.job import Job, JobResult, Trial
 from api.models.part_record import PartRecord
 from api.models.physical_trial import PhysicalTrial
@@ -37,6 +39,7 @@ MODEL_TABLE_PAIRS = [
     (PrintedFinger, PrintedFingerRow),
     (TestPlan, TestPlanRow),
     (PhysicalTrial, PhysicalTrialRow),
+    (ComputeSession, ComputeSessionRow),
 ]
 
 

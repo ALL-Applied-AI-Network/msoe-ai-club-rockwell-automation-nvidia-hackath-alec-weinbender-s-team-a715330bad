@@ -1,6 +1,7 @@
 import pytest
 
-from api.models.cell_profile import DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, CellProfile
+from api.db.tables import CellProfileRow
+from api.models.cell_profile import DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, SUPERSEDED_DEFAULTS, CellProfile
 from api.services import cell_profiles
 from api.services.cell_profiles import CellProfileConflictError, CellProfileError, CellProfileNotFoundError
 
@@ -14,6 +15,28 @@ def test_the_default_profile_is_seeded_once(db):
     [seeded] = cell_profiles.list_profiles(db)
     assert (seeded.name, seeded.version, seeded.profile) == (DEFAULT_PROFILE_NAME, 1, DEFAULT_PROFILE)
     assert cell_profiles.get_profile(db, seeded.id) == seeded
+
+
+def test_an_unedited_old_default_gets_the_current_default_as_its_next_version(db):
+    old = SUPERSEDED_DEFAULTS[0]
+    with db.session() as s:
+        s.add(CellProfileRow(name=DEFAULT_PROFILE_NAME, version=1, profile=old))
+
+    cell_profiles.ensure_default_profile(db)
+    cell_profiles.ensure_default_profile(db)
+
+    versions = cell_profiles.list_versions(db, DEFAULT_PROFILE_NAME)
+    assert [(v.version, v.profile) for v in versions] == [(1, old), (2, DEFAULT_PROFILE)]
+
+
+def test_an_edited_default_profile_is_left_alone(db):
+    edited = SUPERSEDED_DEFAULTS[0].model_copy(update={"grip_force_n": 120})
+    with db.session() as s:
+        s.add(CellProfileRow(name=DEFAULT_PROFILE_NAME, version=1, profile=edited))
+
+    cell_profiles.ensure_default_profile(db)
+
+    assert [v.profile for v in cell_profiles.list_versions(db, DEFAULT_PROFILE_NAME)] == [edited]
 
 
 def test_create_saves_version_1(db):

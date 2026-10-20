@@ -3,7 +3,7 @@
 | Path | What | Ownership |
 | --- | --- | --- |
 | [`fanuc_er4ia_sim/`](fanuc_er4ia_sim/) | FANUC ER-4iA Isaac Sim digital twin, **hackathon starter v0.5** (unpacked from the organizers' `fanuc_er4ia_hackathon_starter_v05.zip`, SHA-256 `f5550340…331c2`; the zip itself is no longer in the repo but is in git history at commit `c7014b1`). Calibrated to the real cell's cameras. Demo task: stack six rotated 10 mm cubes. | Upstream (organizers). Edit sparingly and note changes in `../CONTEXT.md`. |
-| [`sim_server/`](sim_server/) | Our HTTP service that runs next to Isaac Sim and answers the app's `POST /evaluate_batch` grasp batches in the twin. | Ours. **Runs in Isaac on Brev** (2026-10-20): [GPU test plan](../docs/notes/gpu-test-plan.md) stages 0–3 pass on the reference path with stock fingers ([log](../docs/experiments/2026-10-20-brev-sim-server-bringup.md)); custom fingers, contract v2 and the vectorised path not yet checked. |
+| [`sim_server/`](sim_server/) | Our HTTP service that runs next to Isaac Sim and answers the app's `POST /evaluate_batch` grasp batches in the twin. | Ours. **Runs in Isaac on Brev and the MSOE GB10** (2026-10-20): [GPU test plan](../docs/notes/gpu-test-plan.md) stages 0–3 pass on both ([Brev](../docs/experiments/2026-10-20-brev-sim-server-bringup.md), [GB10](../docs/experiments/2026-10-20-gb10-sim-server-bringup.md)); stages 4–6 ran on the GB10 with known problems: landing capture, weak grip, GPU-path bias ([log](../docs/experiments/2026-10-20-gb10-stages-4-6.md)). |
 
 ## Twin quick reference
 
@@ -52,8 +52,9 @@ export ISAAC=/path/to/isaacsim
 
 Started from the uv venv, it stops at once with an error saying to use `python.sh`. pip installs the newest FastAPI and uvicorn
 that `pyproject.toml` allows, not the `uv.lock` pins. Check its output for upgrades or downgrades of packages Isaac
-bundles. numpy isn't declared: it comes with Isaac's Python (and the twin needs it anyway). **None of this has run in Isaac
-yet;** [docs/notes/gpu-test-plan.md](../docs/notes/gpu-test-plan.md) is the runbook that validates it.
+bundles. On the GB10's pip install of Isaac Sim, it upgrades uvicorn, websockets and httptools past `isaacsim-kernel`'s
+pins; put them back afterwards (GPU test plan 0.2, step 3). numpy isn't declared: it comes with Isaac's Python (and the
+twin needs it anyway). [docs/notes/gpu-test-plan.md](../docs/notes/gpu-test-plan.md) is the runbook that validates it.
 
 | Flag | Default | What |
 | --- | --- | --- |
@@ -87,7 +88,16 @@ POST /evaluate_batch
 ```
 
 Every design is tried at every offset; rows are designs, entries offsets. 422 for a request the twin can't run, 503 while
-shutting down. The old `POST /evaluate {part, design: {template, params}, offsets}` → `{successes}` still works for template
+shutting down. An optional `Idempotency-Key` header makes a request sent again answer from the first one's run (waiting
+for it if it's still running) instead of running again: the app sends each round under a new key, and again under the
+same key after losing the connection mid-round (the last 32 keys are kept).
+
+`POST /record_grasp` films one grasp for the app's clips: the request's `part`, one `design` and one `offset` (as
+above), `grip_force_n`, `transport`, `views` (`closeup`, `side`; default both) and an even `width` x `height` (default
+1280 x 720). It runs the grasp exactly as a batch does, on environment 0, rendering after every control frame, and
+answers `{held, in_hand, held_after_transport, fps: 30, frames, duration_s, videos: {view: base64 mp4}, sim}`. The videos
+are H.264 through `imageio-ffmpeg`'s bundled ffmpeg (`pip install imageio-ffmpeg` into Isaac's Python on a new machine).
+The first recording after a start compiles the render materials, so it's slower. The old `POST /evaluate {part, design: {template, params}, offsets}` → `{successes}` still works for template
 `stock` (it runs the batch path with one design and returns held only) and answers 501 for other templates, whose params
 can't become geometry here. `GET /health` reports the queue plus the same `sim` description.
 
@@ -154,13 +164,15 @@ uv run pytest sim/sim_server/tests        # host tests: models, frames, units, p
 
 ```text
 __main__.py      entrypoint: Isaac on the main thread, uvicorn in a thread
-app.py           create_app(): the FastAPI app, its routers, Scene + SimQueue on app.state
-dependencies.py  SceneDep, SimQueueDep for the routers
+app.py           create_app(): the FastAPI app, its routers, Scene + SimQueue + RecentBatches on app.state
+dependencies.py  SceneDep, SimQueueDep, RecentBatchesDep for the routers
+recent_batches.py  batches by Idempotency-Key, so a resend after a lost connection doesn't run again
 routers/         thin HTTP layer; request/response schemas (mm, g, deg) live here
   health.py        GET /health
-  evaluations.py   POST /evaluate_batch, legacy POST /evaluate
+  evaluations.py   POST /evaluate_batch, POST /record_grasp, legacy POST /evaluate
 services/        the work the routers queue; Isaac-free, never imports FastAPI
   evaluations.py   evaluate_batch(cell, batch) -> BatchOutcome: bookkeeping against a Cell protocol, the Isaac client handed in
+  recordings.py    record_grasp(cell, batch, views, size, out_dir): one grasp planned as a batch's, filmed by the cell
   batches.py       mm <-> m conversion (parts, pieces, designs, offsets in; in-hand poses out), the stock grasp rule,
                    design warnings, chunking
 robot/           the arm and gripper, Isaac-free
@@ -168,7 +180,8 @@ robot/           the arm and gripper, Isaac-free
   gripper_frame.py the gripper frame G <-> flange and jaw bodies
   poses.py         nominal and true part poses, and the in-hand pose (numpy-free)
 clients/         the external system, Isaac Sim
-  isaac.py         GraspCell: stage edits, materials, grip force, physics, run_chunk (the only Isaac code besides scene.py)
+  isaac.py         GraspCell: stage edits, materials, grip force, physics, run_chunk, record (the only Isaac code besides scene.py)
+  video.py         Mp4Writer: frames into an H.264 mp4 as they're rendered (imageio-ffmpeg)
   env_grid.py      environment layout, view-slot matching (Isaac-free)
 models/          frozen pydantic domain objects in the twin's units (m, kg, N, deg); import no other layer
   piece.py (Piece)  part.py  finger.py (FingerDesign)  offset.py  batch.py (GraspBatch)

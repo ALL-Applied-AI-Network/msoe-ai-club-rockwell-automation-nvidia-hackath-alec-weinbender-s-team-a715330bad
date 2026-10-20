@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from api.clients.database import DatabaseClient
 from api.db.tables import CellProfileRow
-from api.models.cell_profile import DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, CellProfile, CellProfileVersion
+from api.models.cell_profile import DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, SUPERSEDED_DEFAULTS, CellProfile, CellProfileVersion
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +31,25 @@ class CellProfileConflictError(ValueError):
 
 
 def ensure_default_profile(db: DatabaseClient) -> None:
-    """Seed DEFAULT_PROFILE as version 1 of DEFAULT_PROFILE_NAME if no profile exists yet."""
+    """Seed DEFAULT_PROFILE as version 1 of DEFAULT_PROFILE_NAME if no profile exists yet. If the default profile's latest
+    version is an earlier built-in default nobody edited (SUPERSEDED_DEFAULTS), save DEFAULT_PROFILE as its next version;
+    the old version stays, for the jobs that point at it."""
     with db.session() as s:
         if s.scalar(select(CellProfileRow.id).limit(1)) is None:
             s.add(CellProfileRow(name=DEFAULT_PROFILE_NAME, version=1, profile=DEFAULT_PROFILE))
             logger.info("Cell profiles: seeded %r", DEFAULT_PROFILE_NAME)
+            return
+        latest = s.scalars(
+            select(CellProfileRow).where(CellProfileRow.name == DEFAULT_PROFILE_NAME).order_by(CellProfileRow.version.desc()).limit(1)
+        ).first()
+        if latest is not None and latest.profile in SUPERSEDED_DEFAULTS:
+            s.add(CellProfileRow(name=DEFAULT_PROFILE_NAME, version=latest.version + 1, profile=DEFAULT_PROFILE))
+            logger.info(
+                "Cell profiles: %r version %d was an old built-in default; saved the current one as version %d",
+                DEFAULT_PROFILE_NAME,
+                latest.version,
+                latest.version + 1,
+            )
 
 
 def get_profile(db: DatabaseClient, profile_id: int) -> CellProfileVersion:

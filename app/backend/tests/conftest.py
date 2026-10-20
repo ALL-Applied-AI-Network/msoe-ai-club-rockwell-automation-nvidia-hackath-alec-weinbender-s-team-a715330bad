@@ -1,4 +1,5 @@
 import os
+import shutil
 from dataclasses import dataclass
 
 import cadquery as cq
@@ -7,14 +8,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from api.clients.cad import CadQueryCad
+from api.clients.compute import MockCompute
 from api.clients.database import DatabaseClient
+from api.clients.sim import MockSim, SimError, SimRecording
 from api.config import AppConfig
-from api.db.tables import CellProfileRow
-from api.dependencies import get_cad, get_config, get_db
+from api.db.tables import CellProfileRow, JobRow
+from api.dependencies import get_cad, get_compute, get_config, get_db
 from api.main import app
 from api.models.grasp import GraspChoice
 from api.models.job_spec import JobSpec
-from api.services import cell_profiles, jobs
+from api.services import cell_profiles, compute, jobs
 
 APP_VARIABLES = ("ANTHROPIC_API_KEY", "DATA_DIR", "LOG_LEVEL")
 
@@ -25,7 +28,7 @@ def _isolated_from_developer_settings():
     with pytest.MonkeyPatch.context() as mp:
         mp.setitem(AppConfig.model_config, "env_file", None)
         for name in list(os.environ):
-            if name.startswith(("LLM_", "SIM_")) or name in APP_VARIABLES:
+            if name.startswith(("LLM_", "SIM_", "COMPUTE_")) or name in APP_VARIABLES:
                 mp.delenv(name)
         yield
 
@@ -67,9 +70,28 @@ def spawned(monkeypatch) -> list[tuple[str, ...]]:
 
 
 @pytest.fixture
-def client(config, db, cad, spawned):
+def spawned_sessions(monkeypatch) -> list[int]:
+    """Stops services from launching real GPU session processes. Records the session ids instead."""
+    started = []
+    monkeypatch.setattr(compute, "spawn_session", lambda db, config, session_id: started.append(session_id))
+    return started
+
+
+@pytest.fixture
+def compute_client(config) -> MockCompute:
+    """The mock compute backend, its made-up instances' states kept in the temporary data directory."""
+    return MockCompute(config.data_dir / "mock_compute.json")
+
+
+@pytest.fixture
+def client(config, db, cad, spawned, spawned_sessions, compute_client):
     """The API over the temporary database. The lifespan doesn't run, so nothing reads the real config."""
-    app.dependency_overrides = {get_config: lambda: config, get_db: lambda: db, get_cad: lambda: cad}
+    app.dependency_overrides = {
+        get_config: lambda: config,
+        get_db: lambda: db,
+        get_cad: lambda: cad,
+        get_compute: lambda: {"mock": compute_client},
+    }
     yield TestClient(app)
     app.dependency_overrides = {}
 
@@ -165,3 +187,55 @@ def finished_client(finished_job, cad):
     app.dependency_overrides = {get_config: lambda: finished_job.config, get_db: lambda: finished_job.db, get_cad: lambda: cad}
     yield TestClient(app)
     app.dependency_overrides = {}
+
+
+@dataclass(frozen=True)
+class IsaacJob:
+    config: AppConfig
+    db: DatabaseClient
+    job_id: str
+
+
+@pytest.fixture
+def isaac_job(finished_job, tmp_path) -> IsaacJob:
+    """A copy of the finished vial-cap experiment (its database and outputs), relabelled as run on the Isaac sim, for
+    tests that change it (clips)."""
+    data_dir = tmp_path / "isaac"
+    shutil.copytree(finished_job.config.data_dir, data_dir)
+    config = AppConfig(data_dir=data_dir)
+    database = DatabaseClient(config.db)
+    with database.session() as s:
+        s.get(JobRow, finished_job.job_id).sim_backend = "isaac"
+    yield IsaacJob(config, database, finished_job.job_id)
+    database.close()
+
+
+class FilmingSim(MockSim):
+    """A sim that films by answering a few bytes per view ("<view> mp4"), held or not; or fails with `fail`. Records
+    each record() call's arguments in calls."""
+
+    badge = "isaac"
+
+    def __init__(self, held: bool = True, fail: str | None = None):
+        self.held, self.fail, self.calls = held, fail, []
+
+    def record(self, part, finger, offset, settings, views):
+        self.calls.append((part, finger, offset, settings, views))
+        if self.fail:
+            raise SimError(self.fail)
+        return SimRecording(
+            held=self.held,
+            in_hand=(0.0, 0.4, 0.0, 1.0, 0.0) if self.held else None,
+            held_after_transport=None,
+            fps=30,
+            frames=147,
+            duration_s=4.9,
+            videos={view: f"{view} mp4".encode() for view in views},
+            sim={"envs": 1, "device": "cpu"},
+        )
+
+
+@pytest.fixture
+def filming_sim() -> type[FilmingSim]:
+    """FilmingSim, to make with filming_sim(held=..., fail=...)."""
+    return FilmingSim

@@ -3,6 +3,7 @@ import json
 import pytest
 
 from api.clients.sim import MockSim
+from api.db.tables import ComputeSessionRow
 from api.services import cell_profiles, jobs, optimizer, parts
 
 CUBE_LOCKS = {"pad_width_mm": 12.0, "slack_mm": 2.0, "tip_height_mm": 3.0, "lead_in_mm": 0.0}
@@ -17,6 +18,20 @@ def cube_id(db, config, cad, shapes, step_file) -> str:
 
 def spec(part_id: str, profile_id: int, **changes) -> dict:
     return {"part_id": part_id, "cell_profile_id": profile_id, "grasp": {"angle_deg": 0}, "budget": 14} | changes
+
+
+def test_with_a_managed_gpu_a_job_waits_for_a_ready_session(client, config, db, profile_id, cube_id, spawned, monkeypatch):
+    """COMPUTE_BACKENDS=brev: a job (or a resume) needs a ready GPU session (services/compute.py)."""
+    monkeypatch.setattr(config.compute, "backends", "brev")
+
+    refused = client.post("/api/jobs", json=spec(cube_id, profile_id))
+
+    assert refused.status_code == 409 and "choose a target in the GPU panel" in refused.json()["detail"]
+    assert spawned == []
+    with db.session() as s:
+        s.add(ComputeSessionRow(backend="brev", instance="isaac-launchable", status="ready"))
+    created = client.post("/api/jobs", json=spec(cube_id, profile_id))
+    assert created.status_code == 201 and spawned == [(created.json()["id"],)]
 
 
 def test_plan_is_200_with_blockers_and_the_first_step(client, profile_id, cube_id, db, config, cad, shapes, step_file):

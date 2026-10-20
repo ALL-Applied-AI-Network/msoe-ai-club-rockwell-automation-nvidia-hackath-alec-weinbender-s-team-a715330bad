@@ -18,6 +18,7 @@ from api.models.search_plan import JobPlan
 
 JobStatus = Literal["queued", "running", "finalizing", "done", "failed", "cancelled", "interrupted"]
 FINISHED_STATUSES = ("done", "failed", "cancelled", "interrupted")
+ACTIVE_STATUSES = ("queued", "running", "finalizing")  # a worker has, or is about to have, the job
 RESUMABLE_STATUSES = ("interrupted", "cancelled", "failed")
 GridKind = Literal["search", "final"]
 

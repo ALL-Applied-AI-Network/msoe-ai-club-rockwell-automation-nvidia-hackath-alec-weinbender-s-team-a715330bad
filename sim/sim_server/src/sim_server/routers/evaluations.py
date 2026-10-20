@@ -57,6 +57,20 @@ Contract v2, POST /evaluate_batch (millimetres, grams, degrees, newtons; the twi
   the part body's solver_position_iterations and solver_velocity_iterations, the colliders' contact_offset_mm and
   rest_offset_mm (the keys the backend compares with its cell profile), plus extras such as solver_type and
   robot_solver_iterations.
+- Idempotency-Key header (optional): a request sent again under the key of one already received gets that batch's
+  answer, waiting for it if it's still running, instead of running it again (recent_batches.py). A batch sent under a
+  key keeps running when its caller disconnects, so the app's retry after a lost connection finds it.
+
+POST /record_grasp films one grasp, for the app's clips:
+
+    {"part", "design", "offset", "grip_force_n", "transport": as above, one design and one offset,
+     "views": ["closeup", "side"] (default both), "width": 1280, "height": 720 (even, at most 1920 x 1080)}
+    -> {"held", "in_hand", "held_after_transport": as above, for this one grasp,
+        "fps": 30, "frames", "duration_s", "videos": {view: base64 mp4}, "sim"}
+
+The grasp is planned and simulated exactly as in a batch, on environment 0, with the stage rendered after every control
+frame (services/recordings.py, clients/isaac.GraspCell.record). Its outcome is this run's: near a design's capture edge
+it can differ from an earlier batch's.
 
 Legacy POST /evaluate {part, design: {template, params}, offsets} -> {successes: [bool, ...]} runs the same path with one
 design and returns held only. Only template "stock" is supported (template params can't be turned into geometry here);
@@ -67,18 +81,25 @@ Errors: 422 for a request the twin can't run (bad geometry, unreachable grasp), 
 """
 
 import asyncio
+import base64
+import functools
+import tempfile
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from sim_server.dependencies import SceneDep, SimQueueDep
+from sim_server.dependencies import RecentBatchesDep, SceneDep, SimQueueDep
 from sim_server.models.batch import GraspBatch
 from sim_server.models.grasp import GraspPlanError, Transport
 from sim_server.models.outcome import BatchOutcome
+from sim_server.models.recording import RECORD_FPS, RECORD_VIEWS, RecordView
+from sim_server.recent_batches import RecentBatches
 from sim_server.scene import Scene
 from sim_server.services.batches import design_from_mm, in_hand_to_mm, offset_from_mm, part_from_mm
 from sim_server.services.evaluations import evaluate_batch
+from sim_server.services.recordings import record_grasp
 from sim_server.sim_queue import SimQueue, SimQueueClosedError
 
 router = APIRouter(tags=["grasps"])
@@ -184,14 +205,24 @@ def to_batch(
     )
 
 
-async def _run(scene: Scene, sim_queue: SimQueue, batch_from_request) -> BatchOutcome:
+async def _run(
+    scene: Scene, sim_queue: SimQueue, batch_from_request, recent: RecentBatches | None = None, key: str | None = None
+) -> BatchOutcome:
     try:
         batch = batch_from_request()
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
-    future = sim_queue.submit(evaluate_batch, scene.cell, batch)  # one queue job per request, run on the main thread
+    submit = functools.partial(sim_queue.submit, evaluate_batch, scene.cell, batch)  # one queue job, run on the main thread
+    future = submit() if recent is None else recent.submit(key, submit)
+    waiting = asyncio.wrap_future(future)
+    # Under a key, shielded: a caller that disconnects mustn't cancel a queued batch its retry will ask for.
+    return await _answer(asyncio.shield(waiting) if key else waiting)
+
+
+async def _answer(waiting):
+    """The queued job's result, with its failures as HTTP errors."""
     try:
-        return await asyncio.wrap_future(future)
+        return await waiting
     except GraspPlanError as e:
         raise HTTPException(422, str(e)) from e
     except NotImplementedError as e:
@@ -201,12 +232,67 @@ async def _run(scene: Scene, sim_queue: SimQueue, batch_from_request) -> BatchOu
 
 
 @router.post("/evaluate_batch")
-async def post_evaluate_batch(req: EvaluateBatchRequest, scene: SceneDep, sim_queue: SimQueueDep) -> EvaluateBatchResponse:
-    outcome = await _run(scene, sim_queue, lambda: to_batch(req.part, req.designs, req.offsets, req.grip_force_n, req.transport))
+async def post_evaluate_batch(
+    req: EvaluateBatchRequest,
+    scene: SceneDep,
+    sim_queue: SimQueueDep,
+    recent: RecentBatchesDep,
+    idempotency_key: Annotated[str | None, Header(max_length=200)] = None,
+) -> EvaluateBatchResponse:
+    batch = functools.partial(to_batch, req.part, req.designs, req.offsets, req.grip_force_n, req.transport)
+    outcome = await _run(scene, sim_queue, batch, recent, idempotency_key)
     return EvaluateBatchResponse(
         held=[list(row) for row in outcome.held],
         in_hand=[[in_hand_to_mm(pose) for pose in row] for row in outcome.in_hand],
         held_after_transport=None if outcome.held_after_transport is None else [list(row) for row in outcome.held_after_transport],
+        sim=scene.describe(),
+    )
+
+
+class RecordRequest(BaseModel):
+    part: PartRequest
+    design: DesignRequest
+    offset: OffsetRequest
+    grip_force_n: Positive | None = None
+    transport: Transport | None = None
+    views: list[RecordView] = Field(default_factory=lambda: list(RECORD_VIEWS), min_length=1)
+    width: Annotated[int, Field(ge=320, le=1920, multiple_of=2)] = 1280
+    height: Annotated[int, Field(ge=240, le=1080, multiple_of=2)] = 720  # H.264 in yuv420p needs even sizes
+
+
+class RecordResponse(BaseModel):
+    held: bool
+    in_hand: list[float] | None  # [dx_mm, dy_mm, dz_mm, tilt_deg, yaw_deg], as in /evaluate_batch
+    held_after_transport: bool | None
+    fps: int
+    frames: int
+    duration_s: float
+    videos: dict[RecordView, str]  # view -> the mp4, base64
+    sim: dict[str, Any]
+
+
+@router.post("/record_grasp")
+async def post_record_grasp(req: RecordRequest, scene: SceneDep, sim_queue: SimQueueDep) -> RecordResponse:
+    """Films one grasp: one design at one offset, run as /evaluate_batch runs it (the same plan and physics), with the
+    cameras on. The answer is that grasp's outcome and one H.264 mp4 per view, about 5 s long. The first recording after
+    the server starts also compiles the render materials, so it takes longer. Errors as /evaluate_batch's."""
+    views = list(dict.fromkeys(req.views))
+    try:
+        batch = to_batch(req.part, [req.design], [req.offset], req.grip_force_n, req.transport)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    with tempfile.TemporaryDirectory(prefix="sim_server_record_") as out_dir:
+        future = sim_queue.submit(record_grasp, scene.cell, batch, views, (req.width, req.height), Path(out_dir))
+        recording = await _answer(asyncio.wrap_future(future))
+        videos = {view: base64.b64encode(Path(path).read_bytes()).decode("ascii") for view, path in recording.files.items()}
+    return RecordResponse(
+        held=recording.held,
+        in_hand=in_hand_to_mm(recording.in_hand),
+        held_after_transport=recording.held_after_transport,
+        fps=RECORD_FPS,
+        frames=recording.frames,
+        duration_s=round(recording.frames / RECORD_FPS, 2),
+        videos=videos,
         sim=scene.describe(),
     )
 

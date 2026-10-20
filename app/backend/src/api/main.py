@@ -14,10 +14,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from api.clients.cad import create_cad_client
+from api.clients.compute import create_compute_clients
 from api.clients.database import DatabaseClient, create_database_client
 from api.config import APP_DIR, DEMO_SCRIPT, AppConfig, load_config, setup_logging
 from api.routers import (
     cell_profiles,
+    clips,
+    compute,
     export,
     fingers,
     grids,
@@ -29,9 +32,11 @@ from api.routers import (
     printed_fingers,
     test_plans,
 )
+from api.services import compute as compute_sessions
 from api.services.cell_profiles import ensure_default_profile
-from api.services.jobs import mark_interrupted, spawn_detached
+from api.services.jobs import mark_interrupted
 from api.services.parts import list_parts
+from api.services.processes import spawn_detached
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +54,15 @@ async def lifespan(app: FastAPI):
         db.migrate()
     ensure_default_profile(db)
     mark_interrupted(db)
+    compute_sessions.recover(db, config)
     if config.demo_data:
         start_demo_data(db, config)
     app.state.config, app.state.db, app.state.cad = config, db, create_cad_client()
+    app.state.compute = create_compute_clients(config.compute, config.data_dir)
     logger.info("API ready")
     yield
+    for client in app.state.compute.values():
+        client.close()
     app.state.cad.close()
     db.close()
 
@@ -69,6 +78,20 @@ def start_demo_data(db: DatabaseClient, config: AppConfig) -> None:
 
 
 app = FastAPI(title="Finger Designer", lifespan=lifespan)
-for module in (health, meta, parts, cell_profiles, fingers, grids, jobs, test_plans, printed_fingers, physical_trials, export):
+for module in (
+    health,
+    meta,
+    compute,
+    parts,
+    cell_profiles,
+    fingers,
+    grids,
+    jobs,
+    clips,
+    test_plans,
+    printed_fingers,
+    physical_trials,
+    export,
+):
     app.include_router(module.router)
 app.mount("/", StaticFiles(directory=APP_DIR / "frontend", html=True), name="static")  # last: it matches every path

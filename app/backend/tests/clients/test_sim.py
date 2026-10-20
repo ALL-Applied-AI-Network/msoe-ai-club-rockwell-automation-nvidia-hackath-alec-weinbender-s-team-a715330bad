@@ -1,3 +1,4 @@
+import base64
 import json
 import pickle
 import threading
@@ -79,6 +80,7 @@ def test_factory_builds_the_configured_backend():
     assert isinstance(mock, MockSim) and mock.badge == "mock"
     client = create_sim_client(SimConfig(backend="http", url="http://gpu:9000/", timeout_s=5))
     assert (client.url, client.timeout_s, client.badge) == ("http://gpu:9000", 5, "isaac")
+    assert client.reconnect_s == 120 * 60  # SIM_RECONNECT_MINUTES
 
 
 def test_sim_badge_names_what_each_backends_results_are_labelled():
@@ -338,9 +340,10 @@ def test_http_client_passes_on_the_servers_reason_for_refusing_a_batch():
     ("failure", "message"),
     [
         (urllib.error.URLError(ConnectionRefusedError("refused")), "can't reach the sim server"),
+        (ConnectionResetError("reset by peer"), "lost the connection to the sim server at http://gpu:9000: reset by peer"),
         (TimeoutError(), "didn't answer within 5 s"),
     ],
-    ids=["refused", "timeout"],
+    ids=["refused", "reset", "timeout"],
 )
 def test_http_client_says_when_the_server_cannot_be_reached(monkeypatch, failure, message):
     def fail(request, timeout):
@@ -352,7 +355,165 @@ def test_http_client_says_when_the_server_cannot_be_reached(monkeypatch, failure
         HttpSim("http://gpu:9000", timeout_s=5).run_batch(CUBE, [None], [CENTRED], NO_TRANSPORT)
 
 
-@pytest.mark.parametrize("client", [MockSim(), HttpSim("http://gpu:9000", timeout_s=5)])
+# The sim server client after a lost connection
+
+
+class Clock:
+    """A clock that sleeping moves forward, so waits take no real time."""
+
+    def __init__(self):
+        self.now, self.sleeps = 0.0, []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+@contextmanager
+def dropping_stand_in(answer, *, drops=1, down_checks=0, fail_with=None):
+    """A sim server behind a port forward that goes down: the first `drops` batches are cut off before their answer
+    (fail_with None) or refused with that status, and after the first, /health fails `down_checks` times before it
+    answers again. Records each batch's Idempotency-Key."""
+    keys, left = [], {"drops": drops, "down": down_checks}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            keys.append(self.headers["Idempotency-Key"])
+            if not left["drops"]:
+                self.reply(200, answer(payload))
+            elif fail_with is None:
+                left["drops"] -= 1
+                self.close_connection = True  # no answer: the client sees the connection end
+            else:
+                left["drops"] -= 1
+                self.reply(fail_with, {"detail": "the sim server is shutting down"})
+
+        def do_GET(self):
+            if keys and left["down"]:
+                left["down"] -= 1
+                self.reply(503, {"detail": "down"})
+            else:
+                self.reply(200, {"status": "ok"})
+
+        def reply(self, status, body):
+            data = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}", keys
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("fail_with", [None, 503], ids=["cut off", "server restarting"])
+def test_a_batch_whose_connection_is_lost_is_sent_again_under_its_key_once_the_server_answers(fail_with):
+    clock = Clock()
+    with dropping_stand_in(v2_answer, drops=1, down_checks=2, fail_with=fail_with) as (url, keys):
+        sim = HttpSim(url, timeout_s=5, reconnect_s=600, sleep=clock.sleep, clock=clock)
+        [outcomes] = sim.run_batch(CUBE, [None], [CENTRED, FAR], NO_TRANSPORT)
+
+    assert outcomes.held == [True, True]
+    assert len(keys) == 2 and keys[0] == keys[1], "the same key, so the server answers from the batch it already ran"
+    assert clock.sleeps == [10.0, 10.0, 10.0]  # /health down twice, then answering
+
+
+def test_each_batch_gets_its_own_key():
+    with dropping_stand_in(v2_answer, drops=0) as (url, keys):
+        sim = HttpSim(url, timeout_s=5, reconnect_s=600)
+        sim.run_batch(CUBE, [None], [CENTRED], NO_TRANSPORT)
+        sim.run_batch(CUBE, [None], [CENTRED], NO_TRANSPORT)
+
+    assert len(set(keys)) == 2
+
+
+def test_a_lost_connection_that_does_not_come_back_fails_the_round_with_how_to_carry_on():
+    clock = Clock()
+    with dropping_stand_in(v2_answer, drops=1, down_checks=1000) as (url, keys):
+        sim = HttpSim(url, timeout_s=5, reconnect_s=60, sleep=clock.sleep, clock=clock)
+        with pytest.raises(SimError, match="didn't answer again within 1 min: reconnect the GPU in the GPU panel, then resume"):
+            sim.run_batch(CUBE, [None], [CENTRED], NO_TRANSPORT)
+
+    assert len(keys) == 1 and clock.sleeps == [10.0] * 6
+
+
+def test_a_server_that_never_answered_is_not_waited_for(monkeypatch):
+    """Nothing answered yet: a wrong SIM_URL, or the GPU isn't connected. The job fails at once with the reason."""
+    clock = Clock()
+
+    def refuse(request, timeout):
+        raise urllib.error.URLError(ConnectionRefusedError("refused"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    sim = HttpSim("http://gpu:9000", timeout_s=5, reconnect_s=600, sleep=clock.sleep, clock=clock)
+
+    with pytest.raises(SimError, match="can't reach the sim server at http://gpu:9000: refused"):
+        sim.run_batch(CUBE, [None], [CENTRED], NO_TRANSPORT)
+    assert clock.sleeps == []
+
+
+def test_a_batch_the_server_refuses_is_not_sent_again():
+    clock = Clock()
+    with dropping_stand_in(v2_answer, drops=1, fail_with=422) as (url, keys):
+        sim = HttpSim(url, timeout_s=5, reconnect_s=600, sleep=clock.sleep, clock=clock)
+        with pytest.raises(SimError, match="answered 422"):
+            sim.run_batch(CUBE, [None], [CENTRED], NO_TRANSPORT)
+
+    assert len(keys) == 1 and clock.sleeps == []
+
+
+# Recording one grasp (the app's clips)
+
+
+def recording_answer(payload):
+    """What the sim server answers to POST /record_grasp: the grasp's outcome and a "video" per view asked for."""
+    videos = {view: base64.b64encode(f"{view} mp4".encode()).decode() for view in payload["views"]}
+    outcome = {"held": True, "in_hand": [0.0, 0.4, 0.0, 1.5, 2.0], "held_after_transport": None}
+    return outcome | {"fps": 30, "frames": 147, "duration_s": 4.9, "videos": videos, "sim": {"envs": 1, "device": "cpu"}}
+
+
+def test_http_client_asks_the_sim_server_to_film_one_grasp():
+    with stand_in(recording_answer) as (url, received):
+        recording = HttpSim(url, timeout_s=5).record(CUBE, None, at(1, -2), SimSettings(grip_force_n=12.0), ["closeup", "side"])
+
+    [(path, payload)] = received
+    assert path == "/record_grasp" and payload["design"] == {"id": "stock"} and payload["part"]["shape"] == "box"
+    assert payload["offset"] == {"dx": 1.0, "dy": -2.0, "yaw_deg": 0.0} and payload["views"] == ["closeup", "side"]
+    assert (payload["grip_force_n"], payload["transport"]) == (12.0, None)
+    assert recording.held and recording.in_hand == (0.0, 0.4, 0.0, 1.5, 2.0) and (recording.frames, recording.duration_s) == (147, 4.9)
+    assert recording.videos == {"closeup": b"closeup mp4", "side": b"side mp4"}
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [({"held": True, "videos": {}}, "without videos"), ({"held": True, "videos": {"closeup": "not base64!"}}, "can't be read")],
+    ids=["no videos", "not base64"],
+)
+def test_http_client_rejects_a_recording_it_cant_use(answer, message):
+    with stand_in(lambda payload: answer) as (url, _):
+        with pytest.raises(SimResponseError, match=message):
+            HttpSim(url, timeout_s=5).record(CUBE, None, CENTRED, NO_TRANSPORT, ["closeup"])
+
+
+def test_the_mock_cant_film_a_grasp():
+    with pytest.raises(SimError, match="clips need the Isaac sim"):
+        MockSim().record(CUBE, None, CENTRED, NO_TRANSPORT, ["closeup"])
+
+
+@pytest.mark.parametrize("client", [MockSim(), HttpSim("http://gpu:9000", timeout_s=5, reconnect_s=600)])
 def test_clients_survive_pickling(client):
     copy = pickle.loads(pickle.dumps(client))
 

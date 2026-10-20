@@ -3,7 +3,8 @@ import logging
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from api.config import AppConfig, ConfigError, DbConfig, check_config, load_config
+from api import config as config_module
+from api.config import AppConfig, ComputeConfig, ConfigError, DbConfig, SimConfig, check_config, load_config
 
 
 @pytest.fixture(autouse=True)
@@ -18,9 +19,9 @@ def test_defaults_use_mocks_with_a_warning_each():
 
     errors, warnings = check_config(config)
 
-    assert (config.llm.backend, config.sim.backend) == ("mock", "mock")
+    assert (config.llm.backend, config.sim.backend, config.compute.enabled) == ("mock", "mock", ["mock"])
     assert errors == []
-    assert len(warnings) == 2
+    assert len(warnings) == 3
 
 
 def test_existing_variable_names_fill_each_client_config(monkeypatch, tmp_path):
@@ -74,6 +75,82 @@ def test_invalid_value_names_the_variable(monkeypatch, caplog):
         load_config()
 
     assert "SIM_BACKEND" in caplog.text
+
+
+LOCAL_SIM = SimConfig(backend="http", url="http://127.0.0.1:9000")
+
+
+def test_compute_variables_fill_the_compute_section_and_keep_the_token_secret(monkeypatch, caplog):
+    for name, value in {
+        "COMPUTE_BACKENDS": "Brev, gb10",
+        "COMPUTE_BREV_WSL": "Ubuntu",
+        "COMPUTE_BREV_TOKEN": "brev-test-token",
+        "COMPUTE_AUTO_STOP_MINUTES": "5",
+        "COMPUTE_SIM_ARGS": "--envs 64",
+        "COMPUTE_GB10_SIM_PORT": "9012",
+        "COMPUTE_GB10_SIM_ARGS": "--envs 16",
+        "SIM_BACKEND": "http",
+        "SIM_URL": "http://127.0.0.1:9000",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(config_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    caplog.set_level(logging.INFO)
+
+    config = load_config()
+
+    compute = config.compute
+    assert compute.enabled == ["brev", "gb10"]
+    assert (compute.brev_wsl, compute.auto_stop_minutes, compute.sim_args) == ("Ubuntu", 5, "--envs 64")
+    assert (compute.gb10_host, compute.gb10_user, compute.gb10_sim_port, compute.gb10_sim_args) == (
+        "spark1.ai.msoe.edu",
+        "hackathon11",
+        9012,
+        "--envs 16",
+    )
+    assert compute.brev_token.get_secret_value() == "brev-test-token"
+    assert "brev-test-token" not in repr(config) and "brev-test-token" not in caplog.text
+
+
+@pytest.mark.parametrize("backends", ["", "brev,aws", "mock, ,gpu"])
+def test_unknown_targets_are_refused(backends):
+    with pytest.raises(ValidationError, match="comma-separated"):
+        ComputeConfig(backends=backends)
+
+
+@pytest.mark.parametrize("sim", [SimConfig(), SimConfig(backend="http", url="http://gpu-box:9000")])
+@pytest.mark.parametrize("backends", ["brev", "gb10"])
+def test_a_real_target_needs_the_http_sim_at_a_local_address(sim, backends, monkeypatch):
+    monkeypatch.setattr(config_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    errors, _ = check_config(AppConfig(sim=sim, compute=ComputeConfig(backends=backends)))
+
+    assert any("SIM_BACKEND=http and a local SIM_URL" in error for error in errors)
+
+
+def test_a_missing_brev_cli_is_an_error_that_says_what_to_set(monkeypatch):
+    monkeypatch.setattr(config_module.shutil, "which", lambda name: None)
+
+    errors, _ = check_config(AppConfig(sim=LOCAL_SIM, compute=ComputeConfig(backends="brev")))
+
+    assert len(errors) == 1
+    assert "COMPUTE_BREV_CLI" in errors[0] and "COMPUTE_BREV_WSL=Ubuntu" in errors[0]
+
+
+def test_brev_through_wsl_needs_wsl(monkeypatch):
+    monkeypatch.setattr(config_module.shutil, "which", lambda name: None)
+
+    errors, _ = check_config(AppConfig(sim=LOCAL_SIM, compute=ComputeConfig(backends="brev", brev_wsl="Ubuntu")))
+
+    assert len(errors) == 1 and "there's no wsl command" in errors[0]
+
+
+def test_the_gb10_needs_ssh_and_nothing_else(monkeypatch):
+    monkeypatch.setattr(config_module.shutil, "which", lambda name: None if name == "ssh" else f"/usr/bin/{name}")
+
+    errors, warnings = check_config(AppConfig(sim=LOCAL_SIM, compute=ComputeConfig(backends="gb10")))
+
+    assert len(errors) == 1 and "COMPUTE_SSH" in errors[0]
+    assert not any("Compute" in warning for warning in warnings)  # implemented: no "not implemented" warning any more
 
 
 def test_demo_data_runs_in_its_own_directory_and_database(tmp_path):

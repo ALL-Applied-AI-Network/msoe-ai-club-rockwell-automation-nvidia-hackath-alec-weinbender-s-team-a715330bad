@@ -236,7 +236,10 @@ app/frontend/
     format.ts            The one place numbers become text: percentages, mm, degrees, grams
 ```
 
-`components/`, `pages/` and `format.ts` don't exist yet; whoever needs one first creates it there.
+`components/` has placeholder versions of the page shell (`Page`), `Card`, `Button`, `Select`, `StatusBadge` and a
+first `GpuPanel`. They, and the old `index.html`, don't need to be kept or built on: replace them freely
+([docs/notes/frontend-plan.md](../../docs/notes/frontend-plan.md) is the plan). `pages/` doesn't exist yet. The reuse
+rule below is about the components the new UI builds.
 
 ### Design
 

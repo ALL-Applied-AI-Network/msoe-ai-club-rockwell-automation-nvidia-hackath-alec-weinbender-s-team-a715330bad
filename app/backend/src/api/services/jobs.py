@@ -12,9 +12,7 @@ force), so editing the part record or the cell profile later never changes a run
 
 import datetime
 import logging
-import os
 import statistics
-import subprocess
 import sys
 import uuid
 from dataclasses import dataclass
@@ -25,17 +23,18 @@ from sqlalchemy.exc import IntegrityError
 
 from api.clients.database import DatabaseClient
 from api.clients.sim import sim_badge
-from api.config import APP_DIR, AppConfig
+from api.config import AppConfig
 from api.db.tables import JobRow, PartRow, TrialRow
 from api.models import grasp
 from api.models.cell_profile import DEFAULT_PROFILE, CellProfile, CellProfileVersion
-from api.models.job import RESUMABLE_STATUSES, Job, JobStatus
+from api.models.job import ACTIVE_STATUSES, RESUMABLE_STATUSES, Job, JobStatus
 from api.models.job_spec import JobSpec, SimBackend
 from api.models.part import Part
 from api.models.part_record import PartRecord
 from api.models.results import CardScore, JobCard
 from api.models.search_plan import Blocker, JobPlan, TimeEstimate, plan_job
-from api.services import cell_profiles, parts
+from api.services import cell_profiles, compute, parts
+from api.services.processes import pid_alive, spawn_detached
 
 logger = logging.getLogger(__name__)
 
@@ -173,8 +172,11 @@ def throughput(db: DatabaseClient, config: AppConfig, badge: SimBackend) -> Time
 
 def create_job(db: DatabaseClient, config: AppConfig, spec: JobSpec, *, duplicated_from: str | None = None, start: bool = True) -> Job:
     """Plan the spec, store the job with everything it runs with, and start its worker (start=False leaves it queued for
-    the caller to run in-process, as the demo data does). Raises JobBlockedError while the plan has blockers. The
-    experiment number is the next free one, fixed for life."""
+    the caller to run in-process, as the demo data does). Raises JobBlockedError while the plan has blockers, and
+    compute.ComputeNotReadyError when the app manages the GPU and it isn't ready. The experiment number is the next free
+    one, fixed for life."""
+    if start:
+        compute.claim(db, config)
     planned = plan_spec(db, config, spec)
     if planned.plan.blockers:
         raise JobBlockedError(planned.plan.blockers)
@@ -342,51 +344,29 @@ def resume_job(db: DatabaseClient, config: AppConfig, job_id: str) -> None:
     job = get_job(db, job_id)
     if job.status not in RESUMABLE_STATUSES:
         raise JobNotResumableError(f"job {job_id} is {job.status}: only {', '.join(RESUMABLE_STATUSES)} jobs can be resumed")
+    compute.claim(db, config)
     update_job(db, job_id, cancel_requested=0)  # an earlier cancel is answered; a new one, sent while queued, will be seen
     spawn_worker(db, config, job_id)
 
 
-def spawn_worker(db: DatabaseClient, config: AppConfig, job_id: str, *args: str) -> None:
+def spawn_worker(db: DatabaseClient, config: AppConfig, job_id: str, *args: str) -> int:
     """Start a detached worker process, python -m api.worker <job_id> [args], so it never blocks, or dies with, the web
-    server. With no args it runs the job (and marks it queued); args select another task for the job, e.g. predicting a
-    test plan."""
+    server, and return its pid. With no args it runs the job (and marks it queued); args select another task for the
+    job, e.g. predicting a test plan or recording a clip."""
     pid = spawn_detached([sys.executable, "-m", "api.worker", job_id, *args], config.worker_log)
     if not args:
         update_job(db, job_id, status="queued", pid=pid)
     logger.info("Job %s: worker started (pid %s)%s", job_id, pid, f" for {' '.join(args)}" if args else "")
-
-
-def spawn_detached(command: list[str], log_path: Path) -> int:
-    """Start a process that outlives the API (and its reloads), its output appended to log_path. Returns its pid."""
-    if os.name == "nt":
-        detach = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
-    else:
-        detach = {"start_new_session": True}
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(log_path, "a") as log:
-        return subprocess.Popen(command, cwd=APP_DIR, stdout=log, stderr=subprocess.STDOUT, **detach).pid
+    return pid
 
 
 def mark_interrupted(db: DatabaseClient) -> None:
     """At API startup, mark jobs whose worker is gone as interrupted, so they can be resumed from their checkpoint."""
     with db.session() as s:
-        for row in s.scalars(select(JobRow).where(JobRow.status.in_(("queued", "running", "finalizing")))):
-            if not _pid_alive(row.pid):
+        for row in s.scalars(select(JobRow).where(JobRow.status.in_(ACTIVE_STATUSES))):
+            if not pid_alive(row.pid):
                 row.status = "interrupted"
                 logger.warning("Job %s: its worker is gone; marked interrupted", row.id)
-
-
-def _pid_alive(pid: int | None) -> bool:
-    if not pid:
-        return False
-    try:
-        if os.name == "nt":
-            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True).stdout
-            return str(pid) in out
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
 
 
 def _exists(db: DatabaseClient, job_id: str) -> bool:

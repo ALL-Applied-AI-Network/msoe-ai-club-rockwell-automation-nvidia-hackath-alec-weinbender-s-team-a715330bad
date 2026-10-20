@@ -344,7 +344,7 @@ def design_export(db: DatabaseClient, job_id: str, label: str, *, cad: CadClient
     """A final design's printable files and their checks: D1's as written when the job finished, any other's exported
     now and cached under outputs/<job id>/<label>/. The files exist even when a blocking check failed; design_file()
     refuses them then. The stock fingers can't be exported."""
-    job, trial = _final_trial(db, job_id, label)
+    job, trial = final_trial(db, job_id, label)
     label = trial.label
     if trial.kind == "stock":
         raise DesignNotExportableError("the stock fingers are aluminium and already on the robot: there's nothing to print")
@@ -398,7 +398,7 @@ def design_file(db: DatabaseClient, job_id: str, label: str, key: str, *, cad: C
 
 def grasp_pose(db: DatabaseClient, job_id: str, label: str) -> dict:
     """The grasp to give the robot with a final design: D1's as stored, any other's worked out from its finger."""
-    job, trial = _final_trial(db, job_id, label)
+    job, trial = final_trial(db, job_id, label)
     if trial.label == "D1":
         with db.session() as s:
             row = s.get(ResultRow, job_id)
@@ -423,7 +423,7 @@ def grasp_pose_for(job: Job, gripper: Gripper, design: Design) -> dict:
 
 def finger_preview(db: DatabaseClient, job_id: str, label: str = "D1") -> FingerPreview:
     """Both fingers of a final design (the stock ones are the mock's stand-in) and the part, for the 3D preview."""
-    job, trial = _final_trial(db, job_id, label)
+    job, trial = final_trial(db, job_id, label)
     gripper = cell_profiles.get_profile(db, job.cell_profile_id).profile.gripper
     design = Design(kind=trial.kind, params=trial.params)
     finger = stock_finger(job.part, gripper) if design.kind == "stock" else build_finger(job.part, design, gripper)
@@ -446,7 +446,7 @@ def print_sheet(profile: CellProfileVersion, job: Job, label: str, design: Desig
         for field in cell.to_confirm
     ]
     if "finger_mount" in cell.to_confirm:
-        caveats.insert(0, "mount holes from the twin's photo reconstruction: confirm them on the real jaw before printing")
+        caveats.insert(0, f"finger mount ({cell.finger_mount.describe()}): confirm it on the real jaw before printing")
     if job.sim_backend == "mock":
         caveats.insert(0, "MOCK sim: geometry only, no physics; this design's success rate is not a prediction")
     return PrintSheet(
@@ -462,7 +462,7 @@ def print_sheet(profile: CellProfileVersion, job: Job, label: str, design: Desig
     )
 
 
-def _final_trial(db: DatabaseClient, job_id: str, label: str) -> tuple[Job, Trial]:
+def final_trial(db: DatabaseClient, job_id: str, label: str) -> tuple[Job, Trial]:
     """The job and its final-grid trial with this label (any case)."""
     job = get_job(db, job_id)
     wanted = label.strip().upper()

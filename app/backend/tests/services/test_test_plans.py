@@ -215,6 +215,15 @@ def test_a_worker_that_cant_start_fails_the_prediction(db, config, profile_id, m
     assert plan.prediction_status == "failed" and "couldn't start the prediction worker: no python" in plan.prediction_error
 
 
+def test_without_a_ready_gpu_the_plan_is_kept_and_its_prediction_says_why(db, config, profile_id, spawned, monkeypatch):
+    monkeypatch.setattr(config.compute, "backends", "brev")  # the app manages the GPU, and no session is up
+
+    plan = test_plans.create_test_plan(db, config, add_job(db, profile_id), random_per_design=0)
+
+    assert plan.prediction_status == "failed" and "choose a target in the GPU panel" in plan.prediction_error
+    assert spawned == [] and test_plans.get_test_plan(db, "job1", plan.id).prediction_status == "failed"
+
+
 def test_the_xlsx_has_the_columns_dropdowns_and_a_hidden_prediction(db, config, profile_id, spawned):
     job_id = add_job(db, profile_id, task=Task(kind="insert", offset_tolerance_mm=1, tilt_tolerance_deg=5))
     plan = test_plans.create_test_plan(db, config, job_id, seed=2)
