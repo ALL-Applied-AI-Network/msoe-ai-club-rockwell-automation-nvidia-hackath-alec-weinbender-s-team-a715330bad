@@ -20,7 +20,9 @@ app/
 sim/
   sim_server/           Member "sim-server": HTTP grasp-evaluation service that runs next to Isaac Sim
     pyproject.toml
-    src/sim_server/     server.py
+    src/sim_server/     routers/ -> services/ -> robot/, clients/ -> models/, plus the Isaac scene and queue. Runs under Isaac's python.sh.
+                        See "Sim server" below.
+    tests/
   fanuc_er4ia_sim/      Vendored twin. Not a member; keeps its own requirements.txt and interpreters.
 ```
 
@@ -159,8 +161,9 @@ by the **entrypoint that uses it**, which also closes it:
 - **A job** runs in its own detached process. `worker.py` builds the LLM, sim, CAD and database clients in a
   `with closing(...)` block around the optimizer, so they live exactly as long as the job. That's where the sim client
   lives: the API never calls the sim.
-- **The heavy Isaac Sim scene** belongs to the sim server, a separate member, and should load in that server's own
-  lifespan rather than at import.
+- **The heavy Isaac Sim scene** belongs to the sim server, a separate member. It loads in that server's entrypoint
+  (`__main__.py`), on the main thread, before serving and never at import. Isaac must only be called from that thread:
+  route handlers submit work to `SimQueue` and await it, and never touch the scene directly.
 - Clients sent to the optimizer's process pool are pickled, so they hold plain attributes only (a URL, a timeout), never an
   open connection.
 
@@ -212,3 +215,48 @@ by the **entrypoint that uses it**, which also closes it:
   They check status codes, validation and response shape, not business logic.
 - Tests run offline. Anything that needs a real LLM or the sim is marked `@pytest.mark.integration` and skipped by default.
 - Run them with `uv run pytest` from the repo root. The vendored twin keeps its own `unittest` suite.
+
+## Sim server
+
+`sim/sim_server/` has the backend's layering, scaled to one service with one external system (Isaac Sim). The import
+package stays `sim_server`, not `api`: every workspace member installs into the same root `.venv`, so two top-level `api`
+packages would shadow each other.
+
+```text
+sim/sim_server/
+  pyproject.toml
+  scripts/               send_batch.py and example batches: test a running server without the app
+  src/sim_server/
+    __main__.py          Entrypoint: starts Isaac on the main thread, uvicorn in a thread, then serves the queue
+    app.py               Builds the FastAPI app: routers, with the scene and queue stored on app.state
+    dependencies.py      FastAPI dependencies that hand routers the scene and queue (so tests can swap them)
+    routers/             Thin HTTP layer; request/response schemas (mm, g, deg) live in the router file that uses them
+      health.py  evaluations.py
+    services/            The work the routers queue. Isaac-free, never imports FastAPI.
+      evaluations.py     A batch -> held rows, against a small Protocol for the Isaac client (handed in, never imported)
+      batches.py         Request units -> models, the grasp each design commands, packing grasps into environments
+    robot/               The arm and gripper, Isaac-free: motion.py (the top-down grasp, planned with the twin's IK;
+                         another grasp type would be a sibling module), gripper_frame.py, poses.py
+    clients/             The external system: isaac.py (the stage, the environment copies, running a chunk of grasps)
+                         and env_grid.py (their Isaac-free layout)
+    models/              Pydantic domain objects in the twin's units (m, kg, deg), frozen, one file per object
+      part.py  finger.py  offset.py  batch.py  grasp.py  pose.py  gripper.py
+    scene.py             Isaac's lifecycle: SimulationApp + the grasp cell, loaded once, kept between requests
+    sim_queue.py         Runs every Isaac call on the main thread, one at a time
+    twin.py              Makes the vendored twin's modules importable without editing it
+  tests/                 Mirrors the package: routers/, services/, robot/, clients/, models/, scripts/. Runs without
+                         Isaac. test_layers.py enforces the rules below from each module's imports.
+```
+
+- **Dependencies point one way:** routers -> services -> robot / clients -> models, as in the backend. Services get the
+  Isaac client handed in through a Protocol and never import it; clients never import services; models import no other
+  layer.
+- **Only `clients/isaac.py` and `scene.py` touch Isaac** (`isaacsim`, `omni`, `pxr`), and only after `SimulationApp` has started.
+  Everything else imports, and is tested, on a laptop without Isaac; the twin's pure-Python modules (`scene_config`, `ik`,
+  `fk`) are fine through `twin.use_twin()`.
+- **Isaac runs on the main thread only.** Route handlers convert the request, submit the work to `SimQueue` and await it;
+  they never call the scene or the cell directly.
+- **Units convert once, at the boundary.** Requests are in mm, g and degrees; `services/batches.py` converts them to metres and
+  kilograms, and nothing past it sees millimetres.
+- Code that can't be checked without a GPU says so in its docstring, and [docs/notes/gpu-test-plan.md](../../docs/notes/gpu-test-plan.md)
+  is how it gets validated. Don't claim Isaac behaviour from host tests.

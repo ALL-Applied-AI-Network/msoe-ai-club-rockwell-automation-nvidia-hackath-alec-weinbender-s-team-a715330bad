@@ -43,6 +43,7 @@ Linked from the documents above but not provided yet:
 | --- | --- |
 | [../CONTEXT.md](../CONTEXT.md) | Current project state: facts, constraints, decisions, open questions |
 | [notes/things-to-know.md](notes/things-to-know.md) | Gotchas, mismatches and warnings everyone should read |
+| [notes/gpu-test-plan.md](notes/gpu-test-plan.md) | Runbook: bring up the sim server on Brev / the GB10 and validate it step by step |
 | [experiments/](experiments/) | Simulation and physical trial log (required for measured results) |
 | [images/](images/) | Images referenced by the docs |
 | [../sim/fanuc_er4ia_sim/docs/](../sim/fanuc_er4ia_sim/docs/) | Upstream twin docs: calibration v0.5, model notes |

@@ -3,10 +3,10 @@
 **Automated, simulation-validated gripper finger design for new parts.** Alec Weinbender's Team, Rockwell Automation + NVIDIA
 Innovation Lab, Fall 2026, Dataset 3: Grasping and Sorting.
 
-Give it a new part and a task, and it proposes finger templates with an LLM, then optimizes their dimensions with Bayesian
-optimization. Each candidate is tested with repeated, deliberately mis-localized grasps in the FANUC ER-4iA digital twin.
-The output is printable finger CAD, a grasp pose and a predicted success rate, which we then check against the stock fingers
-on the real arm.
+Give it a new part, and batch Bayesian optimization searches finger shapes for the existing gripper. Each design is tested
+with deliberately mis-localized grasps in the FANUC ER-4iA digital twin, on a fixed grid of camera errors, and scored by its
+expected success. The output is finger CAD, a grasp pose and a predicted success rate next to the stock fingers and a
+shape-fit (imprint) design, which we then check on the real arm.
 
 Project state, hardware facts and open questions: **[CONTEXT.md](CONTEXT.md)**. Read
 **[docs/notes/things-to-know.md](docs/notes/things-to-know.md)** before you start. All source documents: **[docs/](docs/README.md)**.

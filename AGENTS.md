@@ -21,7 +21,8 @@ app/                    Finger Designer web app (FastAPI + single-file UI)
   frontend/index.html   UI served at /
 sim/
   fanuc_er4ia_sim/      Organizer-supplied FANUC ER-4iA Isaac Sim twin, starter v0.5 (vendored, not a uv member; see below)
-  sim_server/           uv member "sim-server": HTTP service that runs next to Isaac Sim and evaluates grasp batches (stub)
+  sim_server/           uv member "sim-server", package src/sim_server/: routers/ -> services/ -> robot/, clients/ (Isaac) -> models/, plus the Isaac scene
+                        and main-thread queue. Runs next to Isaac Sim and evaluates grasp batches (not yet run in Isaac)
 docs/                   Source documents, references, experiment log
 data/                   Local datasets; contents gitignored except the README
 ```
@@ -41,8 +42,9 @@ uv run pytest
 # New database migration, after editing app/backend/src/api/db/tables.py
 uv run --package backend alembic -c app/backend/alembic.ini revision --autogenerate -m "what changed"
 
-# Sim server (on the GPU machine, next to Isaac Sim)
-uv run --package sim-server uvicorn sim_server.server:app --host 0.0.0.0 --port 9000
+# Sim server (on the GPU machine). Runs under Isaac's interpreter, not the uv venv; see sim/README.md#sim_server
+"$ISAAC/python.sh" -m pip install -e sim/sim_server     # once per Isaac install
+"$ISAAC/python.sh" -m sim_server --port 9000
 
 # Twin host tests (Linux/macOS shell; on Windows use .venv/Scripts/python), from sim/fanuc_er4ia_sim/
 ./bootstrap.sh

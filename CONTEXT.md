@@ -3,7 +3,7 @@
 Living summary of where the project stands. Keep it short and current. Source documents live in [docs/](docs/README.md);
 this file records what they mean for us. Gotchas and warnings: [docs/notes/things-to-know.md](docs/notes/things-to-know.md). Update it whenever a fact, decision, deadline or open question changes.
 
-*Last updated: 2026-10-15*
+*Last updated: 2026-10-19*
 
 ## One-line pitch
 
@@ -27,25 +27,30 @@ Hackathon: Rockwell Automation + NVIDIA Innovation Lab, Fall 2026, **Dataset 3: 
 Judges want: (1) the solution **running on real hardware** (the FANUC arm, in a supervised test at CSI), (2) a specific problem,
 (3) a business case for other manufacturers, and (4) **measured results against a baseline**, including where it fails.
 
-## Pipeline (from the plan)
+## Pipeline (as built, 2026-10-19)
 
-1. **Input:** part CAD (or images) + task text.
-2. **LLM** picks a finger template (flat pad / V-groove / pocket) and initial dimensions.
-3. **Bayesian optimization** tunes dimensions. Each candidate gets repeated grasps in the ER-4iA twin, with the part offset from
-   where the camera thinks it is.
-4. **Output:** printable finger CAD + grasp pose + predicted success rate.
-5. **Validate:** print the top 2–3 and test them on the real arm against the **stock fingers** and a simple **imprint** design.
+1. **Input:** the part as it rests on the table (cylinder standing or lying, or a box; sizes and mass) and the camera-error
+   model (sigma in mm and degrees). The task text is stored but not used yet.
+2. **Search space:** one pad shape with six parameters defined relative to the part: pad width, groove angle (180 = flat),
+   groove depth, slack, fingertip height, lead-in. They're mapped from a unit cube so every point is a finger that fits
+   (`app/backend/src/api/models/search_space.py`, geometry in `models/finger.py`).
+3. **Batch Bayesian optimization** (BoTorch qLogNEI, CPU). Round 0 = the **stock** and **imprint** baselines plus a Sobol
+   sample; each round is one sim request: every design at every point of a fixed grid of camera-error offsets.
+4. **Score:** expected success under the error model, from the grid (`models/offset_grid.py`), plus the capture radius.
+5. **Output:** the top designs and both baselines re-tested on a denser grid; the winner's geometry (OpenSCAD), grasp pose,
+   predicted success and a success-vs-error curve next to the baselines.
+6. **Validate:** print the top 2–3 and test them on the real arm against the **stock fingers** and the **imprint** design.
 
-Stretch: a surrogate model that predicts success rate instantly to screen candidates.
+The plan's LLM step is out of the loop (decision below). Stretch: a surrogate model that predicts success instantly.
 
 ## Repo status
 
 | Component | Path | State |
 | --- | --- | --- |
-| Web app (UI, job queue, optimizer, LLM step, exports, 3D finger preview) | `app/` | Works end-to-end with **mock** LLM and **mock** sim |
-| Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | **Stub**: `run_grasps` not implemented |
+| Web app (UI, job queue, batch BO, finger geometry, exports, 3D preview) | `app/` | Works end-to-end with the **mock** sim, a geometric capture check (not physics) |
+| Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | `/evaluate_batch` written (reference path `--envs 1`, vectorized `--envs N`); host tests pass; **never run in Isaac** ([GPU test plan](docs/notes/gpu-test-plan.md)) |
 | Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored as-is from the organizers; not yet run by us |
-| CAD output | `app/backend/src/api/clients/cad.py` (`OpenScadCad`) | Placeholder OpenSCAD; needs real CAD (e.g. CadQuery → STL/STEP) |
+| CAD output | `app/backend/src/api/clients/cad.py` (`OpenScadCad`) | OpenSCAD of exactly the simulated pieces; **no mount holes** yet; needs CadQuery → STL/STEP with the confirmed mount |
 
 ## Hardware and twin facts (from `sim/fanuc_er4ia_sim/docs/`)
 
@@ -71,9 +76,11 @@ Stretch: a surrogate model that predicts success rate instantly to screen candid
    eggs) **cannot be grasped** with the current actuator. This is what the organizers meant by "not all of the existing items will
    fit in the fingers". The demo part must fit inside the jaw stroke, or the fingers must be redesigned so the stroke is used
    differently (e.g. offset or angled fingers that change the effective opening).
-3. The app's design space (`SPACE` in `app/backend/src/api/models/design.py`) and its default form values assume large parts. They need to be
-   re-ranged for this gripper.
-4. The sim-predicted success rate is unvalidated until we run physical trials, so book CSI time early.
+3. **The error model decides whether fingers matter.** The default 3 mm (1 sigma) is a placeholder; the twin's own perception
+   error was 0.19 mm, at which stock fingers rarely miss. Gains show at larger errors (cheaper camera, less calibration), so
+   justify or measure sigma and show success-vs-error curves.
+4. The mock sim scores capture geometry only, so its optimum (most slack and lead-in, flat pad) says nothing about real
+   physics. The sim-predicted success rate is unvalidated until physical trials, so book CSI time early.
 
 ## Decisions
 
@@ -84,6 +91,13 @@ Stretch: a surrogate model that predicts success rate instantly to screen candid
 | 2026-10-19 | uv workspace: one `pyproject.toml` per component (`app/backend`, `sim/sim_server`), one root `uv.lock` | Deploy parts separately, keep deps consistent ([rule](.claude/rules/coding-style.md)) |
 | 2026-10-19 | Backend restructured into routers / services / clients / models (package `api`), pydantic-settings config, pytest suite | Testable without HTTP; API contract unchanged ([rule](.claude/rules/coding-style.md#application-backend)) |
 | 2026-10-19 | Database: SQLAlchemy ORM + Alembic migrations, connection via a database client and `DB_URL` | Readable schema, safe schema changes, Postgres-ready; existing `app.db` files are kept |
+| 2026-10-19 | Sim server runs under Isaac's `python.sh` (FastAPI/uvicorn pip-installed into it); Isaac owns the main thread and `/evaluate` batches are queued to it one at a time | Isaac isn't importable from the uv venv and must be driven from one thread; the optimizer sends batches concurrently ([sim/README.md](sim/README.md#sim_server)) |
+| 2026-10-19 | Batch Bayesian optimization with BoTorch (qLogNEI) on CPU-only torch, against a sim that runs designs x offsets per request (vectorized in Isaac) | Throughput; the GP is small, the GPU is for physics |
+| 2026-10-19 | One pad shape with six part-relative parameters replaces the flat / V-groove / pocket templates | Every sample is a valid finger; no categorical template for the GP |
+| 2026-10-19 | Score = expected success under the camera-error model over a fixed offset grid, plus capture radius | A sim grasp is near-deterministic, so a grid removes sampling noise, and one run scores any error level |
+| 2026-10-19 | No LLM in the loop: round 0 = stock + imprint baselines + Sobol sample | Starting points don't need it; the baselines are the judges' comparison |
+| 2026-10-19 | Sim contract: `POST {SIM_URL}/evaluate_batch`, fingers sent as convex pieces in the gripper frame | The sim server needs no design-space knowledge; what's simulated is what's exported |
+| 2026-10-19 | Migration 0002 clears jobs made before it | Demo data; old rows don't fit the new design space |
 
 ## Open questions / action items
 
@@ -93,8 +107,9 @@ Stretch: a surrogate model that predicts success rate instantly to screen candid
       (zhenzeng@uwm.edu / `#dataset-3-grasping-sorting`). We also asked for gripper-body + mount CAD in the team plan.
 - [ ] Get the **stock finger CAD** (the dataset page lists it) and confirm it matches `assets/gripper/photo_finger_detail.json`.
 - [ ] Bring up the twin: run `bootstrap.sh` host tests, then the starter pipeline on Brev or the GB10.
-- [ ] Implement `sim/sim_server` `run_grasps`: swap the finger geometry, spawn the part with offsets, grasp, lift, check.
-- [ ] Re-range the `SPACE` design space and replace `make_scad` with real CAD export.
+- [ ] Run the sim server on a GPU and check it against the reference path: [docs/notes/gpu-test-plan.md](docs/notes/gpu-test-plan.md).
+- [ ] Real CAD export (CadQuery → STL/STEP) from the same pieces, with the confirmed mount holes.
+- [ ] Choose and justify the camera-error sigma for the demo (or measure it on the cell).
 - [ ] Define success metrics before experiments (pick success / attempt, placement error, cycle time, recovery).
 - [ ] Request a supervised physical test at CSI (Shamar Webster, `#data-and-testbed-requests`, webste63@uwm.edu) with a test
       plan, duration, attendees and dates.

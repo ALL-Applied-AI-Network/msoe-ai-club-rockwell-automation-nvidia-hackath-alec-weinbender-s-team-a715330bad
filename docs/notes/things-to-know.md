@@ -38,22 +38,27 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
    `sim_server/` is now `sim/sim_server/src/sim_server/`, and `app/requirements.txt` is gone. Run the app from the repo root
    with `uv run --package backend uvicorn api.main:app --port 8000`. Old local branches touching the backend need manual
    merging: the code moved and was reformatted.
-2. **Everything you see is mock.** The default LLM and simulator are mocks. The mock grasp model is made up, so **never
-   report mock success rates as results.**
-3. **The design space is sized for big parts.** The `SPACE` ranges in `app/backend/src/api/models/design.py` (finger length 15–60 mm,
-   pad width up to 40 mm…) and the form defaults (tennis ball, 67 mm) don't fit a 12 mm gripper. They need re-ranging.
-4. **CAD output is a placeholder** (`make_scad`, OpenSCAD text). The 3D preview in the UI rebuilds the same shapes. Neither is
-   a printable, mountable finger yet.
+2. **The default simulator is a mock.** It checks capture geometry only (does a fingertip land on the part, does the part
+   end on the pads), with no friction, force or slip, so **never report mock success rates as results.** Its optimum is
+   always "most slack, most lead-in, flat pad". The optimizer no longer calls the LLM at all.
+3. **Designs are geometry now (2026-10-19).** `models/finger.py` turns a design into convex pieces in the gripper frame (mm,
+   jaws closed, fingertips at z = 0); the sim server, the CAD file and the 3D preview all get the same pieces. The stock
+   blade's bounding box (x 0..12, y -3..3, z 0..76) is checked against `cell.py` by the sim server's tests. PhysX keeps
+   at most 64 vertices per convex hull, so no piece may have more points (the app's tests check this).
+4. **The CAD file has no mount holes** and isn't printable as is: it's OpenSCAD of the simulated pieces, for review.
 5. **The 3D preview loads three.js from a CDN** (jsDelivr), so it needs internet access.
-6. **The app does not read `.env`.** Export the variables in your shell (see `.env.example`).
-7. **Runtime data lives in `app/data/`** (SQLite DB, uploads, outputs). It is gitignored and per-machine.
+6. **The app reads the repo-root `.env`**; exported shell variables override it (see `.env.example`). `SIM_URL` is the sim
+   server's base URL (the app posts to `/evaluate_batch`).
+7. **Migration 0002 deleted every job made before it.** If an old `app.db` looks empty after upgrading, that's why.
+8. **Runtime data lives in `app/data/`** (SQLite DB, uploads, outputs). It is gitignored and per-machine.
 
 ## The digital twin (`sim/fanuc_er4ia_sim/`)
 
 1. **It needs Linux and an NVIDIA GPU.** It was validated on Linux with Isaac Sim 6.0 on an RTX A6000. It won't run on our
    Windows laptops; use Brev (Isaac Sim launchable, RTX PRO 6000 preferred) or the MSOE GB10.
 2. **It uses three Python interpreters:** host `.venv`, Isaac `python.sh` and the Cosmos env. Using the wrong one fails in
-   confusing ways.
+   confusing ways. Our `sim/sim_server` runs under Isaac's `python.sh` too, not under `uv run` (see
+   [sim/README.md](../../sim/README.md#sim_server)).
 3. **Isaac can exit with code 0 after crashing.** Check `execution_report.json` (`task_complete: true`), not the exit code.
 4. **The robot USD and Cosmos weights are not bundled.** First run needs network access to Isaac's asset root (or set
    `FANUC_ROBOT_USD`).
@@ -61,8 +66,10 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
    v0.5 removed the screw task.
 6. **Ground truth is for evaluation only.** Simulator object poses must never feed grasp commands.
 7. **Units:** the twin uses metres and degrees, the app uses millimetres. Convert in `sim/sim_server`.
-8. **`sim/sim_server` is a stub.** `run_grasps` raises `NotImplementedError`, so the real "grasp in the twin" loop doesn't
-   exist yet.
+8. **`sim/sim_server` is written but has never run in Isaac.** Its host tests pass; the Isaac side (`clients/isaac.py`,
+   `scene.py`) is unverified until someone follows [gpu-test-plan.md](gpu-test-plan.md). Two things to know going in:
+   custom-finger friction is *averaged* with the part's 0.9 / 0.8 by default (`--friction-combine`), and the batched
+   view may refuse copies with different fingers in one chunk (`is_homogeneous`), which would force one design per chunk.
 9. **It's vendored upstream code.** Prefer wrappers over edits, and log any edits in `CONTEXT.md` (`MANIFEST.json` has the
    original hashes).
 
