@@ -268,6 +268,313 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Job
+         * @description Steps 6-8: the plan for a spec (searches, totals, time estimate, warnings), stored nowhere. Always 200: what
+         *     blocks the job is in blocked / blockers, each with the input step that fixes it.
+         */
+        post: operations["plan_job_api_jobs_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Jobs
+         * @description The job list: cards, newest first.
+         */
+        get: operations["list_jobs_api_jobs_get"];
+        put?: never;
+        /**
+         * Create Job
+         * @description Step 8: store the experiment and start its run. 422 with the blockers if the spec can't run yet.
+         */
+        post: operations["create_job_api_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job
+         * @description The job with its spec, posed part and plan, its card, and its review.
+         */
+        get: operations["get_job_api_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename Job
+         * @description Rename the experiment. Its experiment ID never changes.
+         */
+        patch: operations["rename_job_api_jobs__job_id__patch"];
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Job
+         * @description A copy of the job's spec named "<name> (copy)", for the wizard to edit and POST /api/jobs with duplicated_from.
+         *     Nothing is stored or started.
+         */
+        post: operations["duplicate_job_api_jobs__job_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Job */
+        post: operations["cancel_job_api_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Job
+         * @description Restart an interrupted, cancelled or failed job after its last checkpointed round (409 for any other status).
+         */
+        post: operations["resume_job_api_jobs__job_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job Events
+         * @description Server-sent events: the job's card each time it changes, ending once the job is finished (done, failed,
+         *     cancelled or interrupted).
+         */
+        get: operations["job_events_api_jobs__job_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Results
+         * @description The results page at the job's own error model and task. The final-test sections are null until it has run.
+         */
+        get: operations["get_results_api_jobs__job_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/rescore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rescore
+         * @description The results page at another error model and/or task, from the stored outcomes: nothing is simulated or stored.
+         */
+        post: operations["rescore_api_jobs__job_id__rescore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/finger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Finger
+         * @description Both fingers of a final design (D1 by default) and the part, for the 3D preview.
+         */
+        get: operations["get_finger_api_jobs__job_id__finger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/designs/{label}/cad": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Cad
+         * @description The pair as one STEP, or one finger as an STL lying in its print orientation. 409 with the failed checks if the
+         *     export is blocked, 422 for STOCK.
+         */
+        get: operations["download_cad_api_jobs__job_id__designs__label__cad_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/designs/{label}/print-sheet.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Print Sheet */
+        get: operations["download_print_sheet_api_jobs__job_id__designs__label__print_sheet_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/designs/{label}/checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Checks
+         * @description The export checks of a final design (exporting it first if it hasn't been yet): never blocked, it's where to see
+         *     why a download is.
+         */
+        get: operations["export_checks_api_jobs__job_id__designs__label__checks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/designs/{label}/grasp-pose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Grasp Pose
+         * @description The grasp to give the robot with a final design, as JSON or as copyable "key: value" text.
+         */
+        get: operations["get_grasp_pose_api_jobs__job_id__designs__label__grasp_pose_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/run-metadata.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Metadata
+         * @description What the run used: versions, GPU, grids, seed, sim backend and its settings, cell profile, plan, stop reasons.
+         */
+        get: operations["run_metadata_api_jobs__job_id__run_metadata_json_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/review": {
         parameters: {
             query?: never;
@@ -288,10 +595,312 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/test-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Test Plans */
+        get: operations["list_test_plans_api_jobs__job_id__test_plans_get"];
+        put?: never;
+        /**
+         * Create Test Plan
+         * @description Plan the physical test of the print selection plus IMP and STOCK, and start predicting it. 409 if the job isn't
+         *     done.
+         */
+        post: operations["create_test_plan_api_jobs__job_id__test_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/test-plans/{plan_id}.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Xlsx
+         * @description The plan to fill in: outcome (and, for place / insert, in_tolerance) dropdowns; the predicted column is hidden.
+         */
+        get: operations["download_xlsx_api_jobs__job_id__test_plans__plan_id__xlsx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/test-plans/{plan_id}.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Csv
+         * @description The same columns as the XLSX; predicted is blank unless include_predicted=true.
+         */
+        get: operations["download_csv_api_jobs__job_id__test_plans__plan_id__csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/test-plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Test Plan */
+        get: operations["get_test_plan_api_jobs__job_id__test_plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/test-plans/{plan_id}/predict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Predict Again
+         * @description Start predicting the plan again (after a failure, say). Its offsets and trial IDs don't change.
+         */
+        post: operations["predict_again_api_jobs__job_id__test_plans__plan_id__predict_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/test-plans/{plan_id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Results
+         * @description Log a filled-in plan. 415 for a file that isn't .xlsx or .csv; 422 if it can't be read as the plan's table.
+         */
+        post: operations["upload_results_api_jobs__job_id__test_plans__plan_id__upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/print-selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Print Selection */
+        get: operations["get_print_selection_api_jobs__job_id__print_selection_get"];
+        /**
+         * Set Print Selection
+         * @description Choose the designs to print. 422 names any label the final test doesn't have; 409 if the job isn't done.
+         */
+        put: operations["set_print_selection_api_jobs__job_id__print_selection_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/printed-fingers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Printed Fingers */
+        get: operations["list_printed_fingers_api_jobs__job_id__printed_fingers_get"];
+        put?: never;
+        /**
+         * Add Printed Finger
+         * @description Record a printed finger (or pair). finger_id is the ID engraved on it, e.g. EXP-0042-D1-L.
+         */
+        post: operations["add_printed_finger_api_jobs__job_id__printed_fingers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/physical": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Trials
+         * @description Every trial logged for the job, in the order logged.
+         */
+        get: operations["list_trials_api_jobs__job_id__physical_get"];
+        put?: never;
+        /**
+         * Log Trial
+         * @description Log one trial by hand. Returns it as stored (with its new trial_id, for an extra).
+         */
+        post: operations["log_trial_api_jobs__job_id__physical_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/validation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Validation
+         * @description Predicted vs measured per tested design, the mismatch map, the measured points for the success curve, and the
+         *     physical badge.
+         */
+        get: operations["get_validation_api_jobs__job_id__validation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/physical.jsonl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Jsonl
+         * @description Every logged trial (of one job, or all), one JSON object per line, with the sim's prediction for it.
+         */
+        get: operations["export_jsonl_api_export_physical_jsonl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/physical.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Csv
+         * @description The same rows as CSV: booleans as true / false, history as JSON text.
+         */
+        get: operations["export_csv_api_export_physical_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/trials.jsonl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trials Jsonl
+         * @description Every trial (one design on the search or final grid) with its raw outcomes: one job's, or every job's.
+         */
+        get: operations["trials_jsonl_api_export_trials_jsonl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BestFinger */
+        BestFinger: {
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "search" | "locked" | "stock" | "imprint";
+            /** Search */
+            search: string;
+            params: components["schemas"]["VPadParams"] | null;
+            /** Grasp Pose */
+            grasp_pose: {
+                [key: string]: unknown;
+            };
+            /** Grasp Pose Text */
+            grasp_pose_text: string;
+            /** Files */
+            files: string[];
+            /** Checks */
+            checks: components["schemas"]["ExportCheck"][];
+            /** Download Blocked */
+            download_blocked: boolean;
+        };
+        /**
+         * Blocker
+         * @description Why a job can't run yet, and the input step whose screen fixes it: 1 part (upload, material or mass), 2 resting
+         *     pose, 4 cell profile, 5 grasp axis, 6 finger families.
+         */
+        Blocker: {
+            /** Step */
+            step: number;
+            /** Reason */
+            reason: string;
+        };
         /** Camera */
         Camera: {
             /** Name */
@@ -300,6 +909,18 @@ export interface components {
             width_px: number;
             /** Height Px */
             height_px: number;
+        };
+        /**
+         * CardScore
+         * @description One design's final-grid score at the job's own target, for a job card.
+         */
+        CardScore: {
+            /** Label */
+            label: string;
+            /** Success */
+            success: number;
+            /** Capture Radius Mm */
+            capture_radius_mm: number | null;
         };
         /** CellProfile */
         CellProfile: {
@@ -576,11 +1197,151 @@ export interface components {
             note?: string | null;
             choice: components["schemas"]["GraspChoice"];
         };
+        /** ChecksResponse */
+        ChecksResponse: {
+            /** Label */
+            label: string;
+            /** Checks */
+            checks: components["schemas"]["ExportCheck"][];
+            /** Blocked */
+            blocked: boolean;
+            /** Files */
+            files: string[];
+        };
         /** CreateCellProfileRequest */
         CreateCellProfileRequest: {
             /** Name */
             name: string;
             profile: components["schemas"]["CellProfile"];
+        };
+        /** CreateJobRequest */
+        CreateJobRequest: {
+            /** Name */
+            name?: string | null;
+            /** Part Id */
+            part_id: string;
+            /** Cell Profile Id */
+            cell_profile_id: number;
+            /**
+             * @default {
+             *       "kind": "drop"
+             *     }
+             */
+            task: components["schemas"]["Task"];
+            grasp: components["schemas"]["GraspChoice"];
+            /** Families */
+            families?: components["schemas"]["FamilyChoice"][];
+            /**
+             * @default {
+             *       "preset": "typical",
+             *       "sigma_mm": 3,
+             *       "sigma_deg": 8,
+             *       "bias_mm": 0,
+             *       "bias_direction_deg": 0
+             *     }
+             */
+            error: components["schemas"]["ErrorModel"];
+            /** Budget */
+            budget?: number | null;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
+            /** Duplicated From */
+            duplicated_from?: string | null;
+        };
+        /** CreateJobResponse */
+        CreateJobResponse: {
+            /** Id */
+            id: string;
+            /** Experiment Id */
+            experiment_id: string;
+            /** Name */
+            name: string;
+        };
+        /** CreatePrintedFingerRequest */
+        CreatePrintedFingerRequest: {
+            /** Design Label */
+            design_label: string;
+            /**
+             * Side
+             * @default pair
+             * @enum {string}
+             */
+            side: "L" | "R" | "pair";
+            /** Material */
+            material: string;
+            /** Print Date */
+            print_date?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+        };
+        /** CreateTestPlanRequest */
+        CreateTestPlanRequest: {
+            /**
+             * Pointwise Repeats
+             * @default 3
+             */
+            pointwise_repeats: number;
+            /**
+             * Random Per Design
+             * @default 30
+             */
+            random_per_design: number;
+            /** Seed */
+            seed?: number | null;
+        };
+        /** Curve */
+        Curve: {
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "search" | "locked" | "stock" | "imprint";
+            /** Success */
+            success: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * CurvePoint
+         * @description Measured success on the random (error-model) trials, to overlay on the success-vs-error curve at the job's sigma.
+         */
+        CurvePoint: {
+            /** Design Label */
+            design_label: string;
+            /** Sigma Mm */
+            sigma_mm: number;
+            /** Measured Success */
+            measured_success: number;
+            /** Wilson Low */
+            wilson_low: number;
+            /** Wilson High */
+            wilson_high: number;
+            /** N */
+            n: number;
+            /** Predicted Success */
+            predicted_success: number | null;
+        };
+        /** Curves */
+        Curves: {
+            /** Sigmas Mm */
+            sigmas_mm: number[];
+            /** Target Sigma Mm */
+            target_sigma_mm: number;
+            /** Target Range Mm */
+            target_range_mm: [
+                number,
+                number
+            ] | null;
+            /** Designs */
+            designs: components["schemas"]["Curve"][];
         };
         /**
          * Design
@@ -606,6 +1367,65 @@ export interface components {
             finger: components["schemas"]["Finger"] | null;
             /** Problems */
             problems: string[];
+        };
+        /**
+         * DesignScore
+         * @description One final-test design at the target error model and task.
+         */
+        DesignScore: {
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "search" | "locked" | "stock" | "imprint";
+            /** Search */
+            search: string;
+            /** Success */
+            success: number;
+            /** Capture Radius Mm */
+            capture_radius_mm: number | null;
+            /** Task Metric */
+            task_metric: number | null;
+        };
+        /**
+         * DesignValidation
+         * @description One tested design: predicted vs measured success on its planned trials, across every test plan of the job.
+         */
+        DesignValidation: {
+            /** Design Label */
+            design_label: string;
+            /** Finger Ids */
+            finger_ids: string[];
+            /** Planned */
+            planned: number;
+            /** Logged */
+            logged: number;
+            /** Skipped */
+            skipped: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Extras */
+            extras: number;
+            /** N */
+            n: number;
+            /** Predicted Success */
+            predicted_success: number | null;
+            /** Measured Success */
+            measured_success: number | null;
+            /** Wilson Low */
+            wilson_low: number | null;
+            /** Wilson High */
+            wilson_high: number | null;
+            /** Offsets */
+            offsets: number;
+            /** Offsets Compared */
+            offsets_compared: number;
+            /** Offsets Agreed */
+            offsets_agreed: number;
+            /** Summary */
+            summary: string;
         };
         /** ErrorModel */
         ErrorModel: {
@@ -656,6 +1476,35 @@ export interface components {
             /** Note */
             note: string;
         };
+        /** ExportCheck */
+        ExportCheck: {
+            /** Name */
+            name: string;
+            /** Ok */
+            ok: boolean;
+            /** Blocking */
+            blocking: boolean;
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * FailureView
+         * @description Where D1 fails: its missed offsets by direction and by distance, and the caveats every result carries.
+         */
+        FailureView: {
+            /** Label */
+            label: string;
+            /** Centre Missed */
+            centre_missed: boolean;
+            /** First Miss Mm */
+            first_miss_mm: number | null;
+            /** By Direction */
+            by_direction: components["schemas"]["MissGroup"][];
+            /** By Distance */
+            by_distance: components["schemas"]["MissDistance"][];
+            /** Caveats */
+            caveats: string[];
+        };
         /**
          * FamilyChoice
          * @description One ticked family in input step 6: user ranges (narrowed or widened; clipped to what's buildable later) and locked
@@ -704,6 +1553,46 @@ export interface components {
             params_schema: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** FamilySummary */
+        FamilySummary: {
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "vpad" | "imprint" | "cradle";
+            /** Label */
+            label: string;
+            /** Params */
+            params: components["schemas"]["ParamSummary"][];
+            /** Free */
+            free: string[];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+        };
+        /** FinalRow */
+        FinalRow: {
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "search" | "locked" | "stock" | "imprint";
+            /** Search */
+            search: string;
+            params: components["schemas"]["VPadParams"] | null;
+            /** Success */
+            success: number;
+            /** Capture Radius Mm */
+            capture_radius_mm: number | null;
+            /** Task Metric */
+            task_metric: number | null;
+            /** Print Selected */
+            print_selected: boolean;
         };
         /**
          * Finger
@@ -785,6 +1674,27 @@ export interface components {
              */
             locating: components["schemas"]["LocatingFeature"][];
         };
+        /**
+         * FingerPreview
+         * @description Both fingers of one final design and the part they grip, for the 3D preview: gripper frame, mm, jaws closed.
+         *     Open the jaws by moving the left finger +jaw_open_mm along x and the right one -jaw_open_mm.
+         */
+        FingerPreview: {
+            /** Label */
+            label: string;
+            part: components["schemas"]["Part"];
+            /** Extent Mm */
+            extent_mm: [
+                number,
+                number,
+                number
+            ];
+            /** Jaw Open Mm */
+            jaw_open_mm: number;
+            finger: components["schemas"]["Finger"];
+            /** Right */
+            right: components["schemas"]["Piece"][];
+        };
         /** FingerPreviewRequest */
         FingerPreviewRequest: {
             part: components["schemas"]["Part"];
@@ -800,6 +1710,8 @@ export interface components {
             choice: components["schemas"]["FamilyChoice"];
             /** Clearance Mm */
             clearance_mm?: number | null;
+            /** Grip Height Mm */
+            grip_height_mm?: number | null;
             /** Vary */
             vary?: string | null;
             /** Designs */
@@ -1088,6 +2000,243 @@ export interface components {
              */
             status: string;
         };
+        /** HeldMap */
+        HeldMap: {
+            /** Label */
+            label: string;
+            /** Points */
+            points: components["schemas"]["MapPoint"][];
+        };
+        /**
+         * InHandView
+         * @description Where D1 holds the part after the lift, over the grasps that held (for the place and insert histograms).
+         */
+        InHandView: {
+            /** Label */
+            label: string;
+            /** N Held */
+            n_held: number;
+            /** Offsets Mm */
+            offsets_mm: number[];
+            /** Tilts Deg */
+            tilts_deg: number[];
+            /** Weights */
+            weights: number[];
+            /** Offset Tolerance Mm */
+            offset_tolerance_mm: number | null;
+            /** Tilt Tolerance Deg */
+            tilt_tolerance_deg: number | null;
+            /** Within Tolerance */
+            within_tolerance: number | null;
+        };
+        /**
+         * JobCard
+         * @description One experiment in the job list, and each server-sent event while it runs.
+         */
+        JobCard: {
+            /** Id */
+            id: string;
+            /** Experiment Id */
+            experiment_id: string;
+            /** Name */
+            name: string;
+            /** Part Id */
+            part_id: string;
+            /** Part Name */
+            part_name: string | null;
+            /**
+             * Task Kind
+             * @enum {string}
+             */
+            task_kind: "drop" | "place" | "insert";
+            /**
+             * Sim Backend
+             * @enum {string}
+             */
+            sim_backend: "mock" | "isaac";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "finalizing" | "done" | "failed" | "cancelled" | "interrupted";
+            /** Round */
+            round: number;
+            /** N Rounds */
+            n_rounds: number;
+            /** N Done */
+            n_done: number;
+            /** N Total */
+            n_total: number;
+            /** Best Value */
+            best_value: number | null;
+            winner?: components["schemas"]["CardScore"] | null;
+            stock?: components["schemas"]["CardScore"] | null;
+            /** Failure */
+            failure?: string | null;
+            /** Failed Step */
+            failed_step?: number | null;
+            /**
+             * Physical Badge
+             * @default none
+             * @enum {string}
+             */
+            physical_badge: "none" | "in_progress" | "validated";
+            /** Created */
+            created: number;
+            /** Finished */
+            finished?: number | null;
+            /** Duplicated From */
+            duplicated_from?: string | null;
+        };
+        /** JobDetailResponse */
+        JobDetailResponse: {
+            /** Id */
+            id: string;
+            /** Experiment Number */
+            experiment_number: number;
+            /** Name */
+            name: string;
+            /** Created */
+            created: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "finalizing" | "done" | "failed" | "cancelled" | "interrupted";
+            /** Part Id */
+            part_id: string;
+            /** Cell Profile Id */
+            cell_profile_id: number;
+            /**
+             * Sim Backend
+             * @enum {string}
+             */
+            sim_backend: "mock" | "isaac";
+            spec: components["schemas"]["JobSpec"];
+            part: components["schemas"]["Part"];
+            plan: components["schemas"]["JobPlan"];
+            /**
+             * N Done
+             * @default 0
+             */
+            n_done: number;
+            /**
+             * N Total
+             * @default 0
+             */
+            n_total: number;
+            /**
+             * Round
+             * @default 0
+             */
+            round: number;
+            /**
+             * N Rounds
+             * @default 0
+             */
+            n_rounds: number;
+            /** Best Value */
+            best_value?: number | null;
+            /** Best Trial */
+            best_trial?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Failure */
+            failure?: string | null;
+            /** Failed Step */
+            failed_step?: number | null;
+            /**
+             * Cancel Requested
+             * @default 0
+             */
+            cancel_requested: number;
+            /** Pid */
+            pid?: number | null;
+            /** Finished */
+            finished?: number | null;
+            /** Duplicated From */
+            duplicated_from?: string | null;
+            /**
+             * Print Designs
+             * @default []
+             */
+            print_designs: string[];
+            card: components["schemas"]["JobCard"];
+            review: components["schemas"]["Review"] | null;
+            /** Experiment Id */
+            readonly experiment_id: string;
+        };
+        /** JobPlan */
+        JobPlan: {
+            part: components["schemas"]["Part"];
+            /** Families */
+            families: components["schemas"]["FamilySummary"][];
+            /** Searches */
+            searches: components["schemas"]["SearchConfig"][];
+            /** Baselines */
+            baselines: string[];
+            grid: components["schemas"]["OffsetGrid"];
+            final_grid: components["schemas"]["OffsetGrid"];
+            totals: components["schemas"]["PlanTotals"];
+            estimate: components["schemas"]["TimeEstimate"];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+            /**
+             * Blocked
+             * @default []
+             */
+            blocked: string[];
+            /**
+             * Sim Backend
+             * @enum {string}
+             */
+            sim_backend: "mock" | "isaac";
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: components["schemas"]["Blocker"][];
+            /** Grip Force N */
+            grip_force_n?: number | null;
+        };
+        /** JobSpec */
+        JobSpec: {
+            /** Name */
+            name?: string | null;
+            /** Part Id */
+            part_id: string;
+            /** Cell Profile Id */
+            cell_profile_id: number;
+            /**
+             * @default {
+             *       "kind": "drop"
+             *     }
+             */
+            task: components["schemas"]["Task"];
+            grasp: components["schemas"]["GraspChoice"];
+            /** Families */
+            families?: components["schemas"]["FamilyChoice"][];
+            /**
+             * @default {
+             *       "preset": "typical",
+             *       "sigma_mm": 3,
+             *       "sigma_deg": 8,
+             *       "bias_mm": 0,
+             *       "bias_direction_deg": 0
+             *     }
+             */
+            error: components["schemas"]["ErrorModel"];
+            /** Budget */
+            budget?: number | null;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
+        };
         /**
          * LocatingFeature
          * @description A locating pin (a boss standing out of the mount face) or slot (cut into it), keying the finger to the jaw.
@@ -1114,6 +2263,61 @@ export interface components {
              * @default 1
              */
             height_mm: number;
+        };
+        /**
+         * LogTrialRequest
+         * @description One trial: a planned one by trial_id, or an extra (trial_id left out) with design_label and the offset.
+         */
+        LogTrialRequest: {
+            /** Trial Id */
+            trial_id?: string | null;
+            /** Plan Id */
+            plan_id?: number | null;
+            /** Design Label */
+            design_label?: string | null;
+            /** Offset X Mm */
+            offset_x_mm?: number | null;
+            /** Offset Y Mm */
+            offset_y_mm?: number | null;
+            /** Yaw Deg */
+            yaw_deg?: number | null;
+            /** Repeat */
+            repeat?: number | null;
+            /** Finger Id */
+            finger_id?: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "held" | "missed" | "skipped";
+            /** In Tolerance */
+            in_tolerance?: boolean | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Video Link */
+            video_link?: string | null;
+            /** Operator */
+            operator?: string | null;
+            /** Timestamp */
+            timestamp?: string | null;
+        };
+        /** MapPoint */
+        MapPoint: {
+            /** Dx */
+            dx: number;
+            /** Dy */
+            dy: number;
+            /** Yaw Deg */
+            yaw_deg: number;
+            /** Weight */
+            weight: number;
+            /** Held */
+            held: boolean;
+            /** Success */
+            success: boolean;
         };
         /** MassUnitInfo */
         MassUnitInfo: {
@@ -1160,6 +2364,62 @@ export interface components {
             llm: string;
             /** Cpus */
             cpus: number | null;
+            /** Demo Data */
+            demo_data: boolean;
+        };
+        /**
+         * MismatchPoint
+         * @description One planned offset of one design on the held map (repeats and plans pooled).
+         */
+        MismatchPoint: {
+            /** Design Label */
+            design_label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pointwise" | "random";
+            /** Offset X Mm */
+            offset_x_mm: number;
+            /** Offset Y Mm */
+            offset_y_mm: number;
+            /** Yaw Deg */
+            yaw_deg: number;
+            /** Predicted */
+            predicted: boolean | null;
+            /** Measured Rate */
+            measured_rate: number | null;
+            /** Repeats */
+            repeats: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "agreed" | "sim_only" | "real_only" | "mixed" | "pending";
+        };
+        /** MissDistance */
+        MissDistance: {
+            /** Radius Mm */
+            radius_mm: number;
+            /** Missed */
+            missed: number;
+            /** Points */
+            points: number;
+        };
+        /** MissGroup */
+        MissGroup: {
+            /** Direction */
+            direction: string;
+            /** Angle Deg */
+            angle_deg: number;
+            /** Missed */
+            missed: number;
+            /** Points */
+            points: number;
+            /** Lost */
+            lost: number;
+            /** Nearest Miss Mm */
+            nearest_miss_mm: number | null;
         };
         /**
          * MountHole
@@ -1192,6 +2452,41 @@ export interface components {
             reason: string;
             /** Suggestions */
             suggestions: string[];
+        };
+        /**
+         * OffsetGrid
+         * @description Rings of offsets around the nominal grasp, evenly spaced around each ring, repeated at each yaw. A single yaw (the
+         *     default) means yaw isn't tested, which suits parts that look the same at any yaw, like an upright cylinder.
+         */
+        OffsetGrid: {
+            /**
+             * Radii Mm
+             * @default [
+             *       1,
+             *       2,
+             *       3,
+             *       4,
+             *       5,
+             *       6,
+             *       7,
+             *       8,
+             *       10,
+             *       12
+             *     ]
+             */
+            radii_mm: number[];
+            /**
+             * N Directions
+             * @default 8
+             */
+            n_directions: number;
+            /**
+             * Yaws Deg
+             * @default [
+             *       0
+             *     ]
+             */
+            yaws_deg: number[];
         };
         /** OkResponse */
         OkResponse: {
@@ -1438,6 +2733,64 @@ export interface components {
              */
             readonly confirmed_mass_g: number | null;
         };
+        /** PhysicalTrial */
+        PhysicalTrial: {
+            /** Id */
+            id: number;
+            /** Job Id */
+            job_id: string;
+            /** Plan Id */
+            plan_id?: number | null;
+            /** Trial Id */
+            trial_id: string;
+            /** Design Label */
+            design_label: string;
+            /** Finger Id */
+            finger_id?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pointwise" | "random" | "extra";
+            /** Offset X Mm */
+            offset_x_mm: number;
+            /** Offset Y Mm */
+            offset_y_mm: number;
+            /** Yaw Deg */
+            yaw_deg: number;
+            /**
+             * Repeat
+             * @default 1
+             */
+            repeat: number;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "held" | "missed" | "skipped";
+            /** In Tolerance */
+            in_tolerance?: boolean | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Video Link */
+            video_link?: string | null;
+            /** Operator */
+            operator?: string | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /**
+             * History
+             * @default []
+             */
+            history: {
+                [key: string]: unknown;
+            }[];
+            /** Created */
+            created: number;
+        };
         /**
          * Piece
          * @description A convex solid: the hull of its points. The triangles are its faces, wound counter-clockwise seen from outside.
@@ -1455,6 +2808,89 @@ export interface components {
                 number,
                 number
             ][];
+        };
+        /** PlanResponse */
+        PlanResponse: {
+            part: components["schemas"]["Part"];
+            /** Families */
+            families: components["schemas"]["FamilySummary"][];
+            /** Searches */
+            searches: components["schemas"]["SearchConfig"][];
+            /** Baselines */
+            baselines: string[];
+            grid: components["schemas"]["OffsetGrid"];
+            final_grid: components["schemas"]["OffsetGrid"];
+            totals: components["schemas"]["PlanTotals"];
+            estimate: components["schemas"]["TimeEstimate"];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+            /**
+             * Blocked
+             * @default []
+             */
+            blocked: string[];
+            /**
+             * Sim Backend
+             * @enum {string}
+             */
+            sim_backend: "mock" | "isaac";
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: components["schemas"]["Blocker"][];
+            /** Grip Force N */
+            grip_force_n?: number | null;
+            /** Failed Step */
+            failed_step: number | null;
+        };
+        /** PlanTotals */
+        PlanTotals: {
+            /** Search Offsets */
+            search_offsets: number;
+            /** Final Offsets */
+            final_offsets: number;
+            /** Search Designs */
+            search_designs: number;
+            /** Search Grasps */
+            search_grasps: number;
+            /** Final Designs */
+            final_designs: number;
+            /** Final Grasps */
+            final_grasps: number;
+            /** Rounds */
+            rounds: number;
+            /** Total Grasps */
+            total_grasps: number;
+        };
+        /** PlannedTrial */
+        PlannedTrial: {
+            /** Trial Id */
+            trial_id: string;
+            /** Design Label */
+            design_label: string;
+            /** Finger Id */
+            finger_id?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pointwise" | "random" | "extra";
+            /** Offset X Mm */
+            offset_x_mm: number;
+            /** Offset Y Mm */
+            offset_y_mm: number;
+            /** Yaw Deg */
+            yaw_deg: number;
+            /** Repeat */
+            repeat: number;
+            /** Predicted */
+            predicted?: boolean | null;
+            /** Predicted In Tolerance */
+            predicted_in_tolerance?: boolean | null;
         };
         /** PoseResponse */
         PoseResponse: {
@@ -1496,10 +2932,71 @@ export interface components {
             /** Chosen */
             chosen: boolean;
         };
+        /**
+         * PrintSelection
+         * @description Which of an experiment's designs go to the printer and onto the robot. The baselines are always tested: STOCK on
+         *     the aluminium fingers already fitted, IMP printed like the chosen designs.
+         */
+        PrintSelection: {
+            /** Designs */
+            designs: string[];
+            /** Printed */
+            printed: string[];
+            /** Tested */
+            tested: string[];
+            /** Available */
+            available: string[];
+        };
+        /** PrintSelectionRequest */
+        PrintSelectionRequest: {
+            /** Designs */
+            designs: string[];
+        };
+        /** PrintedFinger */
+        PrintedFinger: {
+            /** Id */
+            id: number;
+            /** Job Id */
+            job_id: string;
+            /** Finger Id */
+            finger_id: string;
+            /** Design Label */
+            design_label: string;
+            /**
+             * Side
+             * @default pair
+             * @enum {string}
+             */
+            side: "L" | "R" | "pair";
+            /** Material */
+            material: string;
+            /** Print Date */
+            print_date?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Created */
+            created: number;
+        };
         /** ProposeGraspsRequest */
         ProposeGraspsRequest: {
             /** Cell Profile Id */
             cell_profile_id: number;
+        };
+        /** RenameJobRequest */
+        RenameJobRequest: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * RescoreRequest
+         * @description Score the stored outcomes at another error model or task; either left out keeps the job's own.
+         */
+        RescoreRequest: {
+            error?: components["schemas"]["ErrorModel"] | null;
+            task?: components["schemas"]["Task"] | null;
         };
         /** RestingPose */
         RestingPose: {
@@ -1537,6 +3034,90 @@ export interface components {
                 number
             ];
         };
+        /** ResultsHeader */
+        ResultsHeader: {
+            /** Job Id */
+            job_id: string;
+            /** Name */
+            name: string;
+            /** Experiment Id */
+            experiment_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "finalizing" | "done" | "failed" | "cancelled" | "interrupted";
+            /**
+             * Sim Backend
+             * @enum {string}
+             */
+            sim_backend: "mock" | "isaac";
+            /** Cell Profile Name */
+            cell_profile_name: string | null;
+            /** Cell Profile Version */
+            cell_profile_version: number | null;
+            /** Part Name */
+            part_name: string | null;
+            task: components["schemas"]["Task"];
+            error: components["schemas"]["ErrorModel"];
+            /** Rescored */
+            rescored: boolean;
+            /** Created */
+            created: number;
+            /** Finished */
+            finished: number | null;
+        };
+        /** ResultsSummary */
+        ResultsSummary: {
+            best: components["schemas"]["DesignScore"];
+            stock: components["schemas"]["DesignScore"] | null;
+            imprint: components["schemas"]["DesignScore"] | null;
+            /** Leader */
+            leader: string;
+            /** Gain Vs Stock */
+            gain_vs_stock: number | null;
+            /** Gain Vs Imprint */
+            gain_vs_imprint: number | null;
+            /** Designs Evaluated */
+            designs_evaluated: number;
+            /** Task Metric Label */
+            task_metric_label: string | null;
+        };
+        /**
+         * ResultsView
+         * @description The results page. The sections built from the final test are None (or empty) until it has run.
+         */
+        ResultsView: {
+            header: components["schemas"]["ResultsHeader"];
+            summary: components["schemas"]["ResultsSummary"] | null;
+            curves: components["schemas"]["Curves"] | null;
+            /** Held Maps */
+            held_maps: components["schemas"]["HeldMap"][];
+            in_hand: components["schemas"]["InHandView"] | null;
+            failures: components["schemas"]["FailureView"] | null;
+            best_finger: components["schemas"]["BestFinger"] | null;
+            /** Final Table */
+            final_table: components["schemas"]["FinalRow"][];
+            physical: components["schemas"]["Validation"];
+            run: components["schemas"]["RunDetails"];
+        };
+        /**
+         * Review
+         * @description The safety gate: no printed finger goes on the real arm until a named reviewer approves it.
+         */
+        Review: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "approved" | "rejected" | "pending";
+            /** Reviewer */
+            reviewer: string;
+            /** Notes */
+            notes: string;
+            /** Created */
+            created: number;
+        };
         /** ReviewRequest */
         ReviewRequest: {
             /** Status */
@@ -1551,6 +3132,120 @@ export interface components {
              * @default
              */
             notes: string;
+        };
+        /**
+         * RowError
+         * @description A row of an upload (or a quick log) that wasn't applied, and why.
+         */
+        RowError: {
+            /** Row */
+            row: number;
+            /** Trial Id */
+            trial_id?: string | null;
+            /** Reason */
+            reason: string;
+        };
+        /** RunDetails */
+        RunDetails: {
+            /** Searches */
+            searches: components["schemas"]["SearchProgress"][];
+            /** Rounds */
+            rounds: number;
+            /** N Rounds */
+            n_rounds: number;
+            error: components["schemas"]["ErrorModel"];
+            task: components["schemas"]["Task"];
+            /** Seed */
+            seed: number;
+            /** Grids */
+            grids: {
+                [key: string]: unknown;
+            };
+            /**
+             * Versions
+             * @default {}
+             */
+            versions: {
+                [key: string]: string | null;
+            };
+            /** Gpu */
+            gpu?: string | null;
+            /**
+             * Sim
+             * @default {}
+             */
+            sim: {
+                [key: string]: unknown;
+            };
+            /** Runtime S */
+            runtime_s?: number | null;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+        };
+        /** SearchConfig */
+        SearchConfig: {
+            /** Key */
+            key: string;
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "vpad" | "imprint" | "cradle";
+            /** Free */
+            free: string[];
+            /** Locked */
+            locked: {
+                [key: string]: number;
+            };
+            /** Ranges */
+            ranges: {
+                [key: string]: components["schemas"]["ParamRange"];
+            };
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "single" | "sobol" | "bo";
+            /** N Initial */
+            n_initial: number;
+            /** Budget */
+            budget: number;
+            /** Batch Size */
+            batch_size: number;
+            /** Patience */
+            patience: number;
+            /** Clearance Mm */
+            clearance_mm?: number | null;
+        };
+        /** SearchProgress */
+        SearchProgress: {
+            /** Key */
+            key: string;
+            /** Family */
+            family: string;
+            /** Method */
+            method: string;
+            /** Budget */
+            budget: number;
+            /** N Initial */
+            n_initial: number;
+            /** Batch Size */
+            batch_size: number;
+            /** Patience */
+            patience: number;
+            /** Designs Evaluated */
+            designs_evaluated: number;
+            /** Rounds */
+            rounds: number;
+            /** Best */
+            best: number | null;
+            /** Best So Far */
+            best_so_far: number[];
+            /** Stop Reason */
+            stop_reason: string | null;
         };
         /** SimInfo */
         SimInfo: {
@@ -1576,6 +3271,21 @@ export interface components {
             /** Friction Factor */
             friction_factor: number;
         };
+        /** Task */
+        Task: {
+            /**
+             * Kind
+             * @default drop
+             * @enum {string}
+             */
+            kind: "drop" | "place" | "insert";
+            /** Offset Tolerance Mm */
+            offset_tolerance_mm?: number | null;
+            /** Tilt Tolerance Deg */
+            tilt_tolerance_deg?: number | null;
+            /** Transport */
+            transport?: ("slow" | "normal" | "fast") | null;
+        };
         /** TaskKindInfo */
         TaskKindInfo: {
             /**
@@ -1587,6 +3297,79 @@ export interface components {
             label: string;
             /** Tolerances */
             tolerances: string[];
+        };
+        /**
+         * TestPlanResponse
+         * @description The plan's rows, plus every trial logged with it: planned ones (match them to rows by trial_id) and its extras.
+         */
+        TestPlanResponse: {
+            /** Id */
+            id: number;
+            /** Job Id */
+            job_id: string;
+            /** Created */
+            created: number;
+            /** Seed */
+            seed: number;
+            /** Designs */
+            designs: string[];
+            /** Rows */
+            rows: components["schemas"]["PlannedTrial"][];
+            /**
+             * Prediction Status
+             * @default pending
+             * @enum {string}
+             */
+            prediction_status: "pending" | "running" | "done" | "failed";
+            /** Prediction Error */
+            prediction_error?: string | null;
+            /** Logged */
+            logged: number;
+            /** Extras */
+            extras: number;
+            /** Logged Trials */
+            logged_trials: components["schemas"]["PhysicalTrial"][];
+        };
+        /**
+         * TestPlanSummaryResponse
+         * @description A plan without its rows, for the list.
+         */
+        TestPlanSummaryResponse: {
+            /** Id */
+            id: number;
+            /** Job Id */
+            job_id: string;
+            /** Created */
+            created: number;
+            /** Seed */
+            seed: number;
+            /** Designs */
+            designs: string[];
+            /**
+             * Prediction Status
+             * @enum {string}
+             */
+            prediction_status: "pending" | "running" | "done" | "failed";
+            /** Prediction Error */
+            prediction_error: string | null;
+            /** Planned */
+            planned: number;
+            /** Logged */
+            logged: number;
+            /** Extras */
+            extras: number;
+        };
+        /** TimeEstimate */
+        TimeEstimate: {
+            /** Seconds */
+            seconds: number | null;
+            /** Grasps Per S */
+            grasps_per_s: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "measured" | "configured" | "unknown";
         };
         /** TransportInfo */
         TransportInfo: {
@@ -1649,6 +3432,32 @@ export interface components {
             /** Units */
             units?: ("mm" | "in") | null;
         };
+        /** UploadResultsRequest */
+        UploadResultsRequest: {
+            /** File */
+            file: string;
+        };
+        /** UploadResultsResponse */
+        UploadResultsResponse: {
+            /** Accepted */
+            accepted: number;
+            /** Extras */
+            extras: number;
+            /**
+             * Extra Trial Ids
+             * @default []
+             */
+            extra_trial_ids: string[];
+            /** Unchanged */
+            unchanged: number;
+            /** Pending */
+            pending: number;
+            /**
+             * Errors
+             * @default []
+             */
+            errors: components["schemas"]["RowError"][];
+        };
         /**
          * VPadParams
          * @description V-pad: an offset contact pad whose face is flat or has a V groove down its middle, with a lead-in chamfer along its
@@ -1695,6 +3504,31 @@ export interface components {
              * @default 0
              */
             lead_in_mm: number;
+        };
+        /** Validation */
+        Validation: {
+            /**
+             * Badge
+             * @enum {string}
+             */
+            badge: "none" | "in_progress" | "validated";
+            /** Sim Backend */
+            sim_backend?: ("mock" | "isaac") | null;
+            /**
+             * Designs
+             * @default []
+             */
+            designs: components["schemas"]["DesignValidation"][];
+            /**
+             * Mismatches
+             * @default []
+             */
+            mismatches: components["schemas"]["MismatchPoint"][];
+            /**
+             * Curve Points
+             * @default []
+             */
+            curve_points: components["schemas"]["CurvePoint"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -2242,6 +4076,554 @@ export interface operations {
             };
         };
     };
+    plan_job_api_jobs_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSpec"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_api_jobs_get: {
+        parameters: {
+            query?: {
+                part_id?: string | null;
+                status?: ("queued" | "running" | "finalizing" | "done" | "failed" | "cancelled" | "interrupted") | null;
+                backend?: ("mock" | "isaac") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobCard"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_job_api_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_api_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_job_api_jobs__job_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobCard"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_job_api_jobs__job_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSpec"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_job_api_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_job_api_jobs__job_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_events_api_jobs__job_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_results_api_jobs__job_id__results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rescore_api_jobs__job_id__rescore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RescoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_finger_api_jobs__job_id__finger_get: {
+        parameters: {
+            query?: {
+                design?: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FingerPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_cad_api_jobs__job_id__designs__label__cad_get: {
+        parameters: {
+            query?: {
+                format?: "step" | "stl";
+                side?: "L" | "R";
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_print_sheet_api_jobs__job_id__designs__label__print_sheet_pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_checks_api_jobs__job_id__designs__label__checks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_grasp_pose_api_jobs__job_id__designs__label__grasp_pose_get: {
+        parameters: {
+            query?: {
+                format?: "json" | "text";
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_metadata_api_jobs__job_id__run_metadata_json_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     review_job_api_jobs__job_id__review_post: {
         parameters: {
             query?: never;
@@ -2264,6 +4646,560 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_test_plans_api_jobs__job_id__test_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestPlanSummaryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_test_plan_api_jobs__job_id__test_plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTestPlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_xlsx_api_jobs__job_id__test_plans__plan_id__xlsx_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                plan_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_csv_api_jobs__job_id__test_plans__plan_id__csv_get: {
+        parameters: {
+            query?: {
+                include_predicted?: boolean;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                plan_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_test_plan_api_jobs__job_id__test_plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                plan_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    predict_again_api_jobs__job_id__test_plans__plan_id__predict_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                plan_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_results_api_jobs__job_id__test_plans__plan_id__upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                plan_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["UploadResultsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadResultsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_print_selection_api_jobs__job_id__print_selection_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintSelection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_print_selection_api_jobs__job_id__print_selection_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrintSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintSelection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_printed_fingers_api_jobs__job_id__printed_fingers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintedFinger"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_printed_finger_api_jobs__job_id__printed_fingers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePrintedFingerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintedFinger"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_trials_api_jobs__job_id__physical_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhysicalTrial"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_trial_api_jobs__job_id__physical_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogTrialRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhysicalTrial"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_validation_api_jobs__job_id__validation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Validation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_jsonl_api_export_physical_jsonl_get: {
+        parameters: {
+            query?: {
+                job_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_csv_api_export_physical_csv_get: {
+        parameters: {
+            query?: {
+                job_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trials_jsonl_api_export_trials_jsonl_get: {
+        parameters: {
+            query?: {
+                job_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
