@@ -208,6 +208,49 @@ Nothing is stored.
 - A blank name defaults to "<file stem>_<date>".
 - The experiment ID (`EXP-0001`, …) never changes.
 
+## GPU panel
+
+**What it's for:** connecting the sim to a GPU target. The rest of the API never sees which one: jobs talk to
+`SIM_URL`, and the connected target is forwarded there. Targets come from `COMPUTE_BACKENDS`:
+
+- **Brev** instances (created in the Brev console) are started and stopped, and stop by themselves when idle.
+- The **MSOE GB10** (`always_on`) is shared with other teams: it's connected and disconnected, and its sim server keeps
+  running after a disconnect. Label its buttons "Connect" and "Disconnect".
+
+One target is connected at a time.
+
+**Calls**
+
+- `GET /api/compute` is cheap (no provider call): `backends` (each enabled one's `name`, `label` and `always_on`),
+  `managed`, `auto_stop_minutes` (Brev), `session` (the one starting, ready or stopping, else null), `last` (the latest
+  session, ended ones included) and `not_ready_reason`. Poll it every few seconds while a session starts or stops.
+- `GET /api/compute/instances` asks every enabled backend (a few seconds: the Brev CLI, ssh to the GB10) and returns
+  `{instances, errors}`. Each instance has `backend`, `name`, `status` (the provider's word; the GB10's is `AVAILABLE`
+  or `BUSY`), `state` (`running`, `starting`, `stopping`, `stopped`, `other`), `gpu`, `instance_type`, `always_on` and,
+  for the GB10, `other_gpu_processes`: the GPU processes besides our sim server (another team's, or a teammate's run),
+  which the panel shows in the target list and, refreshed every minute, while connected. A backend that can't be asked
+  (no VPN, CLI not logged in) is in `errors` as `{backend, message}`, and the others are still listed.
+- `POST /api/compute/start {backend, instance}` is 202 with the session (`status: "starting"`). 422 for a backend that
+  isn't enabled, 404 for an unknown target, 409 while another target's session is active (the message says to stop the
+  Brev instance or disconnect the GB10 first), 502 when the provider fails. Asking again for the same target returns its
+  session.
+- `POST /api/compute/stop` is 202 (`stop_requested: 1`): stops the Brev instance, or disconnects the GB10. 409 when
+  nothing is connected.
+- `GET /api/compute/sessions?limit=` lists sessions, latest first: which target was connected when, and why it ended
+  (`stop_reason`: `user`, `idle`, `external`, `failed`). A log of GPU time.
+
+**A session's life:** `starting` (its `message` says which step: starting the instance, waiting for the Isaac
+container, starting the sim server, connecting) → `ready` → `stopping` → `stopped`; or `failed`, with the reason in
+`message`. A failed Brev session stops its instance too; a failed GB10 session stops nothing. If the sim server dies
+while connected, the session starts it again.
+
+**Auto-stop (Brev only):** a ready session stops after `auto_stop_minutes` without a job worker running or a test-plan
+prediction waiting. Starting a job, a resume or a prediction restarts the clock.
+
+**Jobs wait for it:** when `managed` is true, `POST /api/jobs` and `POST /api/jobs/{id}/resume` answer 409 with
+`not_ready_reason` until a session is ready; a test plan is still created, with its prediction failed and the reason in
+`prediction_error` (predict again once the GPU is up). With only the mock enabled nothing waits.
+
 ## Job list
 
 **Cards:** `GET /api/jobs?part_id=&status=&backend=` returns cards, newest first. A card has:
@@ -268,6 +311,96 @@ stored.
 `jaw_open_mm`.
 
 **Review gate:** `POST /api/jobs/{id}/review` is unchanged. No finger goes on the robot without approval.
+
+## Isaac Sim clips
+
+**What they are:** real Isaac Sim footage of one grasp. A final design (D1, D2, ..., STOCK, IMP) is filmed at one grid
+point, with the same finger, part, offset, grip force and transport the experiment simulated. The sim server runs the
+grasp with the cameras on and returns an mp4 per view:
+
+- `closeup`: the fingers and the part at the grasp site, across the jaws' closing direction;
+- `side`: the cell's side camera, with the arm.
+
+A clip is about 5 s (the 3.9 s grasp, then a second holding the lift).
+
+**Status of the work (2026-10-20):**
+
+- **Done and tested offline:** the app's calls below, the worker, and the sim server's `POST /record_grasp`.
+- **Not yet run on the GPU:** filming in Isaac Sim, and how long a clip takes. Build the UI against these calls now.
+  Real clips need an experiment run on the Isaac sim and a connected GPU.
+
+**Ask for a clip:** `POST /api/jobs/{id}/clips`.
+
+```json
+{"design": "D1", "offset": {"dx": 4.0, "dy": 0.0, "yaw_deg": 0.0}}
+```
+
+- `design` is a final label, in any case.
+- `offset` is in mm and degrees, like the results' `held_maps` points. Take it from a held-map point, so the clip can
+  be compared with the stored result. `yaw_deg` defaults to 0. Each value must be within ±50 mm or ±180°.
+- The answer is **202** with the clip, queued:
+
+  ```json
+  {
+    "id": 7,
+    "job_id": "be4cdfe542",
+    "design": "D1",
+    "offset": {"dx": 4.0, "dy": 0.0, "yaw_deg": 0.0},
+    "status": "queued",
+    "views": ["closeup", "side"],
+    "outcome": null,
+    "result": null,
+    "matches_result": null,
+    "duration_s": null,
+    "error": null,
+    "created": 1792534800.0,
+    "recorded": null
+  }
+  ```
+
+- **Asking again** for the same design and offset returns the existing clip, unless it failed. Then a new one is made.
+
+**The clip's life:** `queued`, then `recording`, then `ready`, or `failed` with `error`.
+
+- **Poll** `GET /api/jobs/{id}/clips` (newest first) every few seconds while any clip is queued or recording.
+- **A ready clip:**
+
+  ```json
+  {"id": 7, "status": "ready", "outcome": "held", "result": "held", "matches_result": true, "duration_s": 4.9,
+   "recorded": 1792534870.2, "views": ["closeup", "side"], "...": "the other fields as above"}
+  ```
+
+- **`outcome`** is what happened in this recording: `held` or `missed`.
+- **`result`** is the experiment's stored outcome at that offset. It's null when the offset isn't a point of the final
+  grid.
+- **`matches_result`** says whether they agree. False is expected now and then near a design's capture edge, where a
+  grasp isn't repeatable. Show both, and say when they differ.
+- **A failed clip:** `"status": "failed", "error": "can't reach the sim server at http://127.0.0.1:9000: ..."`. The
+  error is a one-line reason, to show as it is.
+
+**Play it:** `GET /api/jobs/{id}/clips/{clip_id}.mp4?view=closeup|side`.
+
+- The default view is `closeup`.
+- It's H.264 video, which plays in a `<video>` element straight from that URL.
+- It answers 409 until the clip is ready, or when the clip lacks that view.
+
+**Errors**
+
+| Code | When |
+| --- | --- |
+| 404 | Unknown job, design label or clip. An unknown label's message lists the experiment's labels. |
+| 409 | The experiment hasn't run its final test; it ran on the mock sim ("... clips need an experiment run on the Isaac sim"); no GPU is ready (the `not_ready_reason` text, as for jobs); or the video isn't ready. |
+| 422 | A bad body: no design, or an offset out of range. |
+
+**Timing**
+
+- Plan on about a minute per clip until it's measured.
+- The first clip after the sim server starts takes longer, while its render materials compile.
+- Clips queue behind a running job's batches, since the sim server does one thing at a time.
+- A Brev GPU doesn't idle-stop while a clip is being recorded.
+
+**Demo data:** demo experiments ran on the mock sim, so they answer 409. To build the UI without a GPU, stand in for
+these three calls with the payloads above and any short mp4.
 
 ## Results tracker
 

@@ -18,6 +18,8 @@ To add a new document, use the `add-doc` skill (Claude Code) or follow [Conventi
 | 03 | [Dataset 3: Grasping and Sorting](03-dataset-3-grasping-sorting.md): our challenge | dataset | 2026-10-15 |
 | 04 | [MSOE GB10 access](04-gb10-access.md): `spark1.ai.msoe.edu` over the VPN, shared (password redacted) | event | 2026-10-20 |
 | 05 | [Brev credits](05-brev-credits.md): $500 for the team, on Alec's account | event | 2026-10-20 |
+| 06 | [Participant dashboard](06-participant-dashboard.md): the real-robot platform (policy client, submission, slots, scoring, FAQ), hackathon.sidclab.org | event | 2026-10-20 |
+| 07 | [CAD Models](07-cad-models.md): the cell's gripper, screw, bin, cubes, vial, cap and table texture (files in [../cad/](../cad/README.md)) | dataset | 2026-10-20 |
 
 ### References (pages linked from the core documents)
 
@@ -28,6 +30,8 @@ To add a new document, use the `add-doc` skill (Claude Code) or follow [Conventi
 | [FANUC ROS 2 Driver Quick Start](references/fanuc-ros2-driver-quickstart.md) | 03 | complete |
 | [Isaac Sim Manipulator Robot Assets](references/isaac-sim-manipulator-assets.md) | 03 | index page only |
 | [Isaac Sim ROS 2 Joint Control](references/isaac-sim-ros2-joint-control.md) | 03 | **partial (truncated)** |
+| [Client package](references/physicalai-client-package.md): README, submission templates, frames (SIDCLab/PhysicalAI-Hackathon-2026 at ff7534e) | 06 | complete (code not vendored) |
+| [AI Plays Robotics](references/ai-plays-robotics.md): the organizers' essay on the screw-picking task | 06 | complete (videos not stored) |
 
 ### Not yet received
 
@@ -36,10 +40,11 @@ Linked from the documents above but not provided yet:
 - Compute: Brev, DGX Spark, and build.nvidia.com (01)
 - Coding agents (01)
 - Isaac Lab and Isaac Sim on DGX Spark (03). Until it arrives, the GB10 steps follow NVIDIA's
-  [Spark playbook](https://build.nvidia.com/spark/isaac/isaac-sim) ([GPU test plan, 0.2](notes/gpu-test-plan.md#02-msoe-gb10-free-check-it-first))
+  [Spark playbook](https://build.nvidia.com/spark/isaac/isaac-sim) ([GPU test plan, 0.2](notes/gpu-test-plan.md#02-msoe-gb10-free-shared-set-up))
 - Brev Getting Started Doc (05)
 - FANUC Tech Transfer video library (03, Tools and resources)
 - Rest of the Isaac Sim ROS 2 Joint Control page (03)
+- The stock finger CAD (03) and the further parts the CAD Models page says will follow (07)
 
 ### Our working docs
 
@@ -48,11 +53,14 @@ Linked from the documents above but not provided yet:
 | [../CONTEXT.md](../CONTEXT.md) | Current project state: facts, constraints, decisions, open questions |
 | [notes/things-to-know.md](notes/things-to-know.md) | Gotchas, mismatches and warnings everyone should read |
 | [notes/gpu-test-plan.md](notes/gpu-test-plan.md) | Runbook: bring up the sim server on Brev / the GB10 and validate it step by step |
-| [notes/cadquery-design.md](notes/cadquery-design.md) | CadQuery as the CAD kernel: why fingers are built as convex solids, part import, V-HACD, what's left to do |
+| [notes/cadquery-design.md](notes/cadquery-design.md) | CadQuery as the CAD kernel: why fingers are built as convex solids, the finger mount, part import, V-HACD, what's left to do |
 | [notes/input-flow-backend-plan.md](notes/input-flow-backend-plan.md) | The input-flow and outputs backend plan: decisions D1–D17, models, pipeline, sim contract v2, workstreams |
 | [notes/backend-api.md](notes/backend-api.md) | The backend API as built, screen by screen, for the frontend; demo data (`DEMO_DATA=true`) |
+| [notes/frontend-plan.md](notes/frontend-plan.md) | The frontend plan: every screen and user flow, GPU choice and help, caveats, priorities, backend gaps |
 | [experiments/](experiments/) | Simulation and physical trial log (required for measured results) |
 | [images/](images/) | Images referenced by the docs |
+| [../cad/](../cad/README.md) | The organizers' CAD of the cell, unchanged, with hashes and what we measured in it |
+| [../cell_policy/](../cell_policy/README.md) | Our policy and submission for the real-robot platform (06) |
 | [../sim/fanuc_er4ia_sim/docs/](../sim/fanuc_er4ia_sim/docs/) | Upstream twin docs: calibration v0.5, model notes |
 
 ## Conventions

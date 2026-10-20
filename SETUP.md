@@ -170,7 +170,8 @@ npm run typecheck  # shows every frontend call that no longer matches the API
 If the backend runs on another port, start the dev server with `API_URL` set, e.g. `API_URL=http://localhost:8001 npm run
 dev` in Git Bash, or `$env:API_URL="http://localhost:8001"; npm run dev` in PowerShell.
 
-The mock simulator's success rates are made up: never report them as results.
+The mock simulator's success rates are made up: never report them as results. To run jobs on the real twin instead,
+connect a GPU from the app: [GPU from the web app](#gpu-from-the-web-app).
 
 To use real backends (Claude for the LLM step, the sim server for grasps), copy the template and fill in what you need:
 
@@ -191,7 +192,7 @@ Set up what you need for the machine you'll use:
 | --- | --- | --- |
 | Brev account in the team | Brev | You can see the team (UWM/MSOE-Team-40) at <https://brev.nvidia.com> |
 | WSL with Ubuntu (Windows only) | Running the Brev CLI | `wsl -l -v` in PowerShell lists an Ubuntu with VERSION 2 |
-| Brev CLI | `brev shell`, `brev copy`, `brev port-forward` | `brev --version` in the Ubuntu terminal |
+| Brev CLI | The web app's Brev target, and `brev shell`, `brev copy`, `brev port-forward` by hand | `brev ls` in the Ubuntu terminal lists the team's instances |
 | MSOE VPN (GlobalProtect) | Reaching the GB10 | `ssh hackathon11@spark1.ai.msoe.edu` connects |
 | Your SSH key on the GB10 | Logging in without the shared password | `ssh -o BatchMode=yes hackathon11@spark1.ai.msoe.edu true` returns without a prompt |
 
@@ -236,6 +237,9 @@ brev ls          # the team's instances; empty until someone starts one
 Run every `brev` command from that terminal, not from PowerShell. Other install options are in the
 [Brev CLI docs](https://docs.nvidia.com/brev/latest/cli/getting-started).
 
+Once the CLI is logged in, the web app can start and stop the team's GPU for you: see
+[GPU from the web app](#gpu-from-the-web-app).
+
 #### MSOE VPN
 
 The GB10 is only reachable from MSOE's network. MSOE's VPN client is **GlobalProtect**; follow MSOE IT's
@@ -264,8 +268,101 @@ ssh-keygen -t ed25519    # only if you don't have ~/.ssh/id_ed25519 yet; accept 
 type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh hackathon11@spark1.ai.msoe.edu "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 ```
 
-On macOS or Linux, `ssh-copy-id hackathon11@spark1.ai.msoe.edu` does the same. The GB10 is shared with other teams:
-check `who` and `nvidia-smi` before running anything heavy, and stop your servers when you're done.
+On macOS or Linux, `ssh-copy-id hackathon11@spark1.ai.msoe.edu` does the same. Then check that you're in without a
+prompt, since the web app can't type a password:
+
+```powershell
+ssh -o BatchMode=yes hackathon11@spark1.ai.msoe.edu true    # returns at once, with no output and no prompt
+```
+
+The GB10 is shared with other teams: check `who` and `nvidia-smi` before running anything heavy there by hand. The
+team's one sim server is meant to stay running between uses (the web app connects to it); don't start a second Isaac Sim
+next to it.
+
+### GPU from the web app
+
+The app runs jobs on the **mock** sim until you connect a real GPU target from its **GPU panel**: a **Brev** instance
+(the team's credits, about $3/hr while it runs) or the **MSOE GB10** (free, always on, shared with other teams). One
+target is connected at a time. The rest of the app doesn't care which: jobs always talk to `SIM_URL`, and the connected
+target is forwarded there. How it works inside: [app/README.md](app/README.md#gpu-from-the-app).
+
+**Who does what**
+
+| When | Who | What |
+| --- | --- | --- |
+| Once per target | Whoever sets the target up | Put the repo and the sim server on it, following the [GPU test plan](docs/notes/gpu-test-plan.md). The team's Brev instance is set up; [CONTEXT.md](CONTEXT.md) has the GB10's status |
+| Once per person | You | The accounts and tools for the targets you'll use (step 1), and your `.env` (step 2) |
+| Each time | You | For the GB10, connect the VPN. Start the app, then connect a target in the GPU panel (step 4) |
+
+#### 1. Your accounts and tools
+
+Only for the targets you'll use. Each check is the same call the app makes, so if it passes, the app can get in too.
+
+| Target | Set up (sections above) | Check |
+| --- | --- | --- |
+| Brev | [Brev account](#brev-account), [WSL and Ubuntu](#wsl-and-ubuntu-windows-only) (Windows only), [Brev CLI](#brev-cli), logged in | Windows PowerShell: `wsl -d Ubuntu -e bash -lc 'brev ls'`; macOS and Linux: `brev ls`. It lists the team's instance |
+| MSOE GB10 | [MSOE VPN](#msoe-vpn), [your SSH key on the GB10](#your-ssh-key-on-the-gb10) | With the VPN connected: `ssh -o BatchMode=yes hackathon11@spark1.ai.msoe.edu true` returns with no prompt |
+
+#### 2. Your `.env`
+
+In the repo root (copy `.env.example` if you don't have one; it's gitignored). On Windows:
+
+```bash
+SIM_BACKEND=http
+SIM_URL=http://127.0.0.1:9000
+COMPUTE_BACKENDS=brev,gb10
+COMPUTE_BREV_WSL=Ubuntu      # the WSL distro the Brev CLI is installed in
+```
+
+On macOS and Linux, leave out `COMPUTE_BREV_WSL`. List only the targets you've set up, e.g. `COMPUTE_BACKENDS=gb10`.
+Leave the GB10 settings at their defaults: the whole team shares one sim server there, so everyone must use the same
+port (`COMPUTE_GB10_SIM_PORT`, 9011). Never put the GB10 password in `.env`; the app only uses your SSH key.
+
+#### 3. Check that the app sees your targets
+
+Start the backend. Its startup log says `compute=brev,gb10`, and it refuses to start if a setting is missing (the log
+says which). Then open <http://localhost:8000/api/compute/instances> in a browser. Its `instances` should list the Brev
+instance and `spark1`. A target that can't be reached is listed under `errors`, with what to fix (see
+[Troubleshooting](#troubleshooting)); the others still work.
+
+#### 4. Use it
+
+1. With the backend running, start the frontend's dev server (`npm run dev` in `app/frontend`) and open
+   <http://localhost:5173/app.html>. The GPU panel is there.
+2. Choose a target:
+   - **Brev:** choose it and press **Start the GPU**. Booting takes a few minutes, plus about a minute for Isaac Sim.
+   - **GB10:** choose `spark1` and press **Connect**. It's quick if the team's sim server is running, and about a
+     minute if it has to start.
+
+   The panel shows each step.
+3. When it says **Ready** (or **Connected**), run jobs. Until then, a job, a resume or a prediction is refused with the
+   reason. Until the new UI has its job pages, start jobs through the API at <http://localhost:8000/docs> (see
+   [backend-api.md](docs/notes/backend-api.md)).
+4. When you're done:
+   - **Brev:** press **Stop the GPU**. It also stops by itself after 20 minutes without a job, but don't leave it to
+     that.
+   - **GB10:** press **Disconnect**. This closes only your connection; the sim server stays up for your teammates.
+
+   Closing the browser doesn't end anything: the session and every job run in background processes, even across API
+   restarts, and the API still has them when you come back. They do run on this laptop, though: keep it awake, and on
+   the VPN for the GB10.
+
+**If the VPN drops** (or your connection to Brev does) during a job, nothing needs restarting. The panel says the sim
+server isn't answering, and running jobs wait for it, for up to 2 hours (`SIM_RECONNECT_MINUTES`). Reconnect
+GlobalProtect: within about a minute the panel reconnects by itself, and each job carries on with the round it was in,
+without running it again. A job that waited longer fails; connect the GPU again and resume it, and it carries on after
+its last finished round.
+
+#### Working on the GPU code
+
+- **No GPU needed:** with the default `COMPUTE_BACKENDS=mock`, the panel shows two made-up targets and sessions run
+  against them, so the panel and the session logic work offline. `uv run pytest` covers the Brev and GB10 clients with
+  fake CLI and ssh runners.
+- **The sim server on a target is a copy.** After you change `sim/sim_server`, update the copy on the target and restart
+  its server, as the [GPU test plan](docs/notes/gpu-test-plan.md) says. The GB10's server is shared, so tell your team
+  before you restart it.
+- **Logs:** `DATA_DIR/compute.log` (sessions), `DATA_DIR/compute_forward.log` (the port forward), and on the target
+  `runs/sim_server.log` in the repo.
 
 ### CAD: not covered yet
 
@@ -289,3 +386,17 @@ software.
 | `wsl --install` fails, or WSL won't start | Run PowerShell as administrator. If it still fails, turn on virtualization (VT-x or AMD-V) in the laptop's BIOS/UEFI settings. |
 | `ssh ... spark1.ai.msoe.edu` times out or can't resolve the host | The MSOE VPN isn't connected. Connect GlobalProtect first. |
 | The GB10 still asks for the password after adding your key | Check you sent the `.pub` file, then on the GB10 run `chmod 700 ~/.ssh` and `chmod 600 ~/.ssh/authorized_keys`. |
+| The app won't start: "COMPUTE_BACKENDS=... forwards the sim server to this machine, so it needs SIM_BACKEND=http and a local SIM_URL" | Set `SIM_BACKEND=http` and `SIM_URL=http://127.0.0.1:9000` in `.env` ([step 2](#2-your-env)). |
+| GPU panel: "can't reach the GB10 (spark1.ai.msoe.edu): connect the MSOE VPN" | Connect GlobalProtect, then press **Refresh the list**. |
+| GPU panel: "the GB10 refused the login as hackathon11: add your SSH key" | Add your key ([Your SSH key on the GB10](#your-ssh-key-on-the-gb10)) and check it with the `BatchMode=yes` command there. |
+| GPU panel: "the GB10's host key changed" | Don't delete the old key from `known_hosts` to get past it: ask in `#compute-questions` first, since it can mean you're not talking to the real GB10. |
+| GPU panel: "GB10 not set up" | The repo or Isaac Sim is missing on the GB10. Whoever maintains it sets it up again ([GPU test plan](docs/notes/gpu-test-plan.md)). |
+| GPU panel: "Isaac Sim hung (or exited) while starting, as it sometimes does; trying again" | Normal on the GB10, about 1 start in 4: the panel retries by itself, up to 3 starts. Nothing to do. |
+| GPU panel: "Isaac Sim didn't start on spark1 in 3 tries" | Rare. Read `runs/sim_server.log` (and `sim_server.prev.log`) in the repo on the GB10, then press **Connect** again. Ask in `#compute-questions` if it keeps failing. |
+| GPU panel: "port 9011 on the GB10 is held by another account" | Another team took the port. Agree a new one with your team, and everyone sets `COMPUTE_GB10_SIM_PORT` to it. |
+| GPU panel: "brev ls failed: ..." or "can't run the Brev CLI" | Run `brev login` in the Ubuntu terminal. If it's not installed, see [Brev CLI](#brev-cli); on Windows, set `COMPUTE_BREV_WSL=Ubuntu`. |
+| GPU panel: "... is FAILURE on Brev after the start request" | Usually no GPU of that type is free in its region right now. Try again in a few minutes, and check the instance's Activity Logs in the Brev console. |
+| GPU panel: "the port forward ... exited" | See `DATA_DIR/compute_forward.log`. Often something else is using local port 9000: stop it, or move `SIM_URL` to another port. For Brev, also try `brev refresh` in Ubuntu. |
+| GPU panel: "The sim server isn't answering (...); retrying, and running jobs wait up to 120 min for it" | The connection dropped, usually the VPN: reconnect GlobalProtect. The panel reconnects by itself and the jobs carry on ([if the VPN drops](#4-use-it)). |
+| A job failed: "... didn't answer again within 120 min: reconnect the GPU in the GPU panel, then resume the job" | The connection was down longer than `SIM_RECONNECT_MINUTES`. Connect the GPU, then resume the job (`POST /api/jobs/{id}/resume`): it carries on after its last finished round. |
+| A job is refused: "The GPU isn't connected" | Connect a target in the GPU panel and wait for **Ready** or **Connected** ([step 4](#4-use-it)). |

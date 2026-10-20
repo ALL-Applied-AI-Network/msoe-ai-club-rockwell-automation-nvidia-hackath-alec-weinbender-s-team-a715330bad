@@ -12,6 +12,8 @@ Log every simulation batch and every physical trial session here, including fail
 | Date | Experiment | Kind | Headline result |
 | --- | --- | --- | --- |
 | 2026-10-20 | [Sim server bring-up on Brev, stages 0–3](2026-10-20-brev-sim-server-bringup.md) | sim (real twin) | Stock cube held 1/1, 10/10 and 56–61/81 on the grid; 2.1 grasps/s after fixing a uvloop crash; outcomes beyond 5 mm not repeatable |
+| 2026-10-20 | [Sim server bring-up on the MSOE GB10, 0.2 and stages 1–3](2026-10-20-gb10-sim-server-bringup.md) | sim (real twin) | Isaac Sim 6.0.1 from aarch64 pip wheels; stock cube 1/1, 10/10, 58–60/81; agrees with Brev 92.6–96.3% (as well as each agrees with itself); 2.8 grasps/s |
+| 2026-10-20 | [Stages 4–6 on the GB10: custom fingers, contract v2, GPU path](2026-10-20-gb10-stages-4-6.md) | sim (real twin) | Swaps work but landing capture makes tight and loose pads score alike; the twin grips at only ~2.5 N per jaw (heavy-block checks fail); 64 GPU copies run at 16–19 grasps/s but hold ~9/81 more than the reference; CPU copies match it at ~5 grasps/s |
 
 ## Template
 

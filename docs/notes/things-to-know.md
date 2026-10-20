@@ -11,23 +11,35 @@ kind: note
 Short list of things that will bite us if nobody knows them. **Add to it** whenever you hit one. The broader project state is in
 [../../CONTEXT.md](../../CONTEXT.md).
 
-*Last updated: 2026-10-15*
+*Last updated: 2026-10-20*
 
 ## Hardware and the demo part
 
 1. **Gripper mismatch: SMC, not SCHUNK.** Our team plan and the Dataset 3 page say "SCHUNK pneumatic two-finger gripper".
-   The organizers' twin is built from the CAD of an **SMC MHZL2-16D2**. Finger mounts must match the *real* actuator, so
-   confirm with Zhen Zeng (zhenzeng@uwm.edu) before designing any mount interface.
-2. **The jaws barely open.** Travel is 6 mm per jaw, so the straight-face gap is **0–12 mm**; at the hooked tips it is about
+   The twin and the organizers' dashboard FAQ ([06](../06-participant-dashboard.md)) say **SMC MHZL2-16D2** with custom
+   aluminium fingers, and SMC's STEP is published ([07](../07-cad-models.md), `cad/`).
+2. **The jaw in SMC's STEP isn't what the twin's photo reconstruction assumed.** Each jaw ends in a flat tongue 5 mm thick
+   along the travel, 8 mm wide and 15 mm long. It has two Ø3.4 mm holes **along the jaw travel**, 4 and 11 mm below its
+   shoulder ([cad/README.md](../../cad/README.md)). The photo mount had holes across the travel at 10 and 23 mm, and the
+   23 mm hole is past the end of the tongue. The app now builds the STEP's mount by default (`SMC_FLAT_JAW_MOUNT`).
+   **Check it on the real jaw before printing.**
+3. **The jaws barely open.** Travel is 6 mm per jaw, so the straight-face gap is **0–12 mm**; at the hooked tips it is about
    4 mm closed and 16 mm open. Tennis balls (~67 mm) and eggs from our plan **cannot be grasped** with this actuator. The
-   organizers' feedback ("not all of the existing items will fit in the fingers") is pointing at this.
-3. **Objects on the real cell:** ~10 mm yellow cubes, yellow vial caps and clear glass tubes (see the
-   [dataset photos](../03-dataset-3-grasping-sorting.md)). These are the realistic demo parts unless we redesign the fingers
-   for something larger.
-4. **Stock fingers:** aluminium blades of about 76 × 12 × 6 mm, with a hooked tip and an AA-sized circular recess. TCP is
-   293 mm from the J6 origin (70 mm to the faceplate plus 223 mm UTOOL1).
-5. **The organizers want a specific manufacturing part + task**, a comparison against the **stock fingers**, and the sim
+   organizers' feedback ("not all of the existing items will fit in the fingers") is pointing at this. Of the cell's
+   objects, the stock fingers can't take the 16 mm cube, the cap's plug (Ø20.8–23.6) or the vial (Ø27.18).
+4. **Objects on the real cell** ([07](../07-cad-models.md)): M6 × 30 countersunk screws, 10 and 16 mm cubes, 50 × 50 × 55 mm
+   bins, a vial and its cap. **The platform's default scene is 8 screws and the yellow bin.** The table camera can't see
+   the screws; finding them takes the wrist camera close up.
+5. **Stock fingers:** aluminium blades of about 76 × 12 × 6 mm, with a hooked tip and an AA-sized circular recess. TCP is
+   293 mm from the J6 origin (70 mm to the faceplate plus 223 mm UTOOL1). Which way the 12 mm runs, and so where the
+   straight faces sit, was inferred by the twin, not measured (CONTEXT.md, risk 8).
+6. **The organizers want a specific manufacturing part + task**, a comparison against the **stock fingers**, and the sim
    success rate treated as a prediction to **validate physically**.
+7. **The real arm is reached through the organizers' platform** ([06](../06-participant-dashboard.md)): our `policy.py`
+   runs on our machine, their operator runs and scores 10 rollouts per run in a booked 30-minute slot, and every rollout
+   is recorded. Our version is in [cell_policy/](../../cell_policy/README.md). Its "tcp" targets are the **stock**
+   fingertip, and the cell refuses TCP z below −334 mm (the surface is at about −335). Fingers that end lower than the
+   stock ones could touch the table inside that limit.
 
 ## The app
 
@@ -45,8 +57,10 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
    jaws closed, fingertips at z = 0); the sim server, the CAD file and the 3D preview all get the same pieces. The stock
    blade's bounding box (x 0..12, y -3..3, z 0..76) is checked against `cell.py` by the sim server's tests. PhysX keeps
    at most 64 vertices per convex hull, so no piece may have more points (the app's tests check this).
-4. **Printable CAD comes from CadQuery** (STEP of the pair, STL per side, print sheet) with mount holes from the cell
-   profile. The hole positions are still the twin's photo reconstruction, so **measure the real jaw before printing**.
+4. **Printable CAD comes from CadQuery** (STEP of the pair, STL per side, print sheet) with the cell profile's mount.
+   Since 2026-10-20 that's SMC's jaw from its STEP: the root is cut back for the jaw's tongue, with M3 holes along the
+   jaw travel. A database whose default profile was the old photo mount, unedited, gets the new default as its next
+   version at startup. Jobs keep the version they used. **Measure the real jaw before printing.**
    A failed export check (solid, matches the sim, min wall, finger length) blocks the download with a 409 that says why.
 5. **The 3D preview loads three.js from a CDN** (jsDelivr), so it needs internet access.
 6. **The app reads the repo-root `.env`**; exported shell variables override it (see `.env.example`). `SIM_URL` is the sim
@@ -63,8 +77,9 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
 
 1. **It needs Linux and an NVIDIA GPU.** It was validated on Linux with Isaac Sim 6.0 on an RTX A6000. It won't run on our
    Windows laptops; use Brev (Isaac Sim launchable, RTX PRO 6000 or 4500) or the MSOE GB10. The GB10 is ARM64 and shared
-   with other teams: Isaac Sim there is a source build, it needs an R580 driver, other teams can reach its localhost ports,
-   and its password never goes in the repo ([GPU test plan, 0.2](gpu-test-plan.md#02-msoe-gb10-free-check-it-first)).
+   with other teams. Isaac Sim 6.0.1 is installed there from pip wheels (`ISAAC=~/isaac-sim-6.0.1`), and it needs the
+   R580 driver. Other teams can reach its localhost ports (use port 9011). Start Isaac there detached, not in tmux. Its
+   password never goes in the repo ([GPU test plan, 0.2](gpu-test-plan.md#02-msoe-gb10-free-shared-set-up)).
 2. **It uses three Python interpreters:** host `.venv`, Isaac `python.sh` and the Cosmos env. Using the wrong one fails in
    confusing ways. Our `sim/sim_server` runs under Isaac's `python.sh` too, not under `uv run` (see
    [sim/README.md](../../sim/README.md#sim_server)).
@@ -72,15 +87,23 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
 4. **The robot USD and Cosmos weights are not bundled.** First run needs network access to Isaac's asset root (or set
    `FANUC_ROBOT_USD`).
 5. **The demo task is cube stacking, not screws.** The Tools and Resources tutorial prompt says "pick up the screws", but
-   v0.5 removed the screw task.
+   v0.5 removed the screw task (`SCREWS = []`, `SHOW_BINS = False`), though the real cell's default scene is screws and a
+   bin. The twin also scales the vial to Ø17 × 140 mm (real: Ø27.18 × 203). Its table renders white because its mat
+   texture isn't in the starter; the real surface's photo is `cad/manipbench-table-surface.png`. Our sim server takes
+   parts as meshes, so the screw comes in through the app's part upload (`cad/ISO10642-M6x30-countersunk-screw.step`).
 6. **Ground truth is for evaluation only.** Simulator object poses must never feed grasp commands.
 7. **Units:** the twin uses metres and degrees, the app uses millimetres. Convert in `sim/sim_server`.
-8. **`sim/sim_server` has only been checked on the reference path.** On Brev (2026-10-20) GPU test plan stages 0–3 passed
-   with stock fingers ([log](../experiments/2026-10-20-brev-sim-server-bringup.md)); custom fingers, contract v2 and the
-   GPU path stay unverified until stages 4–6. Results near a design's capture edge aren't repeatable, and a finger
-   landing on the part can count as a grasp (CONTEXT.md, risk 5). Two things to know going in:
-   custom-finger friction is *averaged* with the part's 0.9 / 0.8 by default (`--friction-combine`), and the batched
-   view may refuse copies with different fingers in one chunk (`is_homogeneous`), which would force one design per chunk.
+8. **`sim/sim_server` has run GPU test plan stages 0–6, with three known problems** (2026-10-20:
+   [Brev](../experiments/2026-10-20-brev-sim-server-bringup.md), [GB10](../experiments/2026-10-20-gb10-sim-server-bringup.md),
+   [stages 4–6](../experiments/2026-10-20-gb10-stages-4-6.md)). Finger swaps, mixed designs in a GPU chunk, mesh parts,
+   the in-hand readout and transport work. But:
+   - a finger landing on the part can count as a grasp, which flatters every design (CONTEXT.md, risk 5);
+   - the twin grips at only about 2.5 N per jaw, so heavy parts drop (risk 6);
+   - the GPU path with copies holds about 9/81 more than the reference (risk 7). `--envs 64 --device cpu` matches the
+     reference.
+
+   Results near a design's capture edge aren't repeatable. Custom-finger friction is *averaged* with the part's by
+   default (`--friction-combine`).
 9. **It's vendored upstream code.** Prefer wrappers over edits, and log any edits in `CONTEXT.md` (`MANIFEST.json` has the
    original hashes).
 
@@ -89,8 +112,10 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
 1. **Never command the physical arm or touch its controller, cameras, PLC or network** without the plant manager and
    mentor. A Claude Code hook blocks driver launches with `robot_ip:=`.
 2. **No printed finger goes on the robot before it is reviewed** for clearance and safe operation.
-3. **Book CSI time early.** Post in `#data-and-testbed-requests`, tag Shamar Webster, and include the test plan, duration,
-   attendees and dates. Nothing is guaranteed.
+3. **Book robot time early.** The main route is the organizers' platform: `uv run run.py --submit`, then a slot in the
+   dashboard's Calendar ([06](../06-participant-dashboard.md)). Printed fingers are declared under `custom_hardware`
+   and reviewed with the request. For anything else, post in `#data-and-testbed-requests`, tag Shamar Webster, and
+   include the test plan, duration, attendees and dates. Nothing is guaranteed.
 4. **Stop Brev instances when you're done**, because credits burn while they run. Stopped instances still incur small storage
    costs. Record the GPU, runtime and credits for each run.
 5. **Log every experiment**, including failures, in [../experiments/](../experiments/README.md). Judges want measured

@@ -11,10 +11,10 @@ kind: event
 > **Our notes (not part of the source):**
 >
 > - **The password is redacted here.** It's in the original email. Never put it in the repo, Slack, scripts or `.env`;
->   use SSH keys instead ([GPU test plan, 0.2](notes/gpu-test-plan.md#02-msoe-gb10-free-check-it-first)).
-> - The GB10 is ARM64 (the DGX Spark platform). Isaac Sim 6.0 has aarch64 builds only for DGX Spark, built from source, and
->   needs an **R580 driver** there: NVIDIA reports R590+ drivers crash it at RTX startup. Check `nvidia-smi` before
->   building anything. We can't change the driver from a team account.
+>   use SSH keys instead ([GPU test plan, 0.2](notes/gpu-test-plan.md#02-msoe-gb10-free-shared-set-up)).
+> - The GB10 is ARM64 (the DGX Spark platform). Isaac Sim 6.0.1 is installed on the team account from NVIDIA's aarch64
+>   pip wheels (2026-10-20). It needs the **R580 driver** the machine has (580.178.04): NVIDIA reports R590+ drivers crash
+>   it at RTX startup. Check `nvidia-smi` before a session. We can't change the driver from a team account.
 > - The machine is **shared with other teams**: they can reach its `127.0.0.1` ports, and the GPU may be busy.
 
 Hello-

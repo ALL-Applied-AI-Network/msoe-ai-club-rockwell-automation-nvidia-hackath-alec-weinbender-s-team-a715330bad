@@ -77,13 +77,23 @@ subtracted, so every strip stays convex.
 - A test checks that the bottom inner edge sits at face + lead with a full wall behind it. That test caught a 0.2 mm wedge
   error during the rewrite.
 
-**4. Mount holes are in the STEP/STL only, not in the collision pieces.**
+**4. The mount is in the STEP/STL only, not in the collision pieces.**
 
-- They follow the twin's convention that cosmetic holes don't change contact.
-- Position, from the twin's photo reconstruction (`scene_config.FINGER_MOUNT_HOLES`, `photo_finger_detail.json`): on the
-  blade's centreline (x = 6), 10 and 23 mm below the root (z = 66 and 53).
-- Size: Ø3.2 mm through-holes along y, with Ø5.2 × 1 mm counterbores on both faces.
-- They need confirming on the real cell before anything is printed. That's an open item in CONTEXT.md.
+- It follows the twin's convention that cosmetic holes don't change contact. The cuts all lie in the top 30 mm of plain
+  blade (`mount_kept_mm`), which is far above any part.
+- **Default since 2026-10-20: SMC's jaw, from its STEP** (`cell_profile.SMC_FLAT_JAW_MOUNT`, face `+x`; `cad/README.md`).
+  - Each jaw ends in a tongue 5 mm thick along the travel, 8 mm wide and 15 mm long. Its inner face is at x = 7.45 mm
+    with the jaws closed.
+  - The finger's root is cut back to x = 7.45 for 15.5 mm (the tongue plus 0.5 mm clearance), so the tongue seats
+    against that face. Two Ø2.5 mm holes (plus the print clearance) go 6 mm into the root along -x, 4 and 11 mm below
+    the root (z = 72 and 65), on the mid-plane, for M3 × 10 self-tapping screws through the tongue's Ø3.4 mm holes.
+  - The blade's root is assumed to butt against the tongue's shoulder, so the fingertips stay where the stock ones are.
+  - Checked against the STEP's jaw solid placed in G with the jaws closed: no overlap, faces touching, holes aligned.
+- The twin's photo reconstruction is `PHOTO_MOUNT` (face `-y`): on the blade's centreline (x = 6), 10 and 23 mm below the
+  root (z = 66 and 53), Ø3.2 mm through-holes along y with Ø5.2 × 1 mm counterbores on both faces. The STEP's jaw
+  contradicts it: its holes run along the travel, and the 23 mm hole lies past the end of the tongue.
+- `export_check.py` accounts for the step and holes along x in "matches sim", and checks the walls around them.
+- Either way, confirm the mount on the real cell before anything is printed. That's an open item in CONTEXT.md.
 
 **5. Output files.** `clients/cad.py: CadQueryCad.export(part, design, stem) → {"step": path, "stl": path}`.
 

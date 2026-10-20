@@ -60,7 +60,10 @@ The backend follows the [input-flow plan](docs/notes/input-flow-backend-plan.md)
      and predicted vs measured with Wilson intervals.
    - **Mock or Isaac badge** on everything.
 5. **Validate:** print the top designs and test them on the real arm, with the generated test plan, against the
-   **stock fingers** and the **imprint**.
+   **stock fingers** and the **imprint**. The real arm is reached through the organizers' platform
+   ([dashboard](docs/06-participant-dashboard.md)): a run is 10 rollouts in a booked 30-minute slot, scored by their
+   operator and recorded. Our printed fingers are declared under `custom_hardware`. [cell_policy/](cell_policy/README.md)
+   is the policy (a screw into the bin) and the submission. Each rollout commands one test-plan offset.
 
 The plan's LLM step is out of the loop (decision below). Stretch: a surrogate model that predicts success instantly.
 `DEMO_DATA=true` runs the app on generated demo data (mock results, made-up physical trials) in `app/data/demo`.
@@ -71,9 +74,11 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 | --- | --- | --- |
 | Web app backend (input flow, batch BO, results, tracker, exports) | `app/backend/` | Works end-to-end with the **mock** sim, a geometric capture check (not physics): 466+ tests, plus an end-to-end run against a live server with real worker processes |
 | Web app frontend | `app/frontend/` | New Vite + React UI being built against [backend-api.md](docs/notes/backend-api.md); the old single-file UI no longer matches the API |
-| Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | Contract v2: mesh parts, part friction, grip-force limit, transport, in-hand pose. **Runs in Isaac on Brev** (2026-10-20): GPU test plan stages 0–3 pass on the reference path with stock fingers, 2.1 grasps/s; custom fingers, contract v2 and the GPU path not yet checked ([log](docs/experiments/2026-10-20-brev-sim-server-bringup.md)) |
-| Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored from the organizers. Host tests and the headless scene build pass on Brev (2026-10-20); the stacking demo needs a Cosmos env and hasn't run. Only edit: the `.sh` files marked executable in git (2026-10-20, contents unchanged) |
-| CAD output | `app/backend/src/api/models/finger_cad.py`, `clients/cad.py` | CadQuery STEP (the pair) + STL per side, mount holes from the cell profile (positions from the twin's photo reconstruction: **confirm on the real jaw**), engraved IDs, export checks, print sheet |
+| Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | Contract v2: mesh parts, part friction, grip-force limit, transport, in-hand pose. **Runs in Isaac on Brev and the GB10** (2026-10-20). Stages 0–3 pass on both, and they agree ([Brev](docs/experiments/2026-10-20-brev-sim-server-bringup.md), [GB10](docs/experiments/2026-10-20-gb10-sim-server-bringup.md)). Stages 4–6 ran on the GB10 ([log](docs/experiments/2026-10-20-gb10-stages-4-6.md)): finger swaps, the in-hand readout, mesh parts and transport work. Heavy parts don't (risk 6), and the GPU path is biased (risk 7). 2.75 grasps/s reference, ~5 with CPU copies, 16–28 on the GPU |
+| Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored from the organizers. Host tests and the headless scene build pass on Brev and the GB10 (2026-10-20); the stacking demo needs a Cosmos env and hasn't run. Only edit: the `.sh` files marked executable in git (2026-10-20, contents unchanged) |
+| CAD output | `app/backend/src/api/models/finger_cad.py`, `clients/cad.py` | CadQuery STEP (the pair) + STL per side, the cell profile's mount (default since 2026-10-20: SMC's jaw from its STEP, the root cut back for the jaw's tongue, M3 holes along the jaw travel; **confirm on the real jaw**), engraved IDs, export checks, print sheet. Checked against the STEP's jaw solid: no overlap, faces touching, holes aligned |
+| Organizers' CAD of the cell | `cad/` | Gripper STEP, M6 screw, bin, 10/16 mm cubes, vial, cap, table texture; unchanged, with SHA-256s ([page](docs/07-cad-models.md)). All import through the app's part upload |
+| Real-cell policy + submission | `cell_policy/` | Scripted fingertip policy: one screw into the bin, at each rollout's test-plan offset; placement generator; `submission.yaml` for the stock baseline. Unit tests pass, and the client's `--mock` says "Ready for the real robot" (0 of 461 actions rejected). **Not run on the real arm** |
 
 ## Hardware and twin facts (from `sim/fanuc_er4ia_sim/docs/`)
 
@@ -84,7 +89,14 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 - **TCP:** J6 origin → faceplate 70 mm + faceplate → fingertip 223 mm (UTOOL1) = **293 mm**.
 - **Contact model:** rigid tips, distal 32 mm high-friction (static 1.5 / dynamic 1.3), *unmeasured* compliance and friction.
 - **Cameras:** table (overhead) 1920×1080, side 1920×1080, wrist 1280×720 pinhole. No lens distortion is modelled.
-- **Objects on the real cell (photos):** ~10 mm yellow cubes, yellow vial caps, clear glass tubes.
+- **Objects on the real cell** ([CAD Models](docs/07-cad-models.md), in `cad/`): M6 × 30 countersunk screws (head Ø12,
+  shank Ø6, about 7.5 g), 10 and 16 mm cubes, bins 50 × 50 × 55 mm (35 × 35 × 25 mm pocket), a vial Ø27.18 × 203 mm and its
+  cap. **The platform's default scene is 8 screws and the yellow bin.** The twin scales the vial to Ø17 × 140, has
+  `SCREWS = []` and `SHOW_BINS = False`, and renders a white table, because its mat texture isn't in the starter. The
+  real surface's texture is `cad/manipbench-table-surface.png`.
+- **Each SMC jaw (from the STEP)** is a flat tongue 5 mm thick along the travel, 8 mm wide and 15 mm long. Its inner face
+  is 7.45 mm from the centreline with the jaws closed. Two Ø3.4 mm holes run along the travel, 4 and 11 mm below the
+  shoulder ([cad/README.md](cad/README.md)).
 - **Starter task:** stack 6 rotated 10 mm cubes (Y,Y,B,B,R,R). Perception uses Cosmos3-Nano plus a calibrated image-geometry
   front end. Validated on Linux + Isaac Sim 6.0 + RTX A6000 (not Windows).
 - Compute for the twin (access received 2026-10-20; bring-up order in the
@@ -92,19 +104,24 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
   - **Brev:** $500 of team credits on Alec's account (admin; teammates join through Team → invite link). Isaac Sim
     launchable on an **RTX PRO 6000** or **4500**, both stoppable ([email](docs/05-brev-credits.md)).
   - **MSOE GB10:** `ssh hackathon11@spark1.ai.msoe.edu` over the MSOE VPN; free, shared with other teams, ARM64
-    ([email](docs/04-gb10-access.md); password not in the repo). Isaac Sim 6.0 there is a source build and needs an
-    **R580 driver**: check `nvidia-smi` first.
+    ([email](docs/04-gb10-access.md); password not in the repo; use your SSH key). Set up 2026-10-20 and **the default
+    machine**: Isaac Sim 6.0.1 from NVIDIA's aarch64 pip wheels in `~/isaac-sim-6.0.1`, the sim server on port 9011,
+    driver 580.178.04 (R580 needed). Isaac's start-up fails intermittently there, so retry
+    ([GPU test plan 0.2](docs/notes/gpu-test-plan.md#02-msoe-gb10-free-shared-set-up)).
   - Record GPU, runtime and credits per run ([tools and resources](docs/references/tools-and-resources.md)).
 - Three interpreters: **host** `.venv`, **Isaac** `python.sh`, **Cosmos** env. Never swap them.
 
 ## Key risks / mismatches
 
-1. **SCHUNK vs SMC.** Our plan and the dataset page say "SCHUNK"; the twin's CAD-derived model is an SMC MHZL2-16D2.
-   Finger mounts must match the real actuator. **Confirm on the physical cell before designing mounts.**
+1. **SCHUNK vs SMC.** Our plan and the dataset page say "SCHUNK". The twin, and now the organizers' dashboard FAQ, say
+   **SMC MHZL2-16D2** with custom aluminium fingers (2026-10-20), and its STEP is published. The finger mount now follows
+   that STEP, which contradicts the twin's photo-based mount (holes across the travel, 10 and 23 mm below the root).
+   **Confirm on the real jaw before printing**: the tongue, the holes and the screw direction.
 2. **Tiny stroke.** A 12 mm max straight-face opening (16 mm at the hooked tips) means the plan's examples (tennis balls ~67 mm,
    eggs) **cannot be grasped** with the current actuator. This is what the organizers meant by "not all of the existing items will
    fit in the fingers". The demo part must fit inside the jaw stroke, or the fingers must be redesigned so the stroke is used
-   differently (e.g. offset or angled fingers that change the effective opening).
+   differently (e.g. offset or angled fingers that change the effective opening). On the cell this rules out the 16 mm cube,
+   the cap's plug (Ø20.8–23.6) and the vial (Ø27.18) for the stock fingers. The M6 screw's shank (Ø6) and the 10 mm cube fit.
 3. **The error model decides whether fingers matter.** The default 3 mm (1 sigma) is a placeholder; the twin's own perception
    error was 0.19 mm, at which stock fingers rarely miss. Gains show at larger errors (cheaper camera, less calibration), so
    justify or measure sigma and show success-vs-error curves.
@@ -113,7 +130,23 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 5. **The real twin's scores aren't noise-free, and can flatter a baseline** (Brev, 2026-10-20). Grasps within about 5 mm
    of centre repeat exactly, but near a design's capture edge about 9% of grid points flip between runs. And the stock
    fingers "held" a cube placed 8–12 mm off along the jaw axis, outside the open fingers, most likely because a finger
-   landed on it and the descent squeezed it into the gap; a real arm may knock it away instead.
+   landed on it and the descent squeezed it into the gap; a real arm may knock it away instead. On the GB10 the same
+   **landing capture made a 12 mm-gap flat pad score like a 16 mm one** (55 vs 56 of 81), so it blunts the comparison
+   between designs, not only the baseline ([log](docs/experiments/2026-10-20-gb10-stages-4-6.md)).
+6. **The twin grips weakly: about 2.5 N per jaw** (GB10, 2026-10-20). A 300 g block holds only at μ ≥ 0.6–0.7 whatever
+   the force limit, and at μ 0.3 parts over about 100 g drop. Heavy or slippery parts score as dropped for every design
+   until this is understood (the close target for custom fingers, the jaw drive, or contact offsets).
+7. **The GPU path with copies is biased optimistic** (GB10, 2026-10-20). `--envs 64` (GPU) holds about 9/81 more cube
+   grasps than the reference, repeatably; GPU physics alone and CPU copies alone don't. Use `--envs 64 --device cpu`
+   (about 5 grasps/s, matches the reference) for results we report, until the cause (CCD first) is found.
+8. **The stock blade's orientation is inferred, not measured.** The twin puts the blade's 12 mm along the jaw travel,
+   with straight faces 0–12 mm apart, but that range comes from the actuator's travel. SMC's jaw is a 5 mm tongue whose
+   inner faces are 14.9 mm apart (jaws closed: 2.9 mm, since each moves 6 mm). That also fits the measured 4 ± 1 /
+   15 ± 2 mm tip gaps if the blade were a 6 mm plate bolted to the tongue's inner face. Our printed fingers fit the STEP's
+   jaw either way. The stock baseline (the twin's fingers) may be off by a few mm: photograph the real jaw and fingers.
+9. **Finger length moves the real fingertips.** "tcp" actions command the stock fingertip (UTOOL1, 293 mm), and the cell
+   rejects TCP z below −334 mm, about 1 mm above the surface. Printed fingers must end where the stock ones do (the app
+   keeps the tips at z = 0 with the root against the jaw's shoulder), or `cell_policy` must offset them.
 
 ## Decisions
 
@@ -135,37 +168,55 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 | 2026-10-20 | Migration 0003 rebuilds the job tables empty and adds parts, cell profiles, printed fingers and test plans | Demo data again; the new spec doesn't fit old rows |
 | 2026-10-20 | CadQuery is the only CAD kernel (part import, finger CAD); fingers are built as convex solids, so the sim's pieces and the printed STEP are the same solids | [cadquery-design.md](docs/notes/cadquery-design.md) |
 | 2026-10-20 | Demo data lives in its own database (`DEMO_DATA=true` → `app/data/demo`), never the real one; its physical trials are labelled made up | Lets the UI be built and shown without mixing invented numbers into real results |
+| 2026-10-20 | The app connects the sim to a GPU target from its GPU panel (`COMPUTE_BACKENDS=brev,gb10`), one at a time, forwarded to `SIM_URL`, so the rest of the app never knows which machine it is. Brev instances (created in the Brev console) are started, and stopped when asked or after 20 idle minutes. The shared GB10 is connected and disconnected, never stopped or auto-stopped. Each session runs in a detached process; jobs wait for a ready target | One prepared Brev instance stays stopped for the hackathon, so credits never burn unattended; the GB10 is free but shared, so a teammate's job is never cut off ([app/README.md](app/README.md#gpu-from-the-app)) |
+| 2026-10-20 | A round whose connection drops (VPN, port forward) waits up to `SIM_RECONNECT_MINUTES` (120) and is resent under its `Idempotency-Key`; the sim server answers a resend from the run it already made | Long runs go through the GB10 over the MSOE VPN, which can drop; a lost round would otherwise fail the job and be run twice ([app/README.md](app/README.md#simulator-service)) |
+| 2026-10-20 | The organizers' CAD files live unchanged in `cad/`, with their SHA-256s and where they came from | Small, shared by the app and the sim; `data/` is gitignored |
+| 2026-10-20 | The default finger mount is SMC's jaw from its STEP (`SMC_FLAT_JAW_MOUNT`, face `+x`). The root is cut back to the tongue's inner face for 15.5 mm, with M3 holes along the jaw travel 4 and 11 mm below the root, self-tapping, 6 mm deep. The photo reconstruction stays as `PHOTO_MOUNT`. At startup, a database whose default profile is the old default, unedited, gets the new one as its next version | The STEP is SMC's model of the real gripper (the dashboard says so); the photo mount's 23 mm hole lies past the end of its jaw |
+| 2026-10-20 | Physical validation runs through the organizers' platform with a blind scripted policy: the screw and bin are placed the same way every rollout, and each rollout's prompt carries the test-plan offset to command. Stock run and printed run use the same offsets | The commanded offset is the controlled error the fingers are designed for; the operator's placement error is the same for both; the recording carries the offset ([cell_policy/](cell_policy/README.md)) |
 
 ## Open questions / action items
 
-- [ ] **Pick the demo part + task** sized for the jaws (candidates already on the cell: 10 mm cube, vial cap, glass tube).
-      Ideally it is a "manufacturing part" per the organizer feedback.
-- [ ] **Confirm actual gripper model and finger mounting interface** (bolt pattern, carriage geometry). Ask Zhen Zeng
-      (zhenzeng@uwm.edu / `#dataset-3-grasping-sorting`). We also asked for gripper-body + mount CAD in the team plan.
-- [ ] Get the **stock finger CAD** (the dataset page lists it) and confirm it matches `assets/gripper/photo_finger_detail.json`.
-- [ ] Bring up the twin: `bootstrap.sh` host tests and the headless scene build pass on Brev (2026-10-20); the starter's
-      stacking pipeline still needs a Cosmos env (optional for us).
-- [ ] Run the sim server on a GPU ([docs/notes/gpu-test-plan.md](docs/notes/gpu-test-plan.md)): stages 0–3 done on Brev
-      2026-10-20 ([log](docs/experiments/2026-10-20-brev-sim-server-bringup.md)); next stages 4–6 (custom fingers,
-      contract v2, the GPU path and its throughput).
+- [ ] **Pick the demo part + task** sized for the jaws. Proposed 2026-10-20: **one M6 × 30 screw into the yellow bin**. It's
+      a manufacturing part, the platform's default scene, light, and its Ø6 shank fits the jaws. The table camera
+      can't see screws, so position error is large. `cell_policy/` is built for it. Team to confirm.
+- [ ] **Confirm the finger mounting interface on the real jaw**: the STEP's tongue, its holes 4 and 11 mm below the
+      shoulder, which way the screws go, and how the stock fingers sit (risk 8). Ask Zhen Zeng (zhenzeng@uwm.edu /
+      `#dataset-3-grasping-sorting`), or photograph it at the cell.
+- [ ] Get the **stock finger CAD** (the dataset page lists it; the CAD Models page says "more parts will follow") and confirm
+      it matches `assets/gripper/photo_finger_detail.json`.
+- [ ] **Submit to the platform**: fill in `cell_policy/submission/submission.yaml` (team letter in `task_id`, contact),
+      `uv run run.py --submit`, then book a slot in the dashboard's Calendar. The first real rollouts check the policy's
+      jaw measurement (`cad2fingers_rollouts.jsonl`).
+- [ ] Bring up the twin: `bootstrap.sh` host tests and the headless scene build pass on Brev and the GB10 (2026-10-20);
+      the starter's stacking pipeline still needs a Cosmos env (optional for us).
+- [x] Run the sim server on a GPU ([docs/notes/gpu-test-plan.md](docs/notes/gpu-test-plan.md)): stages 0–3 on Brev and
+      the GB10, stages 4–6 on the GB10 (2026-10-20). Stage 7 (end to end with the app) is still to do.
 - [ ] **Decide how to score a part disturbed before the jaws close** (a finger landed on it): a miss, or a flag. Then
-      read the part's pose at the end of the descent in the sim server and report it (risk 5).
-- [x] Real CAD export (CadQuery → STEP/STL) from the same pieces, with mount holes (2026-10-20). Positions are still the
-      twin's photo reconstruction: confirm on the real jaw and update the cell profile (`finger_mount`, `hole_clearance_mm`).
+      read the part's pose at the end of the descent in the sim server and report it (risk 5). Rerun stage 4 after:
+      `pad_x0` should drop from about 1.5 mm.
+- [ ] **Find why the twin grips at about 2.5 N per jaw** (risk 6), then rerun GPU test plan 5.3–5.5. Meanwhile, pick a
+      light demo part (under about 100 g).
+- [ ] **Find the GPU-with-copies bias** (risk 7), starting with CCD; then rerun stage 6. Also run the L-bracket's
+      reference grid twice, to know its own repeatability.
+- [x] Real CAD export (CadQuery → STEP/STL) from the same pieces, with mount holes (2026-10-20). Since 2026-10-20 the mount
+      follows SMC's STEP of the jaw. Confirm it on the real jaw and update the cell profile (`finger_mount`,
+      `hole_clearance_mm`).
 - [ ] Fill in the cell profile's *to confirm* fields: grip force at the cell's air pressure (SMC datasheet), max finger
       length, free space beside the gripper, table mat friction.
 - [ ] Measure printed PLA/PETG friction against the demo part (tilt test) to replace the material estimates in
       `app/backend/src/api/models/material.py`.
-- [ ] Measure Isaac throughput (grasps/s at 64 envs) so run-time estimates are real (`SIM_GRASPS_PER_S` until then).
+- [x] Measure Isaac throughput (GB10, 2026-10-20): 2.75 grasps/s reference, ~5 with `--envs 64 --device cpu`, 16–19
+      with 64 GPU copies, 28 with 256. Set `SIM_GRASPS_PER_S` to match the path in use.
 - [ ] Test plan diagonals are at (±3, ±3) mm (4.2 mm out); the spec said "diagonals at 3 mm": confirm which is meant.
 - [ ] Choose and justify the camera-error sigma for the demo (or measure it on the cell).
 - [ ] Define success metrics before experiments (pick success / attempt, placement error, cycle time, recovery).
 - [ ] Request a supervised physical test at CSI (Shamar Webster, `#data-and-testbed-requests`, webste63@uwm.edu) with a test
-      plan, duration, attendees and dates.
+      plan, duration, attendees and dates. The platform's slots ([dashboard](docs/06-participant-dashboard.md)) are now the
+      main route, and the printed fingers are reviewed with the request (`custom_hardware`).
 - [x] Brev credits ($500) and GB10 access received (2026-10-20).
 - [ ] Alec: activate Brev from Dan Schneider's invite and add the team as members.
-- [ ] GB10: run the free check (driver, disk, sudo, compiler) before building Isaac Sim there
-      ([GPU test plan 0.2](docs/notes/gpu-test-plan.md#02-msoe-gb10-free-check-it-first)).
+- [x] GB10: check and set up (2026-10-20): driver 580.178.04 passes, Isaac Sim 6.0.1 installed from pip wheels
+      ([GPU test plan 0.2](docs/notes/gpu-test-plan.md#02-msoe-gb10-free-shared-set-up)).
 
 ## Contacts (short)
 
