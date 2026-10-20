@@ -323,11 +323,9 @@ grasp with the cameras on and returns an mp4 per view:
 
 A clip is about 5 s (the 3.9 s grasp, then a second holding the lift).
 
-**Status of the work (2026-10-20):**
-
-- **Done and tested offline:** the app's calls below, the worker, and the sim server's `POST /record_grasp`.
-- **Not yet run on the GPU:** filming in Isaac Sim, and how long a clip takes. Build the UI against these calls now.
-  Real clips need an experiment run on the Isaac sim and a connected GPU.
+**Status (2026-10-20): working on the GB10.** A real experiment was run and filmed through these calls
+([log](../experiments/2026-10-20-gb10-app-end-to-end-and-clips.md)). Real clips need an experiment run on the Isaac sim
+and a connected GPU.
 
 **Ask for a clip:** `POST /api/jobs/{id}/clips`.
 
@@ -394,9 +392,9 @@ A clip is about 5 s (the 3.9 s grasp, then a second holding the lift).
 
 **Timing**
 
-- Plan on about a minute per clip until it's measured.
-- The first clip after the sim server starts takes longer, while its render materials compile.
-- Clips queue behind a running job's batches, since the sim server does one thing at a time.
+- A clip takes about 7 s on the GB10, and about 12 s from the request until it's ready, including its worker's
+  start. Four clips asked for together were all ready in 50 s.
+- Clips queue behind a running job's batches, and behind each other, since the sim server does one thing at a time.
 - A Brev GPU doesn't idle-stop while a clip is being recorded.
 
 **Demo data:** demo experiments ran on the mock sim, so they answer 409. To build the UI without a GPU, stand in for

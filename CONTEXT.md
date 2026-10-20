@@ -190,7 +190,8 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 - [ ] Bring up the twin: `bootstrap.sh` host tests and the headless scene build pass on Brev and the GB10 (2026-10-20);
       the starter's stacking pipeline still needs a Cosmos env (optional for us).
 - [x] Run the sim server on a GPU ([docs/notes/gpu-test-plan.md](docs/notes/gpu-test-plan.md)): stages 0–3 on Brev and
-      the GB10, stages 4–6 on the GB10 (2026-10-20). Stage 7 (end to end with the app) is still to do.
+      the GB10, stages 4–6 on the GB10, and stage 7 (end to end with the app, plus the first Isaac Sim clips) on the GB10
+      (2026-10-20, [log](docs/experiments/2026-10-20-gb10-app-end-to-end-and-clips.md)).
 - [ ] **Decide how to score a part disturbed before the jaws close** (a finger landed on it): a miss, or a flag. Then
       read the part's pose at the end of the descent in the sim server and report it (risk 5). Rerun stage 4 after:
       `pad_x0` should drop from about 1.5 mm.

@@ -808,20 +808,21 @@ couldn't show what actually happens during the grasp.
 **What the UI must handle:**
 
 - **Recording takes time, and a GPU.** Show each clip as queued, recording, ready or failed, and gate Record on a
-  ready GPU (4.6). The time per clip is still to measure; plan on about a minute.
+  ready GPU (4.6). A clip is ready about 12 s after it's asked for, longer behind a running job.
 - **A clip's outcome can differ from the results.** Near the capture edge, about 9% of grid points flip between runs
   (CONTEXT.md risk 5). Label each clip with its own outcome, and say when it differs from the stored result.
 - **Mock results have no clips.** Show "Needs the Isaac sim".
 - **Clips wait behind jobs.** The sim server runs one thing at a time, so a clip queues behind a running job's batches.
   Suggest recording after the job finishes.
 
-**Status: the API is built; filming on the GPU is still being verified.**
+**Status: built, and working on the GB10** (2026-10-20,
+[log](../experiments/2026-10-20-gb10-app-end-to-end-and-clips.md)).
 
-- **Built and tested offline:** the app's three clip calls, the worker, and the sim server's recording call.
-  Their types are in `schema.d.ts`.
-- **Still to do:** the first real recording on the GB10, and measuring how long one takes.
-- **Build the UI now** against the real calls. Until a GPU run exists, stand in for them with the payloads in
-  backend-api.md and any short mp4.
+- **What works:** the app's three clip calls, the worker and the sim server's recording call. Their types are in
+  `schema.d.ts`.
+- **Speed:** a clip is ready about 12 s after it's asked for.
+- **Without a GPU:** the demo data ran on the mock sim, so it has no clips. To build the UI, stand in for the calls
+  with the payloads in backend-api.md and any short mp4.
 
 **The calls.** Full request and response payloads, errors and timing are in
 [backend-api.md, "Isaac Sim clips"](backend-api.md#isaac-sim-clips).
@@ -1112,7 +1113,6 @@ None blocks the Must list. Raise them with whoever owns the backend.
 | --- | --- | --- |
 | No provisional results during a run | The running page shows only best-so-far numbers and curves (6.2) | A `provisional` section in the results view during the run, from the search-grid trials stored so far: the top designs with their parameters, the current best's held map and curve, and stock's |
 | One grasp axis per experiment | Step 5 can't offer several axes (5, step 5) | A list of grasp choices in the spec; one search per (family, axis); the final test across axes; each design's axis carried through results, CAD, test plans and trials |
-| Clips not yet filmed on a GPU (**in progress**) | The clip calls exist (7.5), but no real recording has been made yet | Run the first recording on the GB10, measure the time per clip, and tune the close-up camera's framing |
 | No structured "reconnecting" state | Running jobs can't say they're waiting on the GPU, except by reading the session's message text (4.7) | A `connection` field on the session, or a `waiting_for_sim` flag on the job card |
 | Compute errors are text only | The help cards (4.5) match on substrings, which breaks if the wording changes | A stable `code` with each compute error (`vpn`, `ssh_key`, `port_taken`, ...) |
 | No Brev cost or credit balance | The GPU page can only link to Brev's Billing tab | Brev's CLI doesn't report it; probably stays a link |

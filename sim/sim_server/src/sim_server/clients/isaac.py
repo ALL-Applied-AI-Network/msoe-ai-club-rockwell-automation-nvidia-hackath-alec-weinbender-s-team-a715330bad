@@ -64,10 +64,11 @@ REST_OFFSET = 0.0  # likewise (cell.small_contact_offsets)
 DEFAULT_PART = Part(shape="box", size=(C.CUBE_EDGE,) * 3, mass=C.CUBE_MASS)  # the stage needs some part before the first batch
 FINGER_COLOR, PART_COLOR = (0.95, 0.55, 0.10), (0.85, 0.70, 0.05)
 # Recording a grasp (record()). The close-up looks across the jaws' closing direction from the side away from the robot,
-# so both fingers show, framing CLOSEUP_WIDTH at the grasp site from CLOSEUP_DISTANCE away, aimed CLOSEUP_AIM_Z above
-# the table so the 0.13 m lift stays in frame. The side view is the twin's own side camera.
+# so both fingers show, from CLOSEUP_DISTANCE out and CLOSEUP_EYE_Z up, slightly down at CLOSEUP_AIM_Z above the grasp
+# site, framing CLOSEUP_WIDTH there: the part on the table and at the top of the 0.13 m lift both stay in frame. The side
+# view is the twin's own side camera.
 RECORDING_ROOT = "/World/Recording"
-CLOSEUP_DISTANCE, CLOSEUP_WIDTH, CLOSEUP_AIM_Z, CLOSEUP_EYE_Z = 0.35, 0.26, 0.07, 0.08  # metres
+CLOSEUP_DISTANCE, CLOSEUP_WIDTH, CLOSEUP_AIM_Z, CLOSEUP_EYE_Z = 0.35, 0.32, 0.07, 0.15  # metres
 APERTURE_MM = 20.955  # the twin's cameras' horizontal aperture
 HOLD_FRAMES = 30  # a second after the lift, holding it, so a clip shows whether the part stayed
 WARMUP_RENDERS = 30  # before a recording's first frame
@@ -533,11 +534,12 @@ class GraspCell:
         across = (-dy, dx) if -dy * sx + dx * sy >= 0 else (dy, -dx)  # perpendicular to the closing direction, away from the base
         top = self.geometry.table_top_z
         aim = (ox + sx, oy + sy, top + CLOSEUP_AIM_Z)
+        reach = math.hypot(CLOSEUP_DISTANCE, CLOSEUP_EYE_Z - CLOSEUP_AIM_Z)  # eye to aim, along the view
         return {
             "eye": (aim[0] + across[0] * CLOSEUP_DISTANCE, aim[1] + across[1] * CLOSEUP_DISTANCE, top + CLOSEUP_EYE_Z),
             "look_at": aim,
             "up": (0.0, 0.0, 1.0),
-            "focal_length": CLOSEUP_DISTANCE * APERTURE_MM / CLOSEUP_WIDTH,
+            "focal_length": reach * APERTURE_MM / CLOSEUP_WIDTH,
             "horiz_aperture": APERTURE_MM,
             "resolution": size,
         }
