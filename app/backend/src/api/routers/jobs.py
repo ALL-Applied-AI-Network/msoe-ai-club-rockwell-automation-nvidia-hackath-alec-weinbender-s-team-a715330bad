@@ -6,7 +6,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from api.dependencies import ConfigDep, DbDep
-from api.models.job import FINISHED_STATUSES, Job, JobConfig, JobResult, Suggestion, Trial
+from api.models.finger import STROKE_MM, Finger
+from api.models.job import FINISHED_STATUSES, Job, JobConfig, JobResult, Trial
 from api.models.part import Part
 from api.models.physical_trial import PhysicalTrial
 from api.models.review import Review
@@ -37,12 +38,21 @@ class JobResponse(Job):
 
 
 class JobDetailResponse(JobResponse):
-    suggestions: list[Suggestion]
     trials: list[Trial]
     result: JobResult | None
     meta: dict[str, Any] | None
     review: Review | None
     physical: list[PhysicalTrial]
+
+
+class FingerResponse(BaseModel):
+    """The winning finger's geometry (gripper frame, mm, jaws closed; the other finger is its mirror image in x) and the
+    part it grips, for the 3D preview."""
+
+    part: Part
+    extent_mm: tuple[float, float, float]  # the part along the closing direction, across it, and its height
+    jaw_open_mm: float
+    finger: Finger
 
 
 class JobEvent(BaseModel):
@@ -139,6 +149,15 @@ def resume_job(job_id: str, db: DbDep, config: ConfigDep) -> OkResponse:
     except jobs.JobNotResumableError:
         raise HTTPException(409, "not resumable") from None
     return OkResponse()
+
+
+@router.get("/{job_id}/finger")
+def get_finger(job_id: str, db: DbDep) -> FingerResponse:
+    try:
+        part, finger = jobs.result_finger(db, job_id)
+    except jobs.JobNotFoundError:
+        raise HTTPException(404) from None
+    return FingerResponse(part=part, extent_mm=part.extent_mm, jaw_open_mm=STROKE_MM, finger=finger)
 
 
 @router.get("/{job_id}/scad")

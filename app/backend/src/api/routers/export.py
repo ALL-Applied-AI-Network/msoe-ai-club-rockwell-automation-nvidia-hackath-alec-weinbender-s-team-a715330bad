@@ -22,8 +22,3 @@ def export_physical(db: DbDep) -> Response:
 @router.get("/trials.jsonl")
 def export_trials(db: DbDep) -> Response:
     return _jsonl(export.trial_rows(db))
-
-
-@router.get("/suggestions.jsonl")
-def export_suggestions(db: DbDep) -> Response:
-    return _jsonl(export.suggestion_rows(db))

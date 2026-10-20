@@ -39,8 +39,8 @@ class SimConfig(BaseModel):
     """SIM_* variables."""
 
     backend: Literal["mock", "http"] = "mock"
-    url: str | None = None  # http backend: the sim server's /evaluate endpoint
-    timeout_s: float = 600
+    url: str | None = None  # http backend: the sim server's base URL; the client posts to {url}/evaluate_batch
+    timeout_s: float = 3600  # one request is a whole round (designs x grid points), which can take a while
 
 
 class DbConfig(BaseModel):
@@ -101,7 +101,10 @@ def check_config(config: AppConfig) -> tuple[list[str], list[str]]:
     errors, warnings = [], []
     llm, sim = config.llm, config.sim
     if llm.backend == "mock":
-        warnings.append("LLM: using the mock. Set ANTHROPIC_API_KEY (or LLM_BACKEND=http and LLM_URL) for real suggestions.")
+        warnings.append(
+            "LLM: using the mock (the optimizer doesn't call the LLM at the moment). "
+            "Set ANTHROPIC_API_KEY (or LLM_BACKEND=http and LLM_URL) for real suggestions."
+        )
     elif llm.backend == "anthropic" and llm.api_key is None:
         errors.append("LLM_BACKEND=anthropic needs ANTHROPIC_API_KEY, the Claude API key.")
     elif llm.backend == "http" and not llm.url:
@@ -109,7 +112,7 @@ def check_config(config: AppConfig) -> tuple[list[str], list[str]]:
     if sim.backend == "mock":
         warnings.append("Sim: using the mock simulator, whose success rates are made up. Set SIM_BACKEND=http and SIM_URL for the twin.")
     elif not sim.url:
-        errors.append("SIM_BACKEND=http needs SIM_URL, the sim server's /evaluate endpoint (e.g. http://localhost:9000/evaluate).")
+        errors.append("SIM_BACKEND=http needs SIM_URL, the sim server's base URL (e.g. http://localhost:9000).")
     try:
         make_url(config.db.url.get_secret_value())
     except ArgumentError:

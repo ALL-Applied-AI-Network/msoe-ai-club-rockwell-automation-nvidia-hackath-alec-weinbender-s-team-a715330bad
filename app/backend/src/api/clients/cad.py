@@ -1,46 +1,41 @@
-"""Printable finger CAD. Only a placeholder so far: parametric OpenSCAD text. Replace it with a real CAD kernel
-(e.g. CadQuery -> STEP/STL) behind the same interface."""
+"""Printable finger CAD. For now OpenSCAD source of exactly the geometry that was simulated. Replace it with a real CAD
+kernel (e.g. CadQuery -> STEP/STL, with the mount holes) behind the same interface."""
 
 import json
-import math
 from typing import Protocol
 
-from api.models.design import Design
-from api.models.part import Part
+from api.models.finger import STROKE_MM, Finger
 
 
 class CadClient(Protocol):
     backend: str
     extension: str  # of the exported file, e.g. ".scad"
 
-    def export(self, part: Part, design: Design) -> str: ...
+    def export(self, finger: Finger, label: str) -> str: ...
 
     def close(self) -> None: ...
 
 
 class OpenScadCad:
+    """Both fingers as OpenSCAD polyhedra, placed as they sit on the gripper with the jaws open. The mount holes aren't
+    cut yet (the real mount isn't confirmed), so the file is for review, not for printing."""
+
     backend = "openscad"
     extension = ".scad"
 
-    def export(self, part: Part, design: Design) -> str:
-        t, p = design.template, design.params
-        length, width, thickness = p["finger_length"], p.get("pad_width", 20), p.get("pad_thickness", 6)
-        body = f"cube([{width},{thickness + 10},{length}]);"
-        if t == "v_groove":
-            scale_y = math.tan(math.radians(p["groove_angle"] / 2))
-            cut = p["groove_depth"] * 2
-            body = (
-                f"difference(){{cube([{width},20,{length}]); translate([{width / 2},20,{length * 0.7}]) rotate([90,0,0]) "
-                f"rotate([0,0,45]) scale([1,{scale_y:.3f},1]) cylinder(h={cut},r1=0,r2={cut},center=true);}}"
-            )
-        elif t == "pocket":
-            r = part.diameter_mm / 2 * p["pocket_radius_scale"] + p["pocket_clearance"]
-            outer = max(width, 2 * r + 6)
-            body = (
-                f"difference(){{cube([{outer},{p['pocket_depth'] + 6},{length}]); "
-                f"translate([{outer / 2},{p['pocket_depth'] + 6},{length * 0.7}]) sphere(r={r:.2f});}}"
-            )
-        return f"// {t} finger  params={json.dumps(p)}\n{body}\n"
+    def export(self, finger: Finger, label: str) -> str:
+        pieces = "\n".join(
+            # OpenSCAD wants faces clockwise seen from outside; ours are counter-clockwise
+            f"    polyhedron(points={_numbers(piece.points)}, faces={json.dumps([list(t[::-1]) for t in piece.triangles])});"
+            for piece in finger.pieces
+        )
+        return (
+            f"// {label}\n"
+            "// Gripper frame, mm: x along the jaw travel, z up toward the wrist, fingertips at z = 0. No mount holes yet.\n"
+            f"module finger() {{\n  union() {{\n{pieces}\n  }}\n}}\n"
+            f"translate([{STROKE_MM:g}, 0, 0]) finger();\n"
+            f"mirror([1, 0, 0]) translate([{STROKE_MM:g}, 0, 0]) finger();\n"
+        )
 
     def close(self) -> None:
         pass
@@ -48,3 +43,7 @@ class OpenScadCad:
 
 def create_cad_client() -> CadClient:
     return OpenScadCad()
+
+
+def _numbers(points) -> str:
+    return json.dumps([[round(v, 4) for v in point] for point in points])

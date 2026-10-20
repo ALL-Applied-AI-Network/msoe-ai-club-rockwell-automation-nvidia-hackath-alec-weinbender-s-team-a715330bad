@@ -37,7 +37,7 @@ class PydanticJSON(TypeDecorator):
 
 
 class Base(DeclarativeBase):
-    type_annotation_map = {dict[str, float]: JSON, dict[str, Any]: JSON}
+    type_annotation_map = {dict[str, float]: JSON, dict[str, Any]: JSON, list[bool]: JSON, list[dict[str, Any]]: JSON}
 
 
 class JobRow(Base):
@@ -62,22 +62,6 @@ class JobRow(Base):
     finished: Mapped[float | None]
 
 
-class SuggestionRow(Base):
-    __tablename__ = "suggestions"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[str]
-    idx: Mapped[int]
-    template: Mapped[str]
-    params: Mapped[dict[str, float]]
-    rationale: Mapped[str | None]
-    source: Mapped[str]
-    model: Mapped[str | None]
-    raw_response: Mapped[str | None]  # the LLM's verbatim reply, kept for re-featurizing
-    created: Mapped[float] = mapped_column(default=time.time)
-    trial_number: Mapped[int | None]
-
-
 class TrialRow(Base):
     __tablename__ = "trials"
     __table_args__ = (UniqueConstraint("job_id", "number"),)
@@ -85,14 +69,15 @@ class TrialRow(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[str]
     number: Mapped[int]
-    template: Mapped[str]
+    round: Mapped[int]
+    kind: Mapped[str]
     params: Mapped[dict[str, float]]
     success_rate: Mapped[float]
+    capture_radius_mm: Mapped[float | None]
     n_grasps: Mapped[int]
     n_success: Mapped[int]
-    pruned: Mapped[int]
-    suggestion_id: Mapped[int | None]
-    duration: Mapped[float]
+    held: Mapped[list[bool]]  # one result per point of the job's offset grid (its definition is in run_meta)
+    duration: Mapped[float]  # seconds of the round's sim time, per design
     created: Mapped[float] = mapped_column(default=time.time)
 
 
@@ -101,12 +86,12 @@ class ResultRow(Base):
 
     job_id: Mapped[str] = mapped_column(primary_key=True)
     trial_number: Mapped[int]
-    template: Mapped[str]
+    kind: Mapped[str]
     params: Mapped[dict[str, float]]
     grasp_pose: Mapped[dict[str, Any]]
     predicted_success: Mapped[float]
-    ci_low: Mapped[float]
-    ci_high: Mapped[float]
+    capture_radius_mm: Mapped[float | None]
+    comparison: Mapped[list[dict[str, Any]]]
     scad_path: Mapped[str]
     created: Mapped[float] = mapped_column(default=time.time)
 

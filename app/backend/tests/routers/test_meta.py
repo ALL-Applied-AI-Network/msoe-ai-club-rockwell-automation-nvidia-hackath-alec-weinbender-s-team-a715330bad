@@ -1,9 +1,8 @@
-from api.models.design import SPACE
+from api.models.design import PARAMS
 
 
-def test_meta_lists_the_design_space_and_active_backends(client):
+def test_meta_lists_the_design_parameters_and_active_backends(client):
     meta = client.get("/api/meta").json()
 
-    assert meta["templates"].keys() == SPACE.keys()
-    assert meta["templates"]["pocket"]["pocket_depth"] == [2, 25]
+    assert meta["parameters"] == PARAMS
     assert (meta["llm"], meta["sim"]) == ("mock", "mock")

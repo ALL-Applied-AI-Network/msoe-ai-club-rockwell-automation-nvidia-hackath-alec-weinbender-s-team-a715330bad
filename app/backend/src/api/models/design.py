@@ -1,27 +1,25 @@
-"""Finger templates, their parameter ranges, and a design: one template plus values for its parameters.
+"""A finger design. The optimizer searches six numbers (see search_space.py); two baselines are built from the part alone."""
 
-The ranges assume large parts. They need re-ranging for the twin's 12 mm gripper stroke (see CONTEXT.md).
-"""
+from typing import Literal
 
 from pydantic import BaseModel
 
-SPACE: dict[str, dict[str, tuple[float, float]]] = {
-    "flat_pad": {"finger_length": (15, 60), "pad_width": (8, 40), "pad_thickness": (2, 10), "pad_friction_texture": (0, 1)},
-    "v_groove": {"finger_length": (15, 60), "groove_angle": (60, 140), "groove_depth": (2, 20), "pad_width": (8, 40)},
-    "pocket": {"finger_length": (15, 60), "pocket_clearance": (0, 6), "pocket_depth": (2, 25), "pocket_radius_scale": (0.8, 1.2)},
+DesignKind = Literal["search", "stock", "imprint"]
+
+PARAMS: dict[str, str] = {
+    "pad_width_mm": "width of the contact pad, across the jaws",
+    "groove_angle_deg": "included angle of the V groove in the pad face (180 = flat)",
+    "groove_depth_mm": "depth of that groove",
+    "slack_mm": "gap between the pad face and the centred part, per side, with the jaws open",
+    "tip_height_mm": "fingertip height above the table when gripping (where the fingers hold the part)",
+    "lead_in_mm": "45 degree chamfer along the pad's bottom inner edge, guiding an off-centre part in",
 }
-TEMPLATES = list(SPACE)
 
 
 class Design(BaseModel):
-    template: str
-    params: dict[str, float]
+    """What to build. 'search': a point of the search space, with the PARAMS above (the groove ones only for parts that
+    are round from above). 'stock': the fingers already on the robot. 'imprint': a pocket shaped like the part, the
+    usual hand-made design, which the judges' comparison needs."""
 
-
-def clamp_params(template: str, params: dict) -> dict[str, float]:
-    """Every parameter of the template, clamped to its range. Missing ones get the middle of the range."""
-    out = {}
-    for name, (lo, hi) in SPACE[template].items():
-        value = params.get(name, (lo + hi) / 2)
-        out[name] = min(hi, max(lo, float(value)))
-    return out
+    kind: DesignKind = "search"
+    params: dict[str, float] = {}

@@ -1,6 +1,14 @@
 import json
 
-FORM = {"task": "pick caps", "shape": "cylinder", "diameter_mm": "12", "length_mm": "20", "budget": "5", "n_grasps": "10"}
+FORM = {
+    "task": "pick caps",
+    "shape": "cylinder",
+    "diameter_mm": "12",
+    "length_mm": "20",
+    "upright": "true",
+    "budget": "5",
+    "batch_size": "4",
+}
 
 
 def test_create_job_from_the_form_starts_a_worker(client, spawned):
@@ -14,11 +22,11 @@ def test_create_job_from_the_form_starts_a_worker(client, spawned):
 
 
 def test_blank_optional_fields_fall_back_to_defaults(client):
-    job_id = client.post("/api/jobs", data={**FORM, "workers": "", "seed": ""}).json()["id"]
+    job_id = client.post("/api/jobs", data={**FORM, "batch_size": "", "seed": ""}).json()["id"]
 
     config = client.get(f"/api/jobs/{job_id}").json()["config"]
 
-    assert (config["workers"], config["seed"]) == (0, 0)
+    assert (config["batch_size"], config["seed"]) == (16, 0)
 
 
 def test_part_file_is_stored_under_its_name(client):
@@ -34,6 +42,7 @@ def test_missing_task_is_a_validation_error(client):
 def test_unknown_job_is_404(client):
     assert client.get("/api/jobs/nope").status_code == 404
     assert client.get("/api/jobs/nope/scad").status_code == 404
+    assert client.get("/api/jobs/nope/finger").status_code == 404
 
 
 def test_only_stopped_jobs_can_be_resumed(client):
@@ -70,9 +79,10 @@ def test_finished_job_detail_has_everything_the_ui_reads(finished_client, finish
     detail = finished_client.get(f"/api/jobs/{finished_job.job_id}").json()
 
     assert detail["status"] == "done" and detail["progress"] == 1
-    assert {"suggestions", "trials", "result", "meta", "review", "physical"} <= detail.keys()
-    assert {"predicted_success", "ci_low", "ci_high", "grasp_pose", "template", "params"} <= detail["result"].keys()
-    assert {"runtime_s", "n_trials", "n_pruned", "gpu", "sim_backend"} <= detail["meta"].keys()
+    assert {"trials", "result", "meta", "review", "physical"} <= detail.keys()
+    assert {"round", "kind", "params", "success_rate", "capture_radius_mm", "held"} <= detail["trials"][0].keys()
+    assert {"predicted_success", "capture_radius_mm", "comparison", "grasp_pose", "kind", "params"} <= detail["result"].keys()
+    assert {"runtime_s", "n_trials", "n_rounds", "grid", "gpu", "sim_backend"} <= detail["meta"].keys()
 
 
 def test_events_stream_reports_progress_and_ends_when_finished(finished_client, finished_job):
@@ -89,3 +99,11 @@ def test_cad_download_is_named_after_the_job(finished_client, finished_job):
 
     assert response.status_code == 200
     assert f'filename="fingers_{finished_job.job_id}.scad"' in response.headers["content-disposition"]
+
+
+def test_finger_geometry_is_served_for_the_preview(finished_client, finished_job):
+    body = finished_client.get(f"/api/jobs/{finished_job.job_id}/finger").json()
+
+    assert body["jaw_open_mm"] == 6 and len(body["extent_mm"]) == 3
+    piece = body["finger"]["pieces"][0]
+    assert len(piece["points"][0]) == 3 and len(piece["triangles"][0]) == 3

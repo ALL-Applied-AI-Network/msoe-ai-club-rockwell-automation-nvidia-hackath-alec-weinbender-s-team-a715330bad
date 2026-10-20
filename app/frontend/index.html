@@ -65,36 +65,42 @@ svg text{fill:var(--mute);font:11px var(--font)}
 <header class="top"><h1>Gripper Finger Designer</h1>
   <span class="chip" id="meta">...</span>
   <label class="ctl">Theme <select id="selTheme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
-  <a href="/api/export/suggestions.jsonl">LLM suggestions &#8595;</a><a href="/api/export/trials.jsonl">Trials &#8595;</a><a href="/api/export/physical.jsonl">Physical &#8595;</a>
+  <a href="/api/export/trials.jsonl">Trials &#8595;</a><a href="/api/export/physical.jsonl">Physical &#8595;</a>
 </header>
 <div id="app">
 <div id="intro">
 <div class="card" id="pane-new"><h2>New part</h2><form id="f">
 <label>CAD file / images (stored with the job)</label><input type="file" name="part_file">
-<label>Task</label><textarea name="task" rows="2" required>move tennis balls into a bowl</textarea>
-<div class="grid2"><div><label>Shape</label><select name="shape"><option>sphere</option><option>cylinder</option><option>box</option><option>egg</option></select></div>
-<div><label>Mass (g)</label><input name="mass_g" type="number" value="58"></div>
-<div><label>Diameter (mm)</label><input name="diameter_mm" type="number" step="any" value="67"></div>
-<div><label>Length (mm)</label><input name="length_mm" type="number" step="any" value="67"></div>
+<label>Task</label><textarea name="task" rows="2" required>pick vial caps off the table and place them in a tray</textarea>
+<div class="grid2"><div><label>Shape</label><select name="shape" id="shape"><option value="cylinder">cylinder</option><option value="box">box</option></select></div>
+<div><label>Mass (g)</label><input name="mass_g" type="number" step="any" value="5"></div>
+<div class="cyl"><label>Diameter (mm)</label><input name="diameter_mm" type="number" step="any" value="31.75"></div>
+<div class="cyl"><label>Length (mm)</label><input name="length_mm" type="number" step="any" value="15.7"></div>
+<div class="cyl span2"><label>Resting</label><select name="upright"><option value="true">standing on an end</option><option value="false">on its side, axis across the jaws</option></select></div>
+<div class="bx" hidden><label>Width along the jaws (mm)</label><input name="width_mm" type="number" step="any" value="10"></div>
+<div class="bx" hidden><label>Depth across (mm)</label><input name="depth_mm" type="number" step="any" value="10"></div>
+<div class="bx" hidden><label>Height (mm)</label><input name="height_mm" type="number" step="any" value="10"></div>
 <div><label>Camera error &sigma; (mm)</label><input name="sigma_mm" type="number" step="any" value="3"></div>
 <div><label>Yaw error &sigma; (&deg;)</label><input name="sigma_deg" type="number" step="any" value="8"></div></div>
 <details><summary class="mute" style="margin-top:12px;cursor:pointer">Optimizer settings</summary><div class="grid2">
-<div><label>LLM suggestions</label><input name="n_suggestions" type="number" value="6"></div>
-<div><label>Max candidates</label><input name="budget" type="number" value="60"></div>
-<div><label>Grasps / candidate</label><input name="n_grasps" type="number" value="40"></div>
-<div><label>Workers (0 = auto)</label><input name="workers" type="number" value="0"></div></div></details>
+<div><label>Designs to search</label><input name="budget" type="number" value="128"></div>
+<div><label>Designs per round</label><input name="batch_size" type="number" value="16"></div>
+<div><label>Stop after rounds without gain</label><input name="patience" type="number" value="3"></div>
+<div><label>Seed</label><input name="seed" type="number" value="0"></div></div></details>
 <p style="margin:14px 0 0"><button>Start optimization</button></p></form></div>
 <div class="card" id="pane-jobs"><h2>Jobs</h2><div id="jobs"></div></div>
 </div>
 <div id="right"><div id="spywrap"><nav class="spy" id="spy" aria-label="Job sections"></nav></div>
 <main id="detail"><div class="card mute">Select or start a job.</div></main></div>
 </div>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","three-mesh-bvh":"https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.3/build/index.module.js","three-bvh-csg":"https://cdn.jsdelivr.net/npm/three-bvh-csg@0.0.16/build/index.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script>
 const $=s=>document.querySelector(s),B=document.body;let cur=null,es=null,sig='';
 const api=(u,o)=>fetch(u,o).then(r=>r.json());
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const pct=v=>v==null?'—':(v*100).toFixed(0)+'%';
+const pct=v=>v==null?'—':(v*100).toFixed(v>.99&&v<1?1:0)+'%';
+const mm=v=>v==null?'—':(+v).toFixed(1)+' mm';
+const partText=p=>p.shape=='box'?`box ${p.width_mm}×${p.depth_mm}×${p.height_mm} mm`:`cylinder ⌀${p.diameter_mm}×${p.length_mm} mm, ${p.upright?'standing':'lying'}`;
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
 const params=p=>`<div class="params">${Object.entries(p).map(([k,v])=>`<span>${esc(k.replace(/_/g,' '))} <b>${(+v).toFixed(1)}</b></span>`).join('')}</div>`;
 
@@ -118,7 +124,8 @@ function spy(){const line=$('.top').offsetHeight+$('#spywrap').offsetHeight+32;l
 addEventListener('scroll',()=>{if(!ticking){ticking=true;requestAnimationFrame(()=>{ticking=false;spy()})}},{passive:true});
 addEventListener('resize',()=>{document.documentElement.style.setProperty('--hh',$('.top').offsetHeight+'px');spy()});
 
-api('/api/meta').then(m=>$('#meta').textContent=`LLM ${m.llm} · Sim ${m.sim} · ${m.cpus} CPUs`);
+api('/api/meta').then(m=>$('#meta').textContent=`Sim ${m.sim} · ${m.cpus} CPUs`);
+$('#shape').onchange=e=>document.querySelectorAll('.cyl,.bx').forEach(el=>el.hidden=el.classList.contains('cyl')!==(e.target.value=='cylinder'));
 $('#f').onsubmit=async e=>{e.preventDefault();const r=await api('/api/jobs',{method:'POST',body:new FormData(e.target)});select(r.id);list()};
 
 async function list(){const js=await api('/api/jobs');$('#jobs').innerHTML=js.map(j=>`<div class="job ${j.id==cur?'sel':''}" onclick="pick('${j.id}')">
@@ -129,17 +136,21 @@ function pick(id){id===cur?deselect():select(id)}
 function select(id){cur=id;sig='';if(es)es.close();render(true,true);
  es=new EventSource(`/api/jobs/${id}/events`);es.onmessage=()=>{render();list()};es.onerror=()=>{es.close();render();list()}}
 
-function chart(trials){if(!trials.length)return'<p class="mute">Waiting for first results…</p>';
- const W=640,H=220,L=38,R=10,T=10,Bt=26,n=trials.length;let b=0;const best=trials.map(t=>b=Math.max(b,t.pruned?0:t.success_rate));
+function chart(trials){if(!trials.length)return'<p class="mute">Waiting for the first round…</p>';
+ const W=640,H=220,L=38,R=10,T=14,Bt=26,n=trials.length;let b=0;const best=trials.map(t=>b=t.kind=='search'?Math.max(b,t.success_rate):b);
  const x=i=>L+i*(W-L-R)/Math.max(1,n-1),y=v=>H-Bt-v*(H-Bt-T);
- const dot=(t,i)=>{const c=t.suggestion_id?'var(--llm)':'var(--opt)',tip=`<title>#${t.number} ${t.template}: ${pct(t.success_rate)} (${t.n_grasps} grasps${t.pruned?', pruned':''})</title>`;
-  return t.suggestion_id?`<rect x="${x(i)-4}" y="${y(t.success_rate)-4}" width="8" height="8" transform="rotate(45 ${x(i)} ${y(t.success_rate)})" fill="${t.pruned?'none':c}" stroke="${c}" stroke-width="1.5">${tip}</rect>`
-   :`<circle cx="${x(i)}" cy="${y(t.success_rate)}" r="3.5" fill="${t.pruned?'none':c}" stroke="${c}" stroke-width="1.5">${tip}</circle>`};
- return`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Success rate per candidate with best-so-far line">
+ const starts=trials.map((t,i)=>i&&t.round!==trials[i-1].round?i:-1).filter(i=>i>0);
+ const dot=(t,i)=>{const tip=`<title>#${t.number} round ${t.round} ${t.kind}: ${pct(t.success_rate)}, holds to ${mm(t.capture_radius_mm)}</title>`;
+  return t.kind!='search'?`<rect x="${x(i)-4}" y="${y(t.success_rate)-4}" width="8" height="8" transform="rotate(45 ${x(i)} ${y(t.success_rate)})" fill="var(--llm)">${tip}</rect>`
+   :`<circle cx="${x(i)}" cy="${y(t.success_rate)}" r="3.5" fill="var(--opt)">${tip}</circle>`};
+ return`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Expected success per design, round by round, with the best so far">
  ${[0,.25,.5,.75,1].map(v=>`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${v*100}%</text>`).join('')}
- <text x="${L}" y="${H-6}">candidate 1</text><text x="${W-R}" y="${H-6}" text-anchor="end">${n}</text>
+ ${starts.map(i=>`<line x1="${x(i-.5)}" x2="${x(i-.5)}" y1="${T-10}" y2="${H-Bt}" stroke="var(--line)" stroke-dasharray="3 3"/><text x="${x(i-.5)+4}" y="${T}">round ${trials[i].round}</text>`).join('')}
+ <text x="${L}" y="${H-6}">design 1</text><text x="${W-R}" y="${H-6}" text-anchor="end">${n}</text>
  <polyline fill="none" stroke="var(--best)" stroke-width="2" points="${best.map((v,i)=>x(i)+','+y(v)).join(' ')}"/>${trials.map(dot).join('')}</svg>
- <div class="legend"><span><i style="background:var(--llm);transform:rotate(45deg)"></i>LLM suggestion</span><span><i style="background:var(--opt);border-radius:50%"></i>Optimizer</span><span><i style="border:1.5px solid var(--mute);border-radius:50%"></i>Pruned early</span><span><i style="background:var(--best);height:3px;vertical-align:3px"></i>Best so far</span></div>`}
+ <div class="legend"><span><i style="background:var(--opt);border-radius:50%"></i>Searched design</span><span><i style="background:var(--llm);transform:rotate(45deg)"></i>Baseline (stock, imprint)</span><span><i style="background:var(--best);height:3px;vertical-align:3px"></i>Best searched so far</span></div>`}
+function compare(r){return`<div style="overflow-x:auto"><table><tr><th>Fingers<th class=n>Success<th class=n>Holds every grasp to<th>Success vs camera error &sigma; (mm)</tr>
+ ${r.comparison.map(c=>`<tr${c.name=='optimized'?' style="font-weight:600"':''}><td>${esc(c.name)}${c.problems.length?` <span class="mute" title="${esc(c.problems.join('; '))}">(can't be built)</span>`:''}<td class=n>${pct(c.success)}<td class=n>${mm(c.capture_radius_mm)}<td class=mono>${Object.entries(c.curve).sort((a,b)=>a[0]-b[0]).map(([k,v])=>`${k}: ${pct(v)}`).join(' · ')}`).join('')}</table></div>`}
 
 function physTable(j){const by={};j.physical.forEach(p=>(by[p.finger]=by[p.finger]||[]).push(p));
  const rows=Object.entries(by).map(([f,l])=>{const ok=l.filter(p=>p.success).length;return`<tr><td>${esc(f)}<td class=n>${ok}/${l.length}<td class=n>${pct(ok/l.length)}`}).join('');
@@ -149,17 +160,15 @@ function sections(j){const r=j.result,S=[];
   <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b style="font-size:16px">${esc(j.task)}</b><span class="pill ${j.status}">${j.status}${j.stage?' · '+j.stage:''}</span></div>
   <div>${['running','queued'].includes(j.status)?`<button class=sec onclick="act('cancel')">Cancel</button>`:''}${['interrupted','cancelled','failed'].includes(j.status)?`<button onclick="act('resume')">Resume</button>`:''}</div></div>
   <div class="bar ${j.status}" style="height:8px"><i style="width:${j.progress*100}%"></i></div>
-  <span class="mute">${j.n_done}/${j.n_total} candidates · ${esc(j.part.shape)} ⌀${j.part.diameter_mm} mm · ${j.part.mass_g} g</span>${j.error?`<pre>${esc(j.error)}</pre>`:''}
-  ${r?`<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="big">${pct(r.predicted_success)} <span class="mute" style="font-size:13px;font-weight:400">predicted success · 95% CI ${pct(r.ci_low)}–${pct(r.ci_high)} · re-validated on fresh perturbations</span></div>
-  <p><span class="tpl">${esc(r.template)}</span></p>${params(r.params)}
+  <span class="mute">${j.n_done}/${j.n_total} designs · ${esc(partText(j.part))} · ${j.part.mass_g} g · camera error &sigma; ${j.config.sigma_mm} mm, ${j.config.sigma_deg}&deg;</span>${j.error?`<pre>${esc(j.error)}</pre>`:''}
+  ${r?`<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="big">${pct(r.predicted_success)} <span class="mute" style="font-size:13px;font-weight:400">expected success at &sigma; = ${j.config.sigma_mm} mm · every grasp held to ${mm(r.capture_radius_mm)} off · re-tested with the baselines on a denser grid</span></div>
+  ${compare(r)}<p class="mute" style="margin:12px 0 0">Design #${r.trial_number}</p>${params(r.params)}
   <p class="mute" style="margin:12px 0 0">Grasp pose</p><pre>${esc(JSON.stringify(r.grasp_pose,null,1))}</pre>
   <div id="cadview" class="cadview"><span class="mute">Loading 3D preview…</span></div>
-  <a href="/api/jobs/${j.id}/scad">Finger CAD (.scad) &#8595;</a> <span class="chip">${j.review&&j.review.status=='approved'?'review approved':'DRAFT — not approved for printing'}</span>`:''}`});
+  <a href="/api/jobs/${j.id}/scad">Finger CAD (.scad, no mount holes yet) &#8595;</a> <span class="chip">${j.review&&j.review.status=='approved'?'review approved':'DRAFT — not approved for printing'}</span>`:''}`});
  S.push({id:'progress',t:'Progress',col:1,h:chart(j.trials)});
- S.push({id:'candidates',t:'Top candidates',col:1,h:`<div style="overflow-x:auto"><table><tr><th>#<th>Template<th>Parameters<th class=n>Success<th class=n>Grasps</tr>
-  ${[...j.trials].filter(t=>!t.pruned).sort((a,b)=>b.success_rate-a.success_rate).slice(0,8).map(t=>`<tr${t.number===j.best_trial?' style="font-weight:600"':''}><td class=mono>${t.number}<td class=tpl>${esc(t.template)}<td>${params(t.params)}<td class=n>${pct(t.success_rate)}<td class=n>${t.n_grasps}`).join('')}</table></div>`});
- S.push({id:'llm',t:'LLM suggestions',col:2,h:`<div style="overflow-x:auto"><table><tr><th>#<th>Template<th>Parameters<th class=n>Sim<th>Rationale</tr>
-  ${j.suggestions.map(s=>{const t=j.trials.find(t=>t.number===s.trial_number);return`<tr><td class=mono>${s.idx}<td class=tpl>${esc(s.template)}<td>${params(s.params)}<td class=n>${t?pct(t.success_rate):'…'}<td class=mute>${esc(s.rationale)}`}).join('')}</table></div>`});
+ S.push({id:'candidates',t:'Top designs',col:1,h:`<div style="overflow-x:auto"><table><tr><th>#<th class=n>Round<th>Parameters<th class=n>Success<th class=n>Holds to</tr>
+  ${[...j.trials].filter(t=>t.kind=='search').sort((a,b)=>b.success_rate-a.success_rate).slice(0,8).map(t=>`<tr${t.number===j.best_trial?' style="font-weight:600"':''}><td class=mono>${t.number}<td class=n>${t.round}<td>${params(t.params)}<td class=n>${pct(t.success_rate)}<td class=n>${mm(t.capture_radius_mm)}`).join('')}</table></div>`});
  S.push({id:'safety',t:'Review & physical tests',col:0,h:`<p class="notice">Do not mount a printed finger or command the arm until the plant manager / mentor has reviewed clearance and safe operation. Physical tests happen only at CSI with a supervisor.</p>
   <p>Review status: <b>${j.review?j.review.status:'pending'}</b>${j.review&&j.review.reviewer?' by '+esc(j.review.reviewer):''}</p>
   <form onsubmit="return post(event,'review')" class="grid2"><div><label>Reviewer</label><input name=reviewer></div><div><label>Decision</label><select name=status><option>pending<option>approved<option>rejected</select></div><div class=span2><label>Notes</label><input name=notes></div><div class=span2 style="margin-top:10px"><button>Save review</button></div></form>
@@ -168,35 +177,35 @@ function sections(j){const r=j.result,S=[];
   <div><label>Placement error (mm)</label><input name=placement_error_mm type=number step=any></div><div><label>Cycle time (s)</label><input name=cycle_time_s type=number step=any></div>
   <div><label>Recovered after fail</label><select name=recovered><option value=0>no<option value=1>yes</select></div><div><label>Operator intervention</label><select name=operator_intervention><option value=0>no<option value=1>yes</select></div>
   <div class=span2><label>Notes</label><input name=notes></div><div class=span2 style="margin-top:10px"><button>Log trial</button></div></form>`});
- if(j.meta){const m=j.meta;S.push({id:'record',t:'Run record',col:2,h:`<div class="kpis"><div><small>Runtime</small>${(m.runtime_s/60).toFixed(1)} min</div><div><small>Candidates</small>${m.n_trials} (${m.n_pruned} pruned)</div><div><small>Simulator</small>${esc(m.sim_backend)}</div><div><small>LLM</small>${esc((m.llm.backend||{}).model)}</div><div><small>GPU</small>${esc(m.gpu||'none')}</div><div><small>CPUs</small>${m.cpus}</div></div>`})}
+ if(j.meta){const m=j.meta;S.push({id:'record',t:'Run record',col:2,h:`<div class="kpis"><div><small>Runtime</small>${(m.runtime_s/60).toFixed(1)} min</div><div><small>Designs</small>${m.n_trials} in ${m.n_rounds} rounds</div><div><small>Simulator</small>${esc(m.sim_backend)}</div><div><small>Grasps per design</small>${j.trials.length?j.trials[0].n_grasps:'—'}</div><div><small>GPU</small>${esc(m.gpu||'none')}</div><div><small>CPUs</small>${m.cpus}</div></div>`})}
  return S}
 
 
-/* 3D preview: rebuilds the same CSG as make_scad() in app/backend/adapters.py (OpenSCAD coords, Z up). */
+/* 3D preview: the winning finger's convex pieces from /api/jobs/{id}/finger (gripper frame, mm, z up), the second finger
+   mirrored, jaws open, around the part resting on the table: the same geometry the simulator and the CAD file get. */
 let _cad=null;
 async function mountCad(j){const el=$('#cadview');if(!el)return;
  try{
-  const THREE=await import('three'),{OrbitControls}=await import('three/addons/controls/OrbitControls.js'),{Brush,Evaluator,SUBTRACTION}=await import('three-bvh-csg');
-  const r=j.result,p=r.params,t=r.template,L=p.finger_length,W=p.pad_width||20,rad=Math.PI/180;
-  const box=(w,d,h)=>{const g=new THREE.BoxGeometry(w,d,h);g.translate(w/2,d/2,h/2);return new Brush(g)};
-  let mesh;
-  if(t==='flat_pad')mesh=box(W,(p.pad_thickness||6)+10,L);
-  else{
-   let body,cut;
-   if(t==='v_groove'){body=box(W,20,L);const h=p.groove_depth*2,g=new THREE.CylinderGeometry(h,0,h,48,1);g.rotateX(Math.PI/2);
-    cut=new Brush(g);const m=new THREE.Matrix4().makeTranslation(W/2,20,L*0.7).multiply(new THREE.Matrix4().makeRotationX(90*rad)).multiply(new THREE.Matrix4().makeRotationZ(45*rad)).multiply(new THREE.Matrix4().makeScale(1,Math.tan(p.groove_angle/2*rad),1));cut.matrix.copy(m)}
-   else{const rr=(j.part.diameter_mm||40)/2*p.pocket_radius_scale+p.pocket_clearance,w=Math.max(W,2*rr+6),d=p.pocket_depth+6;body=box(w,d,L);cut=new Brush(new THREE.SphereGeometry(rr,48,32));cut.matrix.makeTranslation(w/2,d,L*0.7)}
-   cut.matrixAutoUpdate=false;cut.updateMatrixWorld(true);body.updateMatrixWorld(true);
-   mesh=new Evaluator().evaluate(body,cut,SUBTRACTION)}
-  mesh.material=new THREE.MeshStandardMaterial({color:0x76b900,roughness:.55,metalness:.1,side:THREE.DoubleSide});
+  const [THREE,{OrbitControls},g]=await Promise.all([import('three'),import('three/addons/controls/OrbitControls.js'),api(`/api/jobs/${j.id}/finger`)]);
+  const f=g.finger,[px,py,ph]=g.extent_mm,tip=f.tip_height_mm,pos=[];
+  for(const p of f.pieces)for(const t of p.triangles)for(const i of t)pos.push(...p.points[i]);
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.computeVertexNormals();
+  const mat=new THREE.MeshStandardMaterial({color:0x76b900,roughness:.55,metalness:.1,flatShading:true,side:THREE.DoubleSide});
+  const fingers=new THREE.Group();
+  for(const sgn of [1,-1]){const m=new THREE.Mesh(geo,mat);m.scale.x=sgn;m.position.x=sgn*g.jaw_open_mm;fingers.add(m);
+   const e=new THREE.LineSegments(new THREE.EdgesGeometry(geo,30),new THREE.LineBasicMaterial({color:0x222222}));e.scale.x=sgn;e.position.x=sgn*g.jaw_open_mm;fingers.add(e)}
+  const pm=new THREE.MeshStandardMaterial({color:0xcd163f,transparent:true,opacity:.5});
+  let part;if(g.part.shape=='cylinder'){const c=new THREE.CylinderGeometry(px/2,px/2,g.part.upright?ph:py,48);if(g.part.upright)c.rotateX(Math.PI/2);part=new THREE.Mesh(c,pm)}
+  else part=new THREE.Mesh(new THREE.BoxGeometry(px,py,ph),pm);
+  part.position.z=ph/2-tip;
+  const span=4*Math.max(px,py,40),table=new THREE.Mesh(new THREE.PlaneGeometry(span,span),new THREE.MeshStandardMaterial({color:0x888888,transparent:true,opacity:.25,side:THREE.DoubleSide}));table.position.z=-tip;
   if(_cad){_cad.stop();_cad=null}
   el.innerHTML='';const W0=el.clientWidth,H0=el.clientHeight;
   const rd=new THREE.WebGLRenderer({antialias:true,alpha:true});rd.setPixelRatio(devicePixelRatio);rd.setSize(W0,H0);el.appendChild(rd.domElement);
-  const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,W0/H0,.1,2000);cam.up.set(0,0,1);
+  const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,W0/H0,.1,4000);cam.up.set(0,0,1);
   sc.add(new THREE.HemisphereLight(0xffffff,0x888888,1.4));const dl=new THREE.DirectionalLight(0xffffff,2);dl.position.set(60,-80,100);sc.add(dl);
-  sc.add(mesh);const bb=new THREE.Box3().setFromObject(mesh),c=bb.getCenter(new THREE.Vector3()),sz=bb.getSize(new THREE.Vector3()).length();
-  sc.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry,30),new THREE.LineBasicMaterial({color:0x222222})));
-  cam.position.copy(c).add(new THREE.Vector3(sz*.9,-sz*1.1,sz*.7));
+  sc.add(fingers,part,table);const bb=new THREE.Box3().setFromObject(fingers).union(new THREE.Box3().setFromObject(part)),c=bb.getCenter(new THREE.Vector3()),sz=bb.getSize(new THREE.Vector3()).length();
+  cam.position.copy(c).add(new THREE.Vector3(sz*.6,-sz*.9,sz*.35));
   const oc=new OrbitControls(cam,rd.domElement);oc.target.copy(c);oc.update();
   let run=true;(function loop(){if(!run||!el.isConnected)return;rd.render(sc,cam);requestAnimationFrame(loop)})();
   _cad={stop(){run=false;rd.dispose()}};

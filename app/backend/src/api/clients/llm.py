@@ -1,4 +1,8 @@
-"""The LLM step: proposes starting finger designs. Mock (default), Claude, or a custom HTTP service."""
+"""An LLM that proposes starting finger designs. Mock (default), Claude, or a custom HTTP service.
+
+The optimizer doesn't call it: round 0 is a Sobol sample of the search space. It's kept, on the new design parameters,
+so suggestions can seed round 0 later if they turn out to help.
+"""
 
 import json
 import logging
@@ -9,23 +13,25 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from api.config import LlmConfig
-from api.models.design import SPACE, TEMPLATES
+from api.models.design import PARAMS
 from api.models.part import Part
+from api.models.search_space import SearchSpace
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "v1"
-PROMPT = """You design 3D-printed parallel-jaw gripper fingers for a SCHUNK gripper.
-Part (mm): {part}
-Task: {task}
-Choose {k} diverse starting designs. Templates and parameter ranges:
+PROMPT_VERSION = "v2"
+PROMPT = """You design 3D-printed fingers for the parallel-jaw gripper on a FANUC ER-4iA: an SMC MHZL2-16D2 with 6 mm of
+travel per jaw, gripping from above. A design is a contact pad described by these parameters (mm, degrees):
 {space}
-Reply with ONLY JSON: {{"suggestions":[{{"template":..., "params":{{...}}, "rationale":"..."}}]}}"""
+Part (mm, g): {part}
+Task: {task}
+Choose {k} diverse starting designs within those ranges.
+Reply with ONLY JSON: {{"suggestions":[{{"params":{{...}}, "rationale":"..."}}]}}"""
 
 
 @dataclass
 class LlmReply:
-    suggestions: list[dict]  # [{template, params, rationale}], not yet checked against SPACE
+    suggestions: list[dict]  # [{params, rationale}], not yet checked against the search space
     source: str  # the backend that answered
     model: str
     raw: str  # the verbatim response, kept so suggestions can be re-featurized later
@@ -46,13 +52,11 @@ class MockLlm:
 
     def suggest(self, part: Part, task: str, k: int) -> LlmReply:
         rng = random.Random(zlib.crc32((json.dumps(part.model_dump(), sort_keys=True) + task).encode()))
-        suggestions = []
-        for i in range(k):
-            template = TEMPLATES[i % len(TEMPLATES)]
-            params = {name: rng.uniform(lo, hi) for name, (lo, hi) in SPACE[template].items()}
-            if template == "pocket":
-                params["pocket_radius_scale"] = rng.uniform(0.9, 1.1)
-            suggestions.append({"template": template, "params": params, "rationale": f"mock heuristic for ~{part.diameter_mm}mm part"})
+        bounds = SearchSpace(part).bounds()
+        suggestions = [
+            {"params": {name: rng.uniform(lo, hi) for name, (lo, hi) in bounds.items()}, "rationale": f"mock guess for a {part.shape}"}
+            for _ in range(k)
+        ]
         return LlmReply(suggestions, "mock", "mock", json.dumps(suggestions))
 
     def close(self) -> None:
@@ -69,7 +73,7 @@ class AnthropicLlm:
         self._client = anthropic.Anthropic(api_key=api_key)
 
     def suggest(self, part: Part, task: str, k: int) -> LlmReply:
-        prompt = PROMPT.format(part=json.dumps(part.model_dump()), task=task, k=k, space=json.dumps(SPACE))
+        prompt = PROMPT.format(part=json.dumps(part.model_dump()), task=task, k=k, space=describe_space(part))
         message = self._client.messages.create(model=self.model, max_tokens=2000, messages=[{"role": "user", "content": prompt}])
         raw = message.content[0].text
         data = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
@@ -93,6 +97,11 @@ class HttpLlm:
 
     def close(self) -> None:
         pass
+
+
+def describe_space(part: Part) -> str:
+    """One line per design parameter: its range for this part and what it means."""
+    return "\n".join(f"- {name} ({lo:.1f} to {hi:.1f}): {PARAMS[name]}" for name, (lo, hi) in SearchSpace(part).bounds().items())
 
 
 def create_llm_client(config: LlmConfig) -> LlmClient:

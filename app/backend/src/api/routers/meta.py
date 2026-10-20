@@ -4,13 +4,13 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from api.dependencies import ConfigDep
-from api.models.design import SPACE
+from api.models.design import PARAMS
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
 
 class MetaResponse(BaseModel):
-    templates: dict[str, dict[str, tuple[float, float]]]  # the design space: template -> parameter -> (min, max)
+    parameters: dict[str, str]  # the design parameters the optimizer searches, and what each one is
     llm: str  # active backends
     sim: str
     cpus: int | None
@@ -18,4 +18,4 @@ class MetaResponse(BaseModel):
 
 @router.get("/meta")
 def get_meta(config: ConfigDep) -> MetaResponse:
-    return MetaResponse(templates=SPACE, llm=config.llm.backend, sim=config.sim.backend, cpus=os.cpu_count())
+    return MetaResponse(parameters=PARAMS, llm=config.llm.backend, sim=config.sim.backend, cpus=os.cpu_count())

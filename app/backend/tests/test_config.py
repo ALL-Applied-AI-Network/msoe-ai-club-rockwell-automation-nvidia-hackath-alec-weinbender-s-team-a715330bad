@@ -28,7 +28,7 @@ def test_existing_variable_names_fill_each_client_config(monkeypatch, tmp_path):
         "LLM_URL": "http://llm:9100/suggest",
         "LLM_MODEL": "custom",
         "SIM_BACKEND": "http",
-        "SIM_URL": "http://gpu:9000/evaluate",
+        "SIM_URL": "http://gpu:9000",
         "SIM_TIMEOUT_S": "5",
         "DATA_DIR": str(tmp_path),
         "LOG_LEVEL": "debug",
@@ -38,7 +38,7 @@ def test_existing_variable_names_fill_each_client_config(monkeypatch, tmp_path):
     config = AppConfig()
 
     assert (config.llm.backend, config.llm.url, config.llm.model) == ("http", "http://llm:9100/suggest", "custom")
-    assert (config.sim.backend, config.sim.url, config.sim.timeout_s) == ("http", "http://gpu:9000/evaluate", 5)
+    assert (config.sim.backend, config.sim.url, config.sim.timeout_s) == ("http", "http://gpu:9000", 5)
     assert config.data_dir == tmp_path
     assert config.log_level == "DEBUG"
 

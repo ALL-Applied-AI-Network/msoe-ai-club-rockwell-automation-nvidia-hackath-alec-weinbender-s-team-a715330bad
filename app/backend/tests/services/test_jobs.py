@@ -36,6 +36,8 @@ def test_unknown_job_raises(db):
         jobs.get_job(db, "nope")
     with pytest.raises(jobs.JobNotFoundError):
         jobs.result_file(db, "nope")
+    with pytest.raises(jobs.JobNotFoundError):
+        jobs.result_finger(db, "nope")
 
 
 def test_cancel_asks_the_worker_to_stop(db, job_id):

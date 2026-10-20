@@ -1,6 +1,7 @@
 # Finger Designer (web app)
 
-Web front end + job runner bridging the user to the LLM and the simulation/optimization back end.
+Web front end + job runner: takes a part, searches finger designs in the simulator, and reports the best one next to the
+stock and imprint baselines.
 
 ```text
 app/
@@ -8,9 +9,9 @@ app/
 │   ├── pyproject.toml    dependencies
 │   ├── alembic.ini       database migrations CLI
 │   ├── src/api/          main.py (API + lifespan), worker.py (detached job process), config.py (settings + secrets),
-│   │                     routers/ -> services/ -> clients/ (llm, sim, cad, database), models/ (domain objects),
+│   │                     routers/ -> services/ -> clients/ (sim, cad, llm, database), models/ (domain objects),
 │   │                     db/ (SQLAlchemy tables + Alembic migrations)
-│   └── tests/            pytest: routers/, services/, clients/, db/
+│   └── tests/            pytest: routers/, services/, clients/, models/, db/
 ├── frontend/             single-file UI (index.html), served by the backend at /
 └── data/                 runtime only, gitignored: app.db, uploads/, outputs/, worker.log
 ```
@@ -23,64 +24,68 @@ uv run --package backend uvicorn api.main:app --port 8000      # open http://loc
 uv run pytest                                                   # backend tests, offline
 ```
 
-Add a dependency with `uv add --package backend <dep>`.
+Add a dependency with `uv add --package backend <dep>`. BoTorch's PyTorch comes from the CPU-only index (root
+`pyproject.toml`): the optimizer's GP is small, and the GPU belongs to Isaac.
 
-Runs end-to-end out of the box with a **mock** LLM and **mock** simulator. Configure the real ones in the repo-root `.env`
-(loaded automatically; real environment variables win). Every variable is in [`../.env.example`](../.env.example):
+Runs end-to-end out of the box with the **mock** simulator. Configure the real one in the repo-root `.env` (loaded
+automatically; real environment variables win). Every variable is in [`../.env.example`](../.env.example):
 
 | Variable | Effect |
 |---|---|
-| `ANTHROPIC_API_KEY` (+ optional `LLM_MODEL`) | LLM step uses Claude |
-| `LLM_BACKEND=http`, `LLM_URL` | POST `{part,task,k}` -> `{suggestions:[{template,params,rationale}]}` |
-| `SIM_BACKEND=http`, `SIM_URL` | POST `{part,design,offsets:[...]}` -> `{successes:[bool,...]}` (a batch of grasps in the ER-4iA twin) |
+| `SIM_BACKEND=http`, `SIM_URL` | The sim server's base URL; each round is one `POST {SIM_URL}/evaluate_batch` (contract below) |
+| `SIM_TIMEOUT_S` | Per-request timeout; a request is a whole round (default 3600 s) |
 | `DATA_DIR` | Where the SQLite DB, uploads and outputs go (default `app/data/`) |
 | `DB_URL` | Another database instead of the SQLite file, e.g. Postgres |
+| `ANTHROPIC_API_KEY`, `LLM_*` | The LLM client. The optimizer doesn't call it at the moment |
 
 If a selected backend is missing its key or URL, the API logs which variable and refuses to start.
 
-Template/parameter ranges: `backend/src/api/models/design.py` (`SPACE`). Replace the OpenSCAD placeholder in
-`backend/src/api/clients/cad.py` with a real CAD export (e.g. CadQuery -> STEP/STL).
+## How a job runs
 
-## Long-running optimization
+The optimizer is `backend/src/api/services/optimizer.py`.
 
-- Each job is a **detached process** (`python -m api.worker <id>`), not a request thread: closing the browser or restarting the API doesn't kill it.
-- Candidates evaluate **in parallel** across CPU cores (ask/tell Bayesian optimization, TPE).
-- **Early pruning**: grasps run in chunks of 10; a candidate stops once its Wilson upper bound can't beat the current best.
-- **Common random numbers**: grasp *i* uses the same camera-error offset for every design => fairer, lower-variance comparison.
-- LLM suggestions are **warm-start trials**; early stopping after 25 candidates with no improvement.
-- **Checkpointed** to the database after every trial; interrupted/cancelled jobs can be resumed from the UI.
-- The reported success rate comes from **re-validating the top 3 on fresh perturbations (3x grasps)**, so it isn't inflated by picking the max of many noisy trials.
-- Live progress via Server-Sent Events.
-
-The optimizer is `backend/src/api/services/optimizer.py`. Further speed-ups when the real sim is plugged in: headless/no-render
-mode, N simulator instances per worker, GPU-batched physics (many grasps per call), lower grasp count in early rounds, and later
-the stretch-goal surrogate to skip bad candidates. For running remotely, point `SIM_URL` at a GPU box, or move the worker behind
-a queue (Celery/RQ): the database is the only shared state.
+- **Part** (`models/part.py`): a cylinder (standing, or lying across the jaws) or a box, as it rests on the table.
+- **Design space** (`models/search_space.py`): six numbers defined relative to the part (pad width, groove angle, groove depth,
+  slack, fingertip height, lead-in), mapped from a unit cube so every point is a finger that fits and the jaws can grip with.
+- **Geometry** (`models/finger.py`): a design becomes convex pieces in the gripper frame. The sim server, the CAD file and
+  the 3D preview all get those same pieces, and quick checks reject anything that can't work before it's simulated.
+- **Score** (`models/offset_grid.py`): every design is tried at every point of a fixed grid of camera errors (81 points, more
+  for parts whose yaw matters), and scored by its expected success under the job's error model, plus its capture radius.
+- **Rounds**: round 0 is the stock and imprint baselines plus a Sobol sample; each later round fits a GP to all scores and
+  picks the next batch with BoTorch's qLogNoisyExpectedImprovement. A round is one sim request, checkpointed whole, so a job
+  stops after its budget or `patience` rounds without gain, and an interrupted or cancelled job resumes at the next round.
+- **Result**: the top 3 and both baselines are re-tested together on a denser grid. The winner's validated score is the
+  predicted success; the result page shows the comparison and success at several error levels.
+- Each job is a **detached process** (`python -m api.worker <id>`), so closing the browser or restarting the API doesn't kill
+  it. Live progress via Server-Sent Events.
 
 ## Simulator service
 
-`SIM_URL` should point at [`../sim/sim_server/src/sim_server/server.py`](../sim/sim_server/src/sim_server/server.py), which runs next to Isaac Sim and the
-[FANUC ER-4iA twin](../sim/fanuc_er4ia_sim/). It is still a stub (`run_grasps` raises `NotImplementedError`).
+`SIM_URL` points at the sim server in [`../sim/sim_server/`](../sim/README.md), which runs next to Isaac Sim and the
+[FANUC ER-4iA twin](../sim/fanuc_er4ia_sim/). The batch contract (`clients/sim.py`):
 
-> **Gripper-fit warning:** the twin's actuator is an SMC MHZL2-16D2 (6 mm travel per jaw, 12 mm max straight-face gap,
-> ~16 mm at the hooked tips). The default "tennis balls" example and the `SPACE` ranges here assume much larger parts.
-> Read [../CONTEXT.md](../CONTEXT.md) before choosing the demo part.
+```text
+POST /evaluate_batch
+{part: {shape, diameter_mm, length_mm, upright, box_mm: [along, across, height], mass_g},
+ designs: [{id: "stock"} | {id, pieces: [{points, triangles}], friction: [static, dynamic], tip_height_mm, jaw_close_mm}],
+ offsets: [{dx, dy, yaw_deg}]}                       -> {held: [[bool per offset] per design]}
+```
+
+Pieces are in the gripper frame with the jaws closed (mm; see the docstring of `models/finger.py`); the sim mirrors them for
+the second finger. The mock (`MockSim`) checks capture geometry only, so **its success rates are not results**.
 
 ## Database
 
 SQLite at `data/app.db` (relative to `app/`) by default. Tables are in `backend/src/api/db/tables.py`; changes need a
 migration (`uv run --package backend alembic -c app/backend/alembic.ini revision --autogenerate -m "..."` from the repo root),
-which the API applies at startup. An `app.db` from before migrations existed is kept and stamped, not recreated.
+which the API applies at startup. Migration 0002 cleared every job made before it (demo data from the old design space).
 
 ## Training data for the stretch goal
 
-Everything is in the database and exportable:
-
-- `GET /api/export/suggestions.jsonl` - each LLM proposal (template, params, rationale, model, raw output) + its simulated success rate + the job's best. Label good/bad (e.g. within X of best) to train the "reject bad LLM suggestions" filter.
-- `GET /api/export/trials.jsonl` - every simulated design (features, success rate, n_grasps, `from_llm`, `chosen_best`) for the instant success-rate predictor.
-
-Raw LLM responses and uploaded CAD files are kept, so you can re-featurize later (e.g. part geometry embeddings).
+`GET /api/export/trials.jsonl`: every simulated design with its parameters, score, capture radius, the raw held/missed result
+at every grid point and the grid itself, so a surrogate can be trained for any error level. `GET /api/export/physical.jsonl`:
+logged physical trials.
 
 ## Not done yet
 
-CAD/image parsing (part size is entered manually; the file is stored), real CAD output, auth, and a hardware-validation (stage 5) tracking page.
+CAD/image parsing (part size is entered manually; the file is stored), CadQuery export with the mount holes, auth.

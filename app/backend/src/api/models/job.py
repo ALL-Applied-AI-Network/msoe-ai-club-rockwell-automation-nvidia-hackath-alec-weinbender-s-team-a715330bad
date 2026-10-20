@@ -1,8 +1,8 @@
-"""A design job and what it produces: LLM suggestions, simulated trials and the final result."""
+"""A design job and what it produces: simulated trials, round by round, and the final result."""
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.models.part import Part
 from api.models.physical_trial import PhysicalTrial
@@ -14,17 +14,14 @@ RESUMABLE_STATUSES = ("interrupted", "cancelled", "failed")
 
 
 class JobConfig(BaseModel):
-    """How a job searches: the camera-error model, the budget and the parallelism."""
+    """How a job searches: the camera-error model it scores designs under, the budget and the batch size."""
 
-    sigma_mm: float = 3  # camera position error, 1 sigma
-    sigma_deg: float = 8  # camera yaw error, 1 sigma
-    n_suggestions: int = 6
-    budget: int = 60  # simulated designs
-    n_grasps: int = 40  # grasps per design
-    workers: int = 0  # 0: all CPUs but one
+    sigma_mm: float = Field(3, ge=0)  # camera position error, 1 sigma per axis
+    sigma_deg: float = Field(8, ge=0)  # camera yaw error, 1 sigma
+    budget: int = Field(128, ge=1)  # designs searched; the stock and imprint baselines come on top
+    batch_size: int = Field(16, ge=1)  # designs per round, simulated together
+    patience: int = Field(3, ge=1)  # stop after this many rounds without improvement
     seed: int = 0
-    patience: int = 25  # stop after this many trials without improvement
-    prune: bool = True
 
 
 class Job(BaseModel):
@@ -40,7 +37,7 @@ class Job(BaseModel):
     config: JobConfig
     n_done: int = 0
     n_total: int = 0
-    stage: str | None = None  # llm, optimize, finalize
+    stage: str | None = None  # optimize, finalize
     best_value: float | None = None
     best_trial: int | None = None
     error: str | None = None
@@ -49,57 +46,45 @@ class Job(BaseModel):
     finished: float | None = None
 
 
-class Suggestion(BaseModel):
-    """A starting design proposed by the LLM. trial_number links it to the trial that evaluated it."""
-
-    model_config = ConfigDict(from_attributes=True)  # read straight from api.db.tables rows
-
-    id: int
-    idx: int
-    template: str
-    params: dict[str, float]
-    rationale: str | None
-    source: str
-    model: str | None
-    trial_number: int | None
-
-
 class Trial(BaseModel):
-    """One simulated design. Pruned trials stopped early and have a less reliable success rate."""
+    """One design, tried at every point of the job's offset grid. success_rate is its expected success under the job's
+    error model; held is the raw result per grid point, so it can be re-scored at any other error level."""
 
     model_config = ConfigDict(from_attributes=True)  # read straight from api.db.tables rows
 
     number: int
-    template: str
+    round: int
+    kind: str  # search, stock or imprint
     params: dict[str, float]
     success_rate: float
+    capture_radius_mm: float | None  # every grasp held out to this camera error; None if even the centre failed
     n_grasps: int
-    pruned: int
-    suggestion_id: int | None
+    held: list[bool]
 
 
 class JobResult(BaseModel):
-    """The winning design, re-validated on fresh perturbations, with its printable CAD file."""
+    """The winning design, re-tested next to the finalists and baselines on a denser grid, with its CAD file. Each
+    comparison entry: name, kind, trial_number, success, capture_radius_mm, curve (success at several error levels),
+    problems."""
 
     model_config = ConfigDict(from_attributes=True)  # read straight from api.db.tables rows
 
     job_id: str
     trial_number: int
-    template: str
+    kind: str
     params: dict[str, float]
     grasp_pose: dict[str, Any]
     predicted_success: float
-    ci_low: float
-    ci_high: float
+    capture_radius_mm: float | None
+    comparison: list[dict[str, Any]]
     scad_path: str
     created: float
 
 
 class JobDetail(BaseModel):
     job: Job
-    suggestions: list[Suggestion]
     trials: list[Trial]
     result: JobResult | None
-    meta: dict[str, Any] | None  # run metadata for reproducibility: versions, hardware, backends
+    meta: dict[str, Any] | None  # run metadata for reproducibility: versions, hardware, backends, grids
     review: Review | None
     physical: list[PhysicalTrial]

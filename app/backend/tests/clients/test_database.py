@@ -1,10 +1,11 @@
 import json
 import sqlite3
 
-from api.clients.database import BASELINE_REVISION, DatabaseClient
+from alembic.config import Config as AlembicConfig
+from alembic.script import ScriptDirectory
+
+from api.clients.database import BASELINE_REVISION, MIGRATIONS_DIR, DatabaseClient
 from api.config import AppConfig
-from api.models.job import JobConfig
-from api.models.part import Part
 from api.services import jobs
 
 # The schema the app created before Alembic, as found in teammates' existing app.db files.
@@ -32,12 +33,18 @@ CREATE TABLE physical_trials(
 """
 
 
-def test_database_from_before_migrations_is_stamped_and_keeps_its_data(tmp_path):
+def _head_revision() -> str:
+    config = AlembicConfig()
+    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    return ScriptDirectory.from_config(config).get_current_head()
+
+
+def test_database_from_before_migrations_is_stamped_then_upgraded_clearing_old_jobs(tmp_path):
     old = sqlite3.connect(tmp_path / "app.db")
     old.executescript(PRE_ALEMBIC_SCHEMA)
     old.execute(
         "INSERT INTO jobs(id,created,status,part_name,part,task,config,n_total) VALUES(?,?,?,?,?,?,?,?)",
-        ("old1", 1.0, "done", "manual", json.dumps(Part(diameter_mm=12).model_dump()), "pick", json.dumps(JobConfig().model_dump()), 60),
+        ("old1", 1.0, "done", "manual", json.dumps({"shape": "sphere", "diameter_mm": 40}), "pick", json.dumps({"budget": 60}), 60),
     )
     old.commit()
     old.close()
@@ -47,10 +54,10 @@ def test_database_from_before_migrations_is_stamped_and_keeps_its_data(tmp_path)
 
     with db.engine.connect() as connection:
         version = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
-    job = jobs.get_job(db, "old1")
+    remaining = jobs.list_jobs(db)
     db.close()
-    assert version == BASELINE_REVISION
-    assert (job.part, job.config) == (Part(diameter_mm=12), JobConfig())
+    assert BASELINE_REVISION < version == _head_revision()
+    assert remaining == [], "revision 0002 clears jobs scored by the old design space"
 
 
 def test_migrating_an_up_to_date_database_changes_nothing(db):

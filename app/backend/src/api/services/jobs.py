@@ -11,8 +11,10 @@ from sqlalchemy import select, update
 
 from api.clients.database import DatabaseClient
 from api.config import APP_DIR, AppConfig
-from api.db.tables import JobRow, ResultRow, RunMetaRow, SuggestionRow, TrialRow
-from api.models.job import RESUMABLE_STATUSES, Job, JobConfig, JobDetail, JobResult, Suggestion, Trial
+from api.db.tables import JobRow, ResultRow, RunMetaRow, TrialRow
+from api.models.design import Design
+from api.models.finger import Finger, build_finger
+from api.models.job import RESUMABLE_STATUSES, Job, JobConfig, JobDetail, JobResult, Trial
 from api.models.part import Part
 from api.services import physical_trials, reviews
 
@@ -82,12 +84,10 @@ def get_job_detail(db: DatabaseClient, job_id: str) -> JobDetail:
         row = s.get(JobRow, job_id)
         if row is None:
             raise JobNotFoundError(job_id)
-        suggestions = s.scalars(select(SuggestionRow).where(SuggestionRow.job_id == job_id).order_by(SuggestionRow.idx))
         trials = s.scalars(select(TrialRow).where(TrialRow.job_id == job_id).order_by(TrialRow.number))
         result, meta = s.get(ResultRow, job_id), s.get(RunMetaRow, job_id)
         return JobDetail(
             job=Job.model_validate(row),
-            suggestions=[Suggestion.model_validate(r) for r in suggestions],
             trials=[Trial.model_validate(r) for r in trials],
             result=JobResult.model_validate(result) if result else None,
             meta=meta.meta if meta else None,
@@ -108,6 +108,16 @@ def resume_job(db: DatabaseClient, config: AppConfig, job_id: str) -> None:
         if row is None or row.status not in RESUMABLE_STATUSES:
             raise JobNotResumableError(job_id)
     spawn_worker(db, config, job_id)
+
+
+def result_finger(db: DatabaseClient, job_id: str) -> tuple[Part, Finger]:
+    """The part and the winning finger's geometry, for the 3D preview."""
+    with db.session() as s:
+        job, result = s.get(JobRow, job_id), s.get(ResultRow, job_id)
+        if job is None or result is None:
+            raise JobNotFoundError(job_id)
+        part, design = job.part, Design(kind=result.kind, params=result.params)
+    return part, build_finger(part, design)
 
 
 def result_file(db: DatabaseClient, job_id: str) -> Path:

@@ -3,7 +3,7 @@ import json
 import pytest
 
 
-@pytest.mark.parametrize("dataset", ["trials", "suggestions", "physical"])
+@pytest.mark.parametrize("dataset", ["trials", "physical"])
 def test_exports_are_json_lines(finished_client, dataset):
     response = finished_client.get(f"/api/export/{dataset}.jsonl")
 

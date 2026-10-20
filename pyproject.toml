@@ -4,6 +4,16 @@
 [tool.uv.workspace]
 members = ["app/backend", "sim/sim_server"]
 
+# PyTorch (BoTorch needs it) comes from its CPU-only index: the optimizer fits small GPs on the CPU, and the default Linux
+# wheels bring several GB of CUDA libraries the backend never uses. Isaac keeps its own torch on the GPU machine.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
 [tool.ruff]
 target-version = "py311"
 line-length = 140
@@ -14,10 +24,10 @@ extend-exclude = ["sim/fanuc_er4ia_sim"]   # vendored upstream starter
 select = ["E", "F", "W", "B", "I", "G"]   # G: log calls take arguments, not f-strings
 
 [tool.pytest.ini_options]
-testpaths = ["app/backend/tests"]
+testpaths = ["app/backend/tests", "sim/sim_server/tests"]   # sim tests run without Isaac
 addopts = ["--import-mode=importlib", "-m", "not integration"]
 markers = ["integration: needs a real LLM or the sim server; deselected by default (run with -m integration)"]
-filterwarnings = ["ignore::optuna.exceptions.ExperimentalWarning"]   # the sampler's group=True option
+filterwarnings = ["ignore:`torch.jit.script` is deprecated:FutureWarning"]   # raised by gpytorch's imports, not our code
 
 [dependency-groups]
 dev = [

@@ -1,17 +1,15 @@
-import pytest
-
 from api.clients.cad import OpenScadCad
-from api.models.design import SPACE, Design, clamp_params
+from api.models.design import Design
+from api.models.finger import build_finger
 from api.models.part import Part
 
 
-@pytest.mark.parametrize("template", list(SPACE))
-def test_export_is_an_openscad_body_for_every_template(template):
-    design = Design(template=template, params=clamp_params(template, {}))
+def test_export_is_openscad_of_every_simulated_piece_for_both_fingers():
+    finger = build_finger(Part(), Design(kind="imprint"))
 
-    scad = OpenScadCad().export(Part(), design)
+    scad = OpenScadCad().export(finger, "imprint for the cap")
 
-    header, body = scad.rstrip().split("\n")
-    assert header.startswith(f"// {template} finger")
-    assert body.endswith((";", "}"))
-    assert (body.count("{"), body.count("(")) == (body.count("}"), body.count(")"))
+    assert scad.startswith("// imprint for the cap\n")
+    assert scad.count("polyhedron(") == len(finger.pieces)
+    assert scad.count("finger();") == 2
+    assert (scad.count("{"), scad.count("("), scad.count("[")) == (scad.count("}"), scad.count(")"), scad.count("]"))

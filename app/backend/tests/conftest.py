@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 
 from api.clients.cad import OpenScadCad
 from api.clients.database import DatabaseClient
-from api.clients.llm import MockLlm
 from api.clients.sim import MockSim
 from api.config import AppConfig
 from api.dependencies import get_config, get_db
@@ -17,7 +16,7 @@ from api.services import jobs
 from api.services.optimizer import run_job
 
 APP_VARIABLES = ("ANTHROPIC_API_KEY", "DATA_DIR", "LOG_LEVEL")
-SMALL_JOB = JobConfig(budget=4, n_grasps=10, n_suggestions=2, workers=1)
+SMALL_JOB = JobConfig(budget=6, batch_size=3)  # two rounds: the baselines + 3 Sobol designs, then 3 from the GP
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -71,15 +70,15 @@ class FinishedJob:
 
 @pytest.fixture(scope="session")
 def finished_job(tmp_path_factory) -> FinishedJob:
-    """A small job run to completion with the mock clients, shared by read-only tests. Uses real process pools, so it
-    takes a few seconds."""
+    """A small job run to completion with the mock clients, shared by read-only tests. Fits a real GP, so it takes a few
+    seconds."""
     config = AppConfig(data_dir=tmp_path_factory.mktemp("finished"))
     db = DatabaseClient(config.db)
     db.migrate()
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(jobs, "spawn_worker", lambda *args: None)
         job_id = jobs.create_job(db, config, task="pick and sort", part=Part(), job_config=SMALL_JOB)
-    run_job(db, job_id, llm=MockLlm(), sim=MockSim(), cad=OpenScadCad(), outputs_dir=config.outputs_dir)
+    run_job(db, job_id, sim=MockSim(), cad=OpenScadCad(), outputs_dir=config.outputs_dir)
     yield FinishedJob(config, db, job_id)
     db.close()
 

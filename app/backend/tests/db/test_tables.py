@@ -7,14 +7,13 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 
-from api.db.tables import Base, JobRow, PhysicalTrialRow, ResultRow, ReviewRow, SuggestionRow, TrialRow
-from api.models.job import Job, JobResult, Suggestion, Trial
+from api.db.tables import Base, JobRow, PhysicalTrialRow, ResultRow, ReviewRow, TrialRow
+from api.models.job import Job, JobResult, Trial
 from api.models.physical_trial import PhysicalTrial
 from api.models.review import Review
 
 MODEL_TABLE_PAIRS = [
     (Job, JobRow),
-    (Suggestion, SuggestionRow),
     (Trial, TrialRow),
     (JobResult, ResultRow),
     (Review, ReviewRow),
