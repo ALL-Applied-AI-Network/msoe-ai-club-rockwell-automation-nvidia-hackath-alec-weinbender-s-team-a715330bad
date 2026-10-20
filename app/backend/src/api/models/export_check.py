@@ -71,8 +71,9 @@ def check_solid(fingers: Sequence["PrintableFinger"]) -> ExportCheck:
 
 def check_matches_sim(pieces: Sequence[Piece], gripper: Gripper, fingers: Sequence["PrintableFinger"]) -> ExportCheck:
     """Volume and bounding box against the simulated pieces: the solid's volume must be the pieces' volume, minus the
-    holes, slots and engraving, plus the pins (within VOLUME_TOLERANCE), and its box the pieces' box grown by the pins
-    (within BOX_TOLERANCE_MM). The right finger is compared with the pieces mirrored in x."""
+    mount's cuts (holes, slots, a +x mount's step) and the engraving, plus the pins (within VOLUME_TOLERANCE), and its
+    box the pieces' box grown by the pins (within BOX_TOLERANCE_MM). The right finger is compared with the pieces
+    mirrored in x."""
     simulated = sum(_volume(piece) for piece in pieces)
     removed, added = mount_feature_volumes(gripper)
     lo, hi = pieces_bounds(pieces)
@@ -92,7 +93,7 @@ def check_matches_sim(pieces: Sequence[Piece], gripper: Gripper, fingers: Sequen
         failed |= bad
         lines.append(
             f"{finger.side}: volume {volume:.1f} mm3 vs {expected:.1f} expected ({error:.2%}; pieces {simulated:.1f}"
-            f" - mount holes and slots {removed:.1f} + pins {added:.1f} - ID {engraved:.1f}), bounding box off by {off:.3f} mm"
+            f" - mount cuts {removed:.1f} + pins {added:.1f} - ID {engraved:.1f}), bounding box off by {off:.3f} mm"
             + (f" (allowed: {VOLUME_TOLERANCE:.1%} and {BOX_TOLERANCE_MM:g} mm)" if bad else "")
         )
     return ExportCheck(name="matches sim", ok=not failed, blocking=True, detail="; ".join(lines))
@@ -132,7 +133,10 @@ def check_engraved_id(fingers: Sequence["PrintableFinger"]) -> ExportCheck:
 
 def mount_feature_volumes(gripper: Gripper) -> tuple[float, float]:
     """The material the mount features (finger_cad.py) remove (holes, counterbores, slots) and add (pins), from their
-    dimensions: holes through the blade's thickness, a counterbore from each face, stadium slots, cylindrical pins."""
+    dimensions: holes through the blade's thickness, a counterbore from each face, stadium slots, cylindrical pins. On a
+    +x mount: the step cut for the jaw (the blade kept as stock is a plain box there) and the holes along x."""
+    if gripper.mount.face == "+x":
+        return _jaw_side_volume(gripper), 0.0
     t, clearance = gripper.blade_mm[1], gripper.hole_clearance_mm
     removed = added = 0.0
     for hole in gripper.mount.holes:
@@ -150,6 +154,21 @@ def mount_feature_volumes(gripper: Gripper) -> tuple[float, float]:
             length = max(feature.length_mm, w)
             removed += (w * (length - w) + math.pi * w * w / 4) * feature.height_mm
     return removed, added
+
+
+def _jaw_side_volume(gripper: Gripper) -> float:
+    width, t, _ = gripper.blade_mm
+    mount, clearance = gripper.mount, gripper.hole_clearance_mm
+    x = mount.face_x_mm
+    removed = (width - x) * t * (mount.jaw_length_mm + mount.jaw_clearance_mm)
+    for hole in mount.holes:
+        r = (hole.diameter_mm + clearance) / 2
+        removed += math.pi * r * r * (hole.depth_mm if hole.depth_mm is not None else x)
+        if hole.depth_mm is None and hole.counterbore_diameter_mm:
+            bore = (hole.counterbore_diameter_mm + clearance) / 2
+            if bore > r:
+                removed += math.pi * (bore * bore - r * r) * min(hole.counterbore_depth_mm, x)
+    return removed
 
 
 def pin_bounds(gripper: Gripper) -> list[Box]:
@@ -220,6 +239,8 @@ def _wall_behind(corners: list[tuple[float, float]]) -> float | None:
 def _mount_walls(gripper: Gripper) -> list[tuple[str, float]]:
     """The blade's material around its mount features: to its edges and root, between counterbores, behind slots, and
     between neighbouring holes. Holes are measured at their widest (the counterbore), with the print clearance."""
+    if gripper.mount.face == "+x":
+        return _jaw_side_walls(gripper)
     width, t, root = gripper.blade_mm
     clearance = gripper.hole_clearance_mm
     walls, circles = [], []
@@ -245,6 +266,33 @@ def _mount_walls(gripper: Gripper) -> list[tuple[str, float]]:
         ]
     for (a, ax, az, ar), (b, bx, bz, br) in combinations(circles, 2):
         walls.append((f"between {a} and {b}", math.hypot(ax - bx, az - bz) - ar - br))
+    return walls
+
+
+def _jaw_side_walls(gripper: Gripper) -> list[tuple[str, float]]:
+    """A +x mount: the cut-back root (face_x_mm wide, from the blade's inner face to the jaw's face) around holes that run
+    along x: to the blade's y faces and root, a blind hole's floor or a counterbore's floor to the far face, and
+    between neighbouring holes."""
+    _, t, _ = gripper.blade_mm
+    mount, clearance = gripper.mount, gripper.hole_clearance_mm
+    x = mount.face_x_mm
+    walls, circles = [("the root behind the jaw's face", x)], []
+    for i, hole in enumerate(mount.holes, 1):
+        r = (max(hole.diameter_mm, hole.counterbore_diameter_mm or 0.0) + clearance) / 2
+        name = f"mount hole {i}"
+        walls += [
+            (f"{name} to the blade's +y face", t / 2 - hole.y_mm - r),
+            (f"{name} to the blade's -y face", t / 2 + hole.y_mm - r),
+            (f"{name} to the blade root", hole.below_root_mm - r),
+        ]
+        if hole.depth_mm is not None:
+            walls.append((f"{name}'s floor to the blade's inner face ({x:g} minus {hole.depth_mm:g} deep)", x - hole.depth_mm))
+        elif hole.counterbore_diameter_mm:
+            depth = hole.counterbore_depth_mm
+            walls.append((f"{name}'s counterbore to the jaw's face ({x:g} minus {depth:g} deep)", x - depth))
+        circles.append((name, hole.y_mm, hole.below_root_mm, r))
+    for (a, ay, az, ar), (b, by, bz, br) in combinations(circles, 2):
+        walls.append((f"between {a} and {b}", math.hypot(ay - by, az - bz) - ar - br))
     return walls
 
 

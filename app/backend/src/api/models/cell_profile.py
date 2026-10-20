@@ -12,17 +12,20 @@ import math
 from collections.abc import Mapping
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class MountHole(BaseModel):
-    """A screw hole through the blade's thickness (along y)."""
+    """A screw hole for the mount. On a +y or -y mount face it goes through the blade's thickness (along y); on the +x
+    face it goes into the blade along x, from the face the jaw sits against (see FingerMount)."""
 
     below_root_mm: float  # down from the blade's root (its top end, where it meets the jaw)
-    x_mm: float  # across the blade, from its inner face (x = 0)
+    x_mm: float = 6.0  # +y / -y faces: across the blade, from its inner face (x = 0)
+    y_mm: float = 0.0  # +x face: across the blade's thickness, from its mid-plane
     diameter_mm: float = Field(3.2, gt=0)  # nominal; hole_clearance_mm is added when printing
+    depth_mm: float | None = Field(None, gt=0)  # +x face: how deep it goes in from the jaw's face; None: through the blade
     counterbore_diameter_mm: float | None = 5.2  # None: no counterbore
-    counterbore_depth_mm: float = 1.0  # from each face
+    counterbore_depth_mm: float = 1.0  # +y / -y: from each face; +x: from the inner face, for a through hole
 
 
 class LocatingFeature(BaseModel):
@@ -37,13 +40,82 @@ class LocatingFeature(BaseModel):
 
 
 class FingerMount(BaseModel):
-    """How a finger bolts to the jaw. The defaults are the twin's photo reconstruction (scene_config.FINGER_MOUNT_HOLES):
-    two screws on the blade's centreline, 10 and 23 mm below its root. Measure the real jaw before printing."""
+    """How a finger bolts to the jaw, in one of two ways:
 
-    face: Literal["+y", "-y"] = "-y"  # the blade face that sits against the jaw
-    face_size_mm: tuple[float, float] | None = None  # the jaw's mounting face: width x length; to measure
-    holes: list[MountHole] = [MountHole(below_root_mm=10.0, x_mm=6.0), MountHole(below_root_mm=23.0, x_mm=6.0)]
-    locating: list[LocatingFeature] = []
+    - face "+x": the jaw is a flat tongue beside the blade's root, on its outer side (away from the other finger), as on
+      SMC's MHZL2-16D2. The root is cut back to the tongue's inner face, face_x_mm from the blade's inner face with the
+      jaws closed, for jaw_length_mm below the root plus jaw_clearance_mm, so the tongue seats against that face and
+      its end clears the step. Screws come through the tongue into the blade along x.
+    - face "+y" or "-y": the blade bolts flat to the jaw by that face, with screws through its thickness (along y).
+
+    The defaults are SMC_FLAT_JAW_MOUNT, from SMC's STEP of the gripper (cad/SMC-MHZL2-16D2.step). PHOTO_MOUNT is the
+    twin's photo reconstruction, which the STEP's jaw contradicts. Measure the real jaw before printing."""
+
+    face: Literal["+x", "+y", "-y"] = "+x"  # the blade face that sits against the jaw
+    face_x_mm: float = Field(7.45, gt=0)  # +x: where the jaw's face is, along x from the blade's inner face, jaws closed
+    jaw_length_mm: float = Field(15.0, gt=0)  # +x: how far the jaw reaches down the blade from its root
+    jaw_clearance_mm: float = Field(0.5, ge=0)  # +x: room left below the jaw's end
+    face_size_mm: tuple[float, float] | None = (8.0, 15.0)  # the jaw's mounting face: width x length
+    # +x: M3 screws through the tongue's 3.4 mm holes, self-tapping into the printed root (M3 x 10: 5 mm of tongue, 5 in)
+    holes: list[MountHole] = [
+        MountHole(below_root_mm=4.0, diameter_mm=2.5, depth_mm=6.0, counterbore_diameter_mm=None),
+        MountHole(below_root_mm=11.0, diameter_mm=2.5, depth_mm=6.0, counterbore_diameter_mm=None),
+    ]
+    locating: list[LocatingFeature] = []  # +y and -y faces only
+
+    @model_validator(mode="after")
+    def _features_fit_the_face(self) -> "FingerMount":
+        if self.face != "+x":
+            if any(hole.depth_mm is not None for hole in self.holes):
+                raise ValueError("holes through the blade's thickness (a +y or -y mount face) have no depth: they go through")
+            return self
+        if self.locating:
+            raise ValueError("locating pins and slots are only modelled on a +y or -y mount face")
+        for i, hole in enumerate(self.holes, 1):
+            if hole.below_root_mm + hole.diameter_mm / 2 > self.jaw_length_mm + self.jaw_clearance_mm:
+                raise ValueError(f"mount hole {i} reaches past the end of the jaw ({self.jaw_length_mm:g} mm below the root)")
+            if hole.depth_mm is not None and hole.counterbore_diameter_mm:
+                raise ValueError(f"mount hole {i} is blind, so it can't have a counterbore on the blade's inner face")
+        return self
+
+    def describe(self) -> str:
+        """The mount in words, for the print sheet."""
+        below = " and ".join(f"{hole.below_root_mm:g}" for hole in self.holes) or "no"
+        if self.face != "+x":
+            return f"screws through the blade's thickness, {below} mm below the root, its {self.face} face against the jaw"
+        cut = self.jaw_length_mm + self.jaw_clearance_mm
+        return (
+            f"screws through the jaw beside the blade's root, into holes {below} mm below the root; the root is cut back "
+            f"to {self.face_x_mm:g} mm from the inner face for its top {cut:g} mm"
+        )
+
+
+# SMC's STEP of the MHZL2-16D2 (cad/README.md): each jaw ends in a tongue 5 mm thick along the travel, 8 mm wide and
+# 15 mm long, its inner face 7.45 mm from the centreline with the jaws closed, with two 3.4 mm holes along the travel 4
+# and 11 mm below the shoulder it stands out of. The blade's root butts against that shoulder.
+SMC_FLAT_JAW_MOUNT = FingerMount()
+# The twin's photo reconstruction (scene_config.FINGER_MOUNT_HOLES, photo_finger_detail.json): two screws through the
+# blade's thickness on its centreline, 10 and 23 mm below its root. The 23 mm hole is past the end of SMC's jaw.
+PHOTO_MOUNT = FingerMount(
+    face="-y", face_size_mm=None, holes=[MountHole(below_root_mm=10.0, x_mm=6.0), MountHole(below_root_mm=23.0, x_mm=6.0)]
+)
+
+
+def mount_fit_problems(mount: FingerMount, blade_mm: tuple[float, float, float], mount_kept_mm: float) -> list[str]:
+    """Where a +x mount doesn't fit the blade it's cut into: the jaw's face must lie inside the blade, the cut-back root
+    inside the part kept as stock, and blind holes must stop short of the inner face."""
+    if mount.face != "+x":
+        return []
+    width, reach = blade_mm[0], mount.jaw_length_mm + mount.jaw_clearance_mm
+    out = []
+    if mount.face_x_mm >= width:
+        out.append(f"the jaw's face (x {mount.face_x_mm:g} mm) is outside the {width:g} mm blade")
+    if reach > mount_kept_mm:
+        out.append(f"the jaw reaches {reach:g} mm down the blade, past the {mount_kept_mm:g} mm kept as stock")
+    for i, hole in enumerate(mount.holes, 1):
+        if hole.depth_mm is not None and hole.depth_mm >= mount.face_x_mm:
+            out.append(f"mount hole {i} ({hole.depth_mm:g} mm deep) goes through the {mount.face_x_mm:g} mm root: make it a through hole")
+    return out
 
 
 class Camera(BaseModel):
@@ -104,6 +176,12 @@ class Gripper(BaseModel):
     hole_clearance_mm: float = 0.25  # added to every printed hole's diameter (printed holes come out undersized)
     max_finger_length_mm: float | None = None  # the gripper maker's limit at the cell's air pressure; None: unknown
 
+    @model_validator(mode="after")
+    def _mount_fits_the_blade(self) -> "Gripper":
+        if problems := mount_fit_problems(self.mount, self.blade_mm, self.mount_kept_mm):
+            raise ValueError("; ".join(problems))
+        return self
+
 
 class CellProfile(BaseModel):
     robot_model: str = "FANUC ER-4iA"
@@ -132,6 +210,12 @@ class CellProfile(BaseModel):
     ]
     sim: CellSimSettings = CellSimSettings()
     to_confirm: list[str] = []  # fields that are still placeholders
+
+    @model_validator(mode="after")
+    def _mount_fits_the_blade(self) -> "CellProfile":
+        if problems := mount_fit_problems(self.finger_mount, self.stock_finger_mm, self.mount_kept_mm):
+            raise ValueError("; ".join(problems))
+        return self
 
     @property
     def gripper(self) -> Gripper:
@@ -204,3 +288,6 @@ DEFAULT_PROFILE = CellProfile(
         "mat_friction",
     ]
 )
+# Earlier built-in defaults: a database whose default profile is still one of these, unedited, gets DEFAULT_PROFILE as
+# its next version at startup (services/cell_profiles.py). Until 2026-10-20 the mount was the twin's photo reconstruction.
+SUPERSEDED_DEFAULTS = [DEFAULT_PROFILE.model_copy(update={"finger_mount": PHOTO_MOUNT})]

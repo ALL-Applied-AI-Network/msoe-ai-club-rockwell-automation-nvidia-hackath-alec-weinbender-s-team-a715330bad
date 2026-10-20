@@ -1,10 +1,32 @@
-from api.models.cell_profile import DEFAULT_PROFILE, TWIN_CELL, CellProfile, CellSimSettings
+import pytest
+
+from api.models.cell_profile import DEFAULT_PROFILE, PHOTO_MOUNT, SMC_FLAT_JAW_MOUNT, TWIN_CELL, CellProfile, CellSimSettings
 
 
 def test_the_default_profile_is_the_twins_cell_with_its_placeholders_marked():
     assert DEFAULT_PROFILE.twin_mismatches() == []
     assert {"grip_force_n", "finger_mount", "max_finger_length_mm"} <= set(DEFAULT_PROFILE.to_confirm)
     assert TWIN_CELL.to_confirm == []
+
+
+def test_the_default_mount_is_smcs_jaw_from_its_step():
+    mount = DEFAULT_PROFILE.finger_mount
+
+    assert mount == SMC_FLAT_JAW_MOUNT and mount.face == "+x"
+    assert (mount.face_x_mm, mount.jaw_length_mm, mount.face_size_mm) == (7.45, 15.0, (8.0, 15.0))
+    assert [hole.below_root_mm for hole in mount.holes] == [4.0, 11.0], "7 mm apart, as the STEP's jaw holes"
+    assert mount.describe() == (
+        "screws through the jaw beside the blade's root, into holes 4 and 11 mm below the root; the root is cut back to "
+        "7.45 mm from the inner face for its top 15.5 mm"
+    )
+    assert PHOTO_MOUNT.describe() == "screws through the blade's thickness, 10 and 23 mm below the root, its -y face against the jaw"
+
+
+def test_a_profile_whose_blade_is_narrower_than_the_jaws_face_needs_another_mount():
+    with pytest.raises(ValueError, match="outside the 6 mm blade"):
+        CellProfile(stock_finger_mm=(6, 12, 76))
+
+    assert CellProfile(stock_finger_mm=(6, 12, 76), finger_mount=PHOTO_MOUNT).gripper.blade_mm == (6, 12, 76)
 
 
 def test_twin_mismatches_name_each_setting_the_sim_models_differently():

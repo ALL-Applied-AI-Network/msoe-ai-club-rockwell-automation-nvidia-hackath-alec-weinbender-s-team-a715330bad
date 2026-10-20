@@ -8,17 +8,21 @@ image in x.
 
 Mount features are placed from the blade root (its top, z = L), as the profile measures them (cell_profile.FingerMount):
 
-- holes go through the blade's thickness (along y), with a counterbore from each face when the profile gives one;
-- locating pins are bosses standing out of the mount face (the face that sits against the jaw), and slots are cut into it;
+- on a +x mount (SMC's jaw: a tongue beside the root), the root is cut back to the jaw's face (x = face_x_mm) for the
+  jaw's length plus its clearance, and the holes go into the root along -x from that face, blind or through, with a
+  counterbore from the inner face (x = 0) for a through hole when the profile gives one;
+- on a +y or -y mount, holes go through the blade's thickness (along y), with a counterbore from each face when the
+  profile gives one, and locating pins are bosses standing out of the mount face, slots cut into it;
 - every printed hole (holes, counterbores, slot widths) gets gripper.hole_clearance_mm, since printed holes come out
   undersized. Pins don't: they're bosses, and their nominal size is what the jaw's hole expects.
 
-The ID (D15) is engraved 0.4 mm deep on the face opposite the mount face, along the blade, between the bridge and the mount
-features. That face is chosen over the outer x face because it's twice as wide (the blade's 12 mm width rather than its
-6 mm thickness), so the text can be bigger, and because nothing touches it: the jaw is on the other side and the part is
-gripped by the pad. Each side's text reads correctly from outside, with the tops of the letters toward the finger's outer
-edge, so the left finger is built, mirrored for the right, and only then is each side's own text cut. If there's no room
-for legible characters, or no font, the finger is still built, without text, and the engraved-id check says why.
+The ID (D15) is engraved 0.4 mm deep on a y face, along the blade, between the bridge and the mount features: the face
+opposite the mount face on a y mount, the +y face on a +x mount. A y face is chosen over the outer x face because it's
+twice as wide (the blade's 12 mm width rather than its 6 mm thickness), so the text can be bigger, and because nothing
+touches it: the part is gripped by the pad. Each side's text reads correctly from outside, with the tops of the letters
+toward the finger's outer edge, so the left finger is built, mirrored for the right, and only then is each side's own
+text cut. If there's no room for legible characters, or no font, the finger is still built, without text, and the
+engraved-id check says why.
 """
 
 import logging
@@ -132,11 +136,14 @@ def _body(part: Part, design: Design, gripper: Gripper) -> _Body:
         shape = shape.cut(*cutters)
     if bosses := _mount_bosses(gripper):
         shape = shape.fuse(*bosses).clean()
-    return _Body(shape, floor, _overhangs(boxes, root, pins=any(f.kind == "pin" for f in gripper.mount.locating)))
+    return _Body(shape, floor, _overhangs(boxes, gripper))
 
 
 def _mount_cutters(gripper: Gripper) -> list[cq.Solid]:
-    """Holes (through the blade's thickness, along y) with their counterbores, and the locating slots in the mount face."""
+    """The mount's cuts: on a +x mount, the root's step for the jaw and the holes along x; otherwise holes (through the
+    blade's thickness, along y) with their counterbores, and the locating slots in the mount face."""
+    if gripper.mount.face == "+x":
+        return _jaw_side_cutters(gripper)
     _, t, root = gripper.blade_mm
     clearance, face = gripper.hole_clearance_mm, _mount_sign(gripper)
     out = []
@@ -160,6 +167,27 @@ def _mount_cutters(gripper: Gripper) -> list[cq.Solid]:
     return out
 
 
+def _jaw_side_cutters(gripper: Gripper) -> list[cq.Solid]:
+    """A +x mount: everything outside the jaw's face over the jaw's length (the step the jaw's tongue sits in), and the
+    holes into the root along -x from that face, each with its counterbore from the inner face if it's a through hole."""
+    width, t, root = gripper.blade_mm
+    mount, clearance = gripper.mount, gripper.hole_clearance_mm
+    x, cut = mount.face_x_mm, mount.jaw_length_mm + mount.jaw_clearance_mm
+    out = [_box((x, width + 1.0), (-t / 2 - 1.0, t / 2 + 1.0), (root - cut, root + 1.0))]
+    for hole in mount.holes:
+        z = root - hole.below_root_mm
+        depth = hole.depth_mm if hole.depth_mm is not None else x + 1.0
+        out.append(_cylinder((hole.diameter_mm + clearance) / 2, (x + 1.0, hole.y_mm, z), (-1, 0, 0), depth + 1.0))
+        if hole.depth_mm is None and hole.counterbore_diameter_mm:
+            radius = (hole.counterbore_diameter_mm + clearance) / 2
+            out.append(_cylinder(radius, (-1.0, hole.y_mm, z), (1, 0, 0), min(hole.counterbore_depth_mm, x) + 1.0))
+    return out
+
+
+def _box(xs: tuple[float, float], ys: tuple[float, float], zs: tuple[float, float]) -> cq.Solid:
+    return cq.Solid.makeBox(xs[1] - xs[0], ys[1] - ys[0], zs[1] - zs[0], pnt=cq.Vector(xs[0], ys[0], zs[0]))
+
+
 def _mount_bosses(gripper: Gripper) -> list[cq.Solid]:
     """Locating pins: cylinders standing height_mm out of the mount face (rooted 0.5 mm inside it, so they fuse cleanly)."""
     _, t, root = gripper.blade_mm
@@ -172,17 +200,25 @@ def _mount_bosses(gripper: Gripper) -> list[cq.Solid]:
 
 
 def _mount_sign(gripper: Gripper) -> int:
-    """+1 if the blade's +y face sits against the jaw, -1 for its -y face."""
+    """+1 if the blade's +y face sits against the jaw, -1 for its -y face (or for a +x mount, which has no y face)."""
     return 1 if gripper.mount.face == "+y" else -1
+
+
+def _text_normal_y(gripper: Gripper) -> int:
+    """The y face the ID is engraved on: the one opposite a y mount face, or +y beside a +x mount."""
+    return -1 if gripper.mount.face == "+y" else 1
 
 
 def _cylinder(radius: float, start: tuple[float, float, float], direction: tuple[float, float, float], length: float) -> cq.Solid:
     return cq.Solid.makeCylinder(radius, length, pnt=cq.Vector(*start), dir=cq.Vector(*direction))
 
 
-def _overhangs(boxes: list[cq.BoundBox], root: float, pins: bool) -> tuple[str, ...]:
+def _overhangs(boxes: list[cq.BoundBox], gripper: Gripper) -> tuple[str, ...]:
     """What hangs above the bed when the finger lies on its outer side: any convex solid whose outer x face stops short
-    of the outermost one (the blade, when the pad is set further out than it; the pad, when the bridge reaches past it)."""
+    of the outermost one (the blade, when the pad is set further out than it; the pad, when the bridge reaches past it),
+    and on a +x mount the root, cut back for the jaw."""
+    root, mount = gripper.blade_mm[2], gripper.mount
+    pins = any(f.kind == "pin" for f in mount.locating)
     bed = max(b.xmax for b in boxes)
     lifted: dict[str, tuple[float, float, float]] = {}
     for b in boxes:
@@ -195,6 +231,9 @@ def _overhangs(boxes: list[cq.BoundBox], root: float, pins: bool) -> tuple[str, 
     notes = [
         f"{name} sits {lift:.1f} mm above the bed (z {lo:.1f} to {hi:.1f} mm along the finger)" for name, (lift, lo, hi) in lifted.items()
     ]
+    if mount.face == "+x":
+        lo = root - mount.jaw_length_mm - mount.jaw_clearance_mm
+        notes.append(f"the root, cut back for the jaw, sits {bed - mount.face_x_mm:.1f} mm above the bed (z {lo:.1f} to {root:.1f} mm)")
     if pins:
         notes.append("the locating pins print sideways, so check they come out round")
     return tuple(notes)
@@ -209,11 +248,11 @@ def _finish(body: _Body, gripper: Gripper, finger_id: str | None, side: Side) ->
 
 
 def _engrave(shape: cq.Shape, text: str, side: Side, floor: float, gripper: Gripper) -> tuple[cq.Shape, Engraving]:
-    """Cut the text into the face opposite the mount face, centred in the free stretch of blade between the bridge and the
+    """Cut the text into its y face (_text_normal_y), centred in the free stretch of blade between the bridge and the
     mount features, as large as fits up to MAX_CHAR_MM. Never raises: a finger without its ID still prints and bolts on."""
     width, t, root = gripper.blade_mm
     lo, hi = floor + TEXT_MARGIN_MM, _features_bottom(gripper) - TEXT_MARGIN_MM
-    normal_y = -_mount_sign(gripper)
+    normal_y = _text_normal_y(gripper)
     face = "+y" if normal_y > 0 else "-y"
     try:
         flat = cq.Compound.makeText(text, _REFERENCE_SIZE, 0.0, font=ENGRAVE_FONT, kind=ENGRAVE_KIND)
@@ -257,8 +296,11 @@ def _engrave(shape: cq.Shape, text: str, side: Side, floor: float, gripper: Grip
 
 def _features_bottom(gripper: Gripper) -> float:
     """The lowest point of any mount feature that reaches the text's face: holes, counterbores and slots (pins stand on
-    the other face). The blade root if there are none."""
-    root, clearance = gripper.blade_mm[2], gripper.hole_clearance_mm
+    the other face), or a +x mount's step, which cuts across both y faces (its holes run along x, inside the blade). The
+    blade root if there are none."""
+    root, clearance, mount = gripper.blade_mm[2], gripper.hole_clearance_mm, gripper.mount
+    if mount.face == "+x":
+        return root - mount.jaw_length_mm - mount.jaw_clearance_mm
     bottoms = [root]
     for hole in gripper.mount.holes:
         widest = max(hole.diameter_mm, hole.counterbore_diameter_mm or 0.0) + clearance

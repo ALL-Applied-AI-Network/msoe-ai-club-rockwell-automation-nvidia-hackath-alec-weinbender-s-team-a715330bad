@@ -2,7 +2,7 @@ import cadquery as cq
 import pytest
 
 from api.models import finger_cad
-from api.models.cell_profile import FingerMount, Gripper, LocatingFeature, MountHole
+from api.models.cell_profile import PHOTO_MOUNT, SMC_FLAT_JAW_MOUNT, FingerMount, Gripper, LocatingFeature, MountHole
 from api.models.design import Design
 from api.models.finger_cad import ENGRAVE_DEPTH_MM, MIN_CHAR_MM, finger_solid, print_pose, printable_finger, printable_pair
 from api.models.part import Part
@@ -10,7 +10,8 @@ from api.models.part import Part
 CAP = Part()
 VPAD = Design(params={"pad_width_mm": 20, "groove_angle_deg": 90, "groove_depth_mm": 3, "slack_mm": 3, "tip_height_mm": 4, "lead_in_mm": 1})
 FLAT = Design(params={"pad_width_mm": 8, "slack_mm": 3, "tip_height_mm": 4})
-GRIPPER = Gripper()
+GRIPPER = Gripper()  # SMC's jaw: SMC_FLAT_JAW_MOUNT
+PHOTO = Gripper(mount=PHOTO_MOUNT)  # the twin's photo reconstruction: holes through the blade's thickness
 
 
 def font_available() -> bool:
@@ -52,14 +53,53 @@ def test_each_side_is_one_valid_solid_and_the_right_is_the_lefts_mirror(pair):
     assert lb.zmin == pytest.approx(0, abs=1e-6) and lb.zmax == pytest.approx(GRIPPER.blade_mm[2])
 
 
-def test_mount_holes_and_counterbores_are_printed_with_the_hole_clearance(pair):
-    hole = GRIPPER.mount.holes[0]
-    loose = Gripper(hole_clearance_mm=0.4)
+def test_mount_holes_and_counterbores_are_printed_with_the_hole_clearance():
+    hole = PHOTO.mount.holes[0]
+    loose = Gripper(mount=PHOTO_MOUNT, hole_clearance_mm=0.4)
 
-    for gripper, solid in ((GRIPPER, pair[0].solid), (loose, finger_solid(CAP, VPAD, loose))):
+    for gripper in (PHOTO, loose):
         printed = {round((d + gripper.hole_clearance_mm) / 2, 4) for d in (hole.diameter_mm, hole.counterbore_diameter_mm)}
-        assert radii(solid) == printed
-    assert round(hole.diameter_mm / 2, 4) not in radii(pair[0].solid), "a printed hole at its nominal size comes out too tight"
+        assert radii(finger_solid(CAP, VPAD, gripper)) == printed
+    assert round(hole.diameter_mm / 2, 4) not in radii(finger_solid(CAP, VPAD, PHOTO)), (
+        "a printed hole at its nominal size comes out too tight"
+    )
+
+
+def test_the_smc_jaw_mount_cuts_the_root_back_to_the_jaws_face_and_drills_along_x(pair):
+    mount, (width, _, root) = SMC_FLAT_JAW_MOUNT, GRIPPER.blade_mm
+    solid = pair[0].solid
+    step = mount.jaw_length_mm + mount.jaw_clearance_mm
+
+    def x_reach(z0: float, z1: float) -> float:
+        return solid.intersect(cq.Solid.makeBox(40, 40, z1 - z0, pnt=cq.Vector(-20, -20, z0))).BoundingBox().xmax
+
+    assert x_reach(root - step + 0.5, root - 0.5) == pytest.approx(mount.face_x_mm, abs=1e-6), "the root stops at the jaw's face"
+    assert x_reach(root - step - 5.0, root - step - 0.5) == pytest.approx(width, abs=1e-6), "the full blade below the jaw"
+    printed = (mount.holes[0].diameter_mm + GRIPPER.hole_clearance_mm) / 2
+    rims = [e for e in solid.Edges() if e.geomType() == "CIRCLE"]
+    assert {round(e.radius(), 4) for e in rims} == {round(printed, 4)}
+    # Each hole's rim on the jaw's face and its floor 6 mm in, centred on the blade's mid-plane, along x.
+    centres = sorted((round(c.x, 3), round(c.y, 3), round(c.z, 3)) for c in (e.arcCenter() for e in rims))
+    holes = [root - hole.below_root_mm for hole in mount.holes]
+    assert centres == sorted((round(x, 3), 0.0, round(z, 3)) for z in holes for x in (mount.face_x_mm, mount.face_x_mm - 6.0))
+
+
+def test_a_mount_that_doesnt_fit_its_face_or_blade_is_refused():
+    pin = LocatingFeature(kind="pin", below_root_mm=4, x_mm=3, diameter_mm=2)
+
+    with pytest.raises(ValueError, match="only modelled on a"):
+        FingerMount(locating=[pin])
+    with pytest.raises(ValueError, match="have no depth"):
+        FingerMount(face="-y", holes=[MountHole(below_root_mm=10, depth_mm=4)])
+    with pytest.raises(ValueError, match="past the end of the jaw"):
+        FingerMount(holes=[MountHole(below_root_mm=23, diameter_mm=2.5, counterbore_diameter_mm=None)])
+    with pytest.raises(ValueError, match="can't have a counterbore"):
+        FingerMount(holes=[MountHole(below_root_mm=4, depth_mm=6)])
+    with pytest.raises(ValueError, match="outside the 6 mm blade"):
+        Gripper(blade_mm=(6, 12, 76))
+    with pytest.raises(ValueError, match="past the 10 mm kept as stock"):
+        Gripper(mount_kept_mm=10)
+    assert Gripper(blade_mm=(6, 12, 76), mount=PHOTO_MOUNT).mount.face == "-y"
 
 
 def test_the_id_is_engraved_on_each_side_reading_correctly(pair):
@@ -102,7 +142,7 @@ def test_each_sides_text_reads_correctly_from_outside_not_mirrored():
 def test_with_the_mount_on_the_plus_y_face_the_text_moves_to_the_minus_y_face():
     if not font_available():
         pytest.skip("no font installed for CadQuery's text")
-    gripper = Gripper(mount=FingerMount(face="+y"))
+    gripper = Gripper(mount=FingerMount(face="+y", holes=PHOTO_MOUNT.holes))
     finger = printable_finger(CAP, VPAD, gripper, finger_id="EXP-0042-D1")
     box = finger_solid(CAP, VPAD, gripper).cut(finger.solid).BoundingBox()
 
@@ -134,9 +174,9 @@ def test_no_font_skips_the_engraving_instead_of_raising(monkeypatch):
 def test_locating_pins_stand_out_of_the_mount_face_and_slots_are_cut_into_it():
     pin = LocatingFeature(kind="pin", below_root_mm=4, x_mm=3, diameter_mm=2, height_mm=1.5)
     slot = LocatingFeature(kind="slot", below_root_mm=4, x_mm=9, diameter_mm=2, length_mm=5, height_mm=1)
-    plain = finger_solid(CAP, FLAT, GRIPPER)  # an 8 mm pad, so the pin stands out past everything else in -y
-    with_pin = finger_solid(CAP, FLAT, Gripper(mount=FingerMount(locating=[pin])))
-    with_slot = finger_solid(CAP, FLAT, Gripper(mount=FingerMount(locating=[slot])))
+    plain = finger_solid(CAP, FLAT, PHOTO)  # an 8 mm pad, so the pin stands out past everything else in -y
+    with_pin = finger_solid(CAP, FLAT, Gripper(mount=FingerMount(face="-y", holes=PHOTO_MOUNT.holes, locating=[pin])))
+    with_slot = finger_solid(CAP, FLAT, Gripper(mount=FingerMount(face="-y", holes=PHOTO_MOUNT.holes, locating=[slot])))
 
     assert with_pin.BoundingBox().ymin == pytest.approx(-GRIPPER.blade_mm[1] / 2 - pin.height_mm, abs=1e-3)
     assert with_pin.Volume() - plain.Volume() == pytest.approx(3.14159 * 1.5, rel=1e-3)
@@ -145,7 +185,7 @@ def test_locating_pins_stand_out_of_the_mount_face_and_slots_are_cut_into_it():
 
 
 def test_a_profile_without_counterbores_drills_plain_holes():
-    gripper = Gripper(mount=FingerMount(holes=[MountHole(below_root_mm=10, x_mm=6, counterbore_diameter_mm=None)]))
+    gripper = Gripper(mount=FingerMount(face="-y", holes=[MountHole(below_root_mm=10, x_mm=6, counterbore_diameter_mm=None)]))
     solid = finger_solid(CAP, VPAD, gripper)
 
     assert radii(solid) == {round((3.2 + gripper.hole_clearance_mm) / 2, 4)}
@@ -168,6 +208,8 @@ def test_the_print_pose_lies_on_the_outer_side_with_the_pad_face_up(pair):
 
 def test_overhangs_name_the_blade_when_the_pad_is_set_out_past_it(pair):
     assert any(note.startswith("the blade sits") for note in pair[0].overhangs)
+    assert any(note.startswith("the root, cut back for the jaw, sits") for note in pair[0].overhangs)
+    assert not any(note.startswith("the root") for note in printable_finger(CAP, VPAD, PHOTO).overhangs)
     cube = printable_finger(Part(shape="box"), FLAT, GRIPPER)
     assert any(note.startswith("the pad sits") for note in cube.overhangs)
 
