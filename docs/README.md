@@ -16,6 +16,8 @@ To add a new document, use the `add-doc` skill (Claude Code) or follow [Conventi
 | 01 | [Hackathon overview](01-hackathon-overview.md): schedule, judging, deliverables, contacts | event | 2026-10-15 |
 | 02 | [Team plan + organizer feedback](02-team-plan.md): our CAD-to-Fingers proposal | proposal | 2026-10-15 |
 | 03 | [Dataset 3: Grasping and Sorting](03-dataset-3-grasping-sorting.md): our challenge | dataset | 2026-10-15 |
+| 04 | [MSOE GB10 access](04-gb10-access.md): `spark1.ai.msoe.edu` over the VPN, shared (password redacted) | event | 2026-10-20 |
+| 05 | [Brev credits](05-brev-credits.md): $500 for the team, on Alec's account | event | 2026-10-20 |
 
 ### References (pages linked from the core documents)
 
@@ -33,7 +35,9 @@ Linked from the documents above but not provided yet:
 
 - Compute: Brev, DGX Spark, and build.nvidia.com (01)
 - Coding agents (01)
-- Isaac Lab and Isaac Sim on DGX Spark (03)
+- Isaac Lab and Isaac Sim on DGX Spark (03). Until it arrives, the GB10 steps follow NVIDIA's
+  [Spark playbook](https://build.nvidia.com/spark/isaac/isaac-sim) ([GPU test plan, 0.2](notes/gpu-test-plan.md#02-msoe-gb10-free-check-it-first))
+- Brev Getting Started Doc (05)
 - FANUC Tech Transfer video library (03, Tools and resources)
 - Rest of the Isaac Sim ROS 2 Joint Control page (03)
 
@@ -44,6 +48,9 @@ Linked from the documents above but not provided yet:
 | [../CONTEXT.md](../CONTEXT.md) | Current project state: facts, constraints, decisions, open questions |
 | [notes/things-to-know.md](notes/things-to-know.md) | Gotchas, mismatches and warnings everyone should read |
 | [notes/gpu-test-plan.md](notes/gpu-test-plan.md) | Runbook: bring up the sim server on Brev / the GB10 and validate it step by step |
+| [notes/cadquery-design.md](notes/cadquery-design.md) | CadQuery as the CAD kernel: why fingers are built as convex solids, part import, V-HACD, what's left to do |
+| [notes/input-flow-backend-plan.md](notes/input-flow-backend-plan.md) | The input-flow and outputs backend plan: decisions D1–D17, models, pipeline, sim contract v2, workstreams |
+| [notes/backend-api.md](notes/backend-api.md) | The backend API as built, screen by screen, for the frontend; demo data (`DEMO_DATA=true`) |
 | [experiments/](experiments/) | Simulation and physical trial log (required for measured results) |
 | [images/](images/) | Images referenced by the docs |
 | [../sim/fanuc_er4ia_sim/docs/](../sim/fanuc_er4ia_sim/docs/) | Upstream twin docs: calibration v0.5, model notes |

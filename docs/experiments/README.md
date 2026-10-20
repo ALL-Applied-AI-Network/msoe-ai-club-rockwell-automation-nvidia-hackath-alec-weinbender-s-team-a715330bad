@@ -11,7 +11,7 @@ Log every simulation batch and every physical trial session here, including fail
 
 | Date | Experiment | Kind | Headline result |
 | --- | --- | --- | --- |
-| | *(none yet)* | | |
+| 2026-10-20 | [Sim server bring-up on Brev, stages 0–3](2026-10-20-brev-sim-server-bringup.md) | sim (real twin) | Stock cube held 1/1, 10/10 and 56–61/81 on the grid; 2.1 grasps/s after fixing a uvloop crash; outcomes beyond 5 mm not repeatable |
 
 ## Template
 

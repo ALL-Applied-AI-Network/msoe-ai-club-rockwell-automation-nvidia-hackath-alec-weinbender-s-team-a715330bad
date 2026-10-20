@@ -1,6 +1,6 @@
 ---
 title: Isaac Sim — Manipulator Robot Assets
-source: Isaac Sim Documentation › Isaac Sim Assets › Robot Assets › Manipulator Robot Assets (last updated 2026-10-14)
+source: https://docs.isaacsim.omniverse.nvidia.com/latest/assets/usd_assets_robots_manipulator.html (Isaac Sim Documentation › Isaac Sim Assets › Robot Assets › Manipulator Robot Assets, last updated 2026-10-14)
 author: NVIDIA
 received: 2026-10-15
 kind: reference

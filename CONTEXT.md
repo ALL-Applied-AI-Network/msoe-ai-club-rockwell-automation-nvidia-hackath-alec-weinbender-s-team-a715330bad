@@ -3,7 +3,7 @@
 Living summary of where the project stands. Keep it short and current. Source documents live in [docs/](docs/README.md);
 this file records what they mean for us. Gotchas and warnings: [docs/notes/things-to-know.md](docs/notes/things-to-know.md). Update it whenever a fact, decision, deadline or open question changes.
 
-*Last updated: 2026-10-19*
+*Last updated: 2026-10-20*
 
 ## One-line pitch
 
@@ -27,30 +27,53 @@ Hackathon: Rockwell Automation + NVIDIA Innovation Lab, Fall 2026, **Dataset 3: 
 Judges want: (1) the solution **running on real hardware** (the FANUC arm, in a supervised test at CSI), (2) a specific problem,
 (3) a business case for other manufacturers, and (4) **measured results against a baseline**, including where it fails.
 
-## Pipeline (as built, 2026-10-19)
+## Pipeline (as built, 2026-10-20)
 
-1. **Input:** the part as it rests on the table (cylinder standing or lying, or a box; sizes and mass) and the camera-error
-   model (sigma in mm and degrees). The task text is stored but not used yet.
-2. **Search space:** one pad shape with six parameters defined relative to the part: pad width, groove angle (180 = flat),
-   groove depth, slack, fingertip height, lead-in. They're mapped from a unit cube so every point is a finger that fits
-   (`app/backend/src/api/models/search_space.py`, geometry in `models/finger.py`).
-3. **Batch Bayesian optimization** (BoTorch qLogNEI, CPU). Round 0 = the **stock** and **imprint** baselines plus a Sobol
-   sample; each round is one sim request: every design at every point of a fixed grid of camera-error offsets.
-4. **Score:** expected success under the error model, from the grid (`models/offset_grid.py`), plus the capture radius.
-5. **Output:** the top designs and both baselines re-tested on a denser grid; the winner's geometry (OpenSCAD), grasp pose,
-   predicted success and a success-vs-error curve next to the baselines.
-6. **Validate:** print the top 2–3 and test them on the real arm against the **stock fingers** and the **imprint** design.
+The backend follows the [input-flow plan](docs/notes/input-flow-backend-plan.md); its API, as built, is in
+[backend-api.md](docs/notes/backend-api.md).
+
+1. **Inputs, the eight steps.**
+   - Upload a STEP or STL (CadQuery: measured, split into convex pieces once). Choose the material and mass.
+   - Pick a resting pose (trimesh stable poses).
+   - Choose the task: drop, place or insert, with tolerances and an optional transport move.
+   - Confirm a versioned cell profile.
+   - Choose the grasp axis: auto proposals, or a manual pick, both checked by geometry.
+   - Choose finger families and their parameter ranges or locks (typed `VPadParams`).
+   - Set the camera-error model: presets, bias, or a sigma range.
+   - Review the plan.
+2. **Search.**
+   - One batch-BO search per family: 128 designs, 2d + 4 Sobol starting designs, and a batch size set by the sim's
+     environments.
+   - Each round is one sim request: every design at every grid offset, plus the stock and imprint baselines.
+   - The sim returns held, the in-hand pose and held after transport. All of it is stored, so any sigma, bias, task or
+     tolerance re-scores later without simulating again.
+3. **Finalize.**
+   - The top 3 per search and the baselines are re-tested on the dense grid and labelled D1…, STOCK and IMP.
+   - D1 is exported as STEP plus one STL per side, with the profile's mount holes (with print clearance) and an
+     engraved ID (`EXP-0001-D1-L`).
+   - Export checks run: solid, matches the sim, min wall, finger length.
+   - A print sheet is produced.
+4. **Outputs.**
+   - Job cards with live progress.
+   - The results view, with re-scoring.
+   - The results tracker: a print selection, printed fingers, test plans the sim predicts, the spreadsheet round-trip,
+     and predicted vs measured with Wilson intervals.
+   - **Mock or Isaac badge** on everything.
+5. **Validate:** print the top designs and test them on the real arm, with the generated test plan, against the
+   **stock fingers** and the **imprint**.
 
 The plan's LLM step is out of the loop (decision below). Stretch: a surrogate model that predicts success instantly.
+`DEMO_DATA=true` runs the app on generated demo data (mock results, made-up physical trials) in `app/data/demo`.
 
 ## Repo status
 
 | Component | Path | State |
 | --- | --- | --- |
-| Web app (UI, job queue, batch BO, finger geometry, exports, 3D preview) | `app/` | Works end-to-end with the **mock** sim, a geometric capture check (not physics) |
-| Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | `/evaluate_batch` written (reference path `--envs 1`, vectorized `--envs N`); host tests pass; **never run in Isaac** ([GPU test plan](docs/notes/gpu-test-plan.md)) |
-| Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored as-is from the organizers; not yet run by us |
-| CAD output | `app/backend/src/api/clients/cad.py` (`OpenScadCad`) | OpenSCAD of exactly the simulated pieces; **no mount holes** yet; needs CadQuery → STL/STEP with the confirmed mount |
+| Web app backend (input flow, batch BO, results, tracker, exports) | `app/backend/` | Works end-to-end with the **mock** sim, a geometric capture check (not physics): 466+ tests, plus an end-to-end run against a live server with real worker processes |
+| Web app frontend | `app/frontend/` | New Vite + React UI being built against [backend-api.md](docs/notes/backend-api.md); the old single-file UI no longer matches the API |
+| Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | Contract v2: mesh parts, part friction, grip-force limit, transport, in-hand pose. **Runs in Isaac on Brev** (2026-10-20): GPU test plan stages 0–3 pass on the reference path with stock fingers, 2.1 grasps/s; custom fingers, contract v2 and the GPU path not yet checked ([log](docs/experiments/2026-10-20-brev-sim-server-bringup.md)) |
+| Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored from the organizers. Host tests and the headless scene build pass on Brev (2026-10-20); the stacking demo needs a Cosmos env and hasn't run. Only edit: the `.sh` files marked executable in git (2026-10-20, contents unchanged) |
+| CAD output | `app/backend/src/api/models/finger_cad.py`, `clients/cad.py` | CadQuery STEP (the pair) + STL per side, mount holes from the cell profile (positions from the twin's photo reconstruction: **confirm on the real jaw**), engraved IDs, export checks, print sheet |
 
 ## Hardware and twin facts (from `sim/fanuc_er4ia_sim/docs/`)
 
@@ -64,8 +87,14 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 - **Objects on the real cell (photos):** ~10 mm yellow cubes, yellow vial caps, clear glass tubes.
 - **Starter task:** stack 6 rotated 10 mm cubes (Y,Y,B,B,R,R). Perception uses Cosmos3-Nano plus a calibrated image-geometry
   front end. Validated on Linux + Isaac Sim 6.0 + RTX A6000 (not Windows).
-- Compute for the twin: Brev Isaac Sim launchable (**RTX PRO 6000 preferred**, L40S fallback ~$3/hr) or the MSOE GB10.
-  Record GPU, runtime and credits per run ([tools and resources](docs/references/tools-and-resources.md)).
+- Compute for the twin (access received 2026-10-20; bring-up order in the
+  [GPU test plan](docs/notes/gpu-test-plan.md#0-machines-and-access)):
+  - **Brev:** $500 of team credits on Alec's account (admin; teammates join through Team → invite link). Isaac Sim
+    launchable on an **RTX PRO 6000** or **4500**, both stoppable ([email](docs/05-brev-credits.md)).
+  - **MSOE GB10:** `ssh hackathon11@spark1.ai.msoe.edu` over the MSOE VPN; free, shared with other teams, ARM64
+    ([email](docs/04-gb10-access.md); password not in the repo). Isaac Sim 6.0 there is a source build and needs an
+    **R580 driver**: check `nvidia-smi` first.
+  - Record GPU, runtime and credits per run ([tools and resources](docs/references/tools-and-resources.md)).
 - Three interpreters: **host** `.venv`, **Isaac** `python.sh`, **Cosmos** env. Never swap them.
 
 ## Key risks / mismatches
@@ -81,6 +110,10 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
    justify or measure sigma and show success-vs-error curves.
 4. The mock sim scores capture geometry only, so its optimum (most slack and lead-in, flat pad) says nothing about real
    physics. The sim-predicted success rate is unvalidated until physical trials, so book CSI time early.
+5. **The real twin's scores aren't noise-free, and can flatter a baseline** (Brev, 2026-10-20). Grasps within about 5 mm
+   of centre repeat exactly, but near a design's capture edge about 9% of grid points flip between runs. And the stock
+   fingers "held" a cube placed 8–12 mm off along the jaw axis, outside the open fingers, most likely because a finger
+   landed on it and the descent squeezed it into the gap; a real arm may knock it away instead.
 
 ## Decisions
 
@@ -98,6 +131,10 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 | 2026-10-19 | No LLM in the loop: round 0 = stock + imprint baselines + Sobol sample | Starting points don't need it; the baselines are the judges' comparison |
 | 2026-10-19 | Sim contract: `POST {SIM_URL}/evaluate_batch`, fingers sent as convex pieces in the gripper frame | The sim server needs no design-space knowledge; what's simulated is what's exported |
 | 2026-10-19 | Migration 0002 clears jobs made before it | Demo data; old rows don't fit the new design space |
+| 2026-10-20 | Input flow + outputs backend per [the plan](docs/notes/input-flow-backend-plan.md) (decisions D1–D17 there): typed family params (`VPadParams`), closed gap reported not searched, 128 designs per BO search, raw outcomes stored and re-scored on demand | Agreed with Matt on 2026-10-19 |
+| 2026-10-20 | Migration 0003 rebuilds the job tables empty and adds parts, cell profiles, printed fingers and test plans | Demo data again; the new spec doesn't fit old rows |
+| 2026-10-20 | CadQuery is the only CAD kernel (part import, finger CAD); fingers are built as convex solids, so the sim's pieces and the printed STEP are the same solids | [cadquery-design.md](docs/notes/cadquery-design.md) |
+| 2026-10-20 | Demo data lives in its own database (`DEMO_DATA=true` → `app/data/demo`), never the real one; its physical trials are labelled made up | Lets the UI be built and shown without mixing invented numbers into real results |
 
 ## Open questions / action items
 
@@ -106,17 +143,32 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 - [ ] **Confirm actual gripper model and finger mounting interface** (bolt pattern, carriage geometry). Ask Zhen Zeng
       (zhenzeng@uwm.edu / `#dataset-3-grasping-sorting`). We also asked for gripper-body + mount CAD in the team plan.
 - [ ] Get the **stock finger CAD** (the dataset page lists it) and confirm it matches `assets/gripper/photo_finger_detail.json`.
-- [ ] Bring up the twin: run `bootstrap.sh` host tests, then the starter pipeline on Brev or the GB10.
-- [ ] Run the sim server on a GPU and check it against the reference path: [docs/notes/gpu-test-plan.md](docs/notes/gpu-test-plan.md).
-- [ ] Real CAD export (CadQuery → STL/STEP) from the same pieces, with the confirmed mount holes.
+- [ ] Bring up the twin: `bootstrap.sh` host tests and the headless scene build pass on Brev (2026-10-20); the starter's
+      stacking pipeline still needs a Cosmos env (optional for us).
+- [ ] Run the sim server on a GPU ([docs/notes/gpu-test-plan.md](docs/notes/gpu-test-plan.md)): stages 0–3 done on Brev
+      2026-10-20 ([log](docs/experiments/2026-10-20-brev-sim-server-bringup.md)); next stages 4–6 (custom fingers,
+      contract v2, the GPU path and its throughput).
+- [ ] **Decide how to score a part disturbed before the jaws close** (a finger landed on it): a miss, or a flag. Then
+      read the part's pose at the end of the descent in the sim server and report it (risk 5).
+- [x] Real CAD export (CadQuery → STEP/STL) from the same pieces, with mount holes (2026-10-20). Positions are still the
+      twin's photo reconstruction: confirm on the real jaw and update the cell profile (`finger_mount`, `hole_clearance_mm`).
+- [ ] Fill in the cell profile's *to confirm* fields: grip force at the cell's air pressure (SMC datasheet), max finger
+      length, free space beside the gripper, table mat friction.
+- [ ] Measure printed PLA/PETG friction against the demo part (tilt test) to replace the material estimates in
+      `app/backend/src/api/models/material.py`.
+- [ ] Measure Isaac throughput (grasps/s at 64 envs) so run-time estimates are real (`SIM_GRASPS_PER_S` until then).
+- [ ] Test plan diagonals are at (±3, ±3) mm (4.2 mm out); the spec said "diagonals at 3 mm": confirm which is meant.
 - [ ] Choose and justify the camera-error sigma for the demo (or measure it on the cell).
 - [ ] Define success metrics before experiments (pick success / attempt, placement error, cycle time, recovery).
 - [ ] Request a supervised physical test at CSI (Shamar Webster, `#data-and-testbed-requests`, webste63@uwm.edu) with a test
       plan, duration, attendees and dates.
-- [ ] Watch for the separate **Brev credits** and **MSOE GB10 (Rosie)** access messages.
+- [x] Brev credits ($500) and GB10 access received (2026-10-20).
+- [ ] Alec: activate Brev from Dan Schneider's invite and add the team as members.
+- [ ] GB10: run the free check (driver, disk, sudo, compiler) before building Isaac Sim there
+      ([GPU test plan 0.2](docs/notes/gpu-test-plan.md#02-msoe-gb10-free-check-it-first)).
 
 ## Contacts (short)
 
 FANUC robot / twin: Zhen Zeng (zhenzeng@uwm.edu). Testbed, data, physical tests: Shamar Webster (webste63@uwm.edu).
-Compute: Dan Schneider (danschneider@nvidia.com). Event, Slack: Brett Storoe (storoeb@msoe.edu). Full table:
+Compute: Dan Schneider (danschneider@nvidia.com); GB10 resources: Riley (driley@nvidia.com). Event, Slack: Brett Storoe (storoeb@msoe.edu). Full table:
 [docs/01-hackathon-overview.md](docs/01-hackathon-overview.md#who-to-ping).

@@ -45,17 +45,26 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
    jaws closed, fingertips at z = 0); the sim server, the CAD file and the 3D preview all get the same pieces. The stock
    blade's bounding box (x 0..12, y -3..3, z 0..76) is checked against `cell.py` by the sim server's tests. PhysX keeps
    at most 64 vertices per convex hull, so no piece may have more points (the app's tests check this).
-4. **The CAD file has no mount holes** and isn't printable as is: it's OpenSCAD of the simulated pieces, for review.
+4. **Printable CAD comes from CadQuery** (STEP of the pair, STL per side, print sheet) with mount holes from the cell
+   profile. The hole positions are still the twin's photo reconstruction, so **measure the real jaw before printing**.
+   A failed export check (solid, matches the sim, min wall, finger length) blocks the download with a 409 that says why.
 5. **The 3D preview loads three.js from a CDN** (jsDelivr), so it needs internet access.
 6. **The app reads the repo-root `.env`**; exported shell variables override it (see `.env.example`). `SIM_URL` is the sim
    server's base URL (the app posts to `/evaluate_batch`).
-7. **Migration 0002 deleted every job made before it.** If an old `app.db` looks empty after upgrading, that's why.
+7. **Migrations 0002 and 0003 deleted every job made before them.** If an old `app.db` looks empty after upgrading,
+   that's why.
 8. **Runtime data lives in `app/data/`** (SQLite DB, uploads, outputs). It is gitignored and per-machine.
+9. **`DEMO_DATA=true` switches the app to demo data** in `app/data/demo` (its own database). Its results are mock and its
+   physical trials are made up: never quote them. Unset it for real work.
+10. **Mock and Isaac badges are part of the data.** A job keeps the badge of the sim it was created on, and a worker with
+    the other sim refuses to resume it.
 
 ## The digital twin (`sim/fanuc_er4ia_sim/`)
 
 1. **It needs Linux and an NVIDIA GPU.** It was validated on Linux with Isaac Sim 6.0 on an RTX A6000. It won't run on our
-   Windows laptops; use Brev (Isaac Sim launchable, RTX PRO 6000 preferred) or the MSOE GB10.
+   Windows laptops; use Brev (Isaac Sim launchable, RTX PRO 6000 or 4500) or the MSOE GB10. The GB10 is ARM64 and shared
+   with other teams: Isaac Sim there is a source build, it needs an R580 driver, other teams can reach its localhost ports,
+   and its password never goes in the repo ([GPU test plan, 0.2](gpu-test-plan.md#02-msoe-gb10-free-check-it-first)).
 2. **It uses three Python interpreters:** host `.venv`, Isaac `python.sh` and the Cosmos env. Using the wrong one fails in
    confusing ways. Our `sim/sim_server` runs under Isaac's `python.sh` too, not under `uv run` (see
    [sim/README.md](../../sim/README.md#sim_server)).
@@ -66,8 +75,10 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
    v0.5 removed the screw task.
 6. **Ground truth is for evaluation only.** Simulator object poses must never feed grasp commands.
 7. **Units:** the twin uses metres and degrees, the app uses millimetres. Convert in `sim/sim_server`.
-8. **`sim/sim_server` is written but has never run in Isaac.** Its host tests pass; the Isaac side (`clients/isaac.py`,
-   `scene.py`) is unverified until someone follows [gpu-test-plan.md](gpu-test-plan.md). Two things to know going in:
+8. **`sim/sim_server` has only been checked on the reference path.** On Brev (2026-10-20) GPU test plan stages 0–3 passed
+   with stock fingers ([log](../experiments/2026-10-20-brev-sim-server-bringup.md)); custom fingers, contract v2 and the
+   GPU path stay unverified until stages 4–6. Results near a design's capture edge aren't repeatable, and a finger
+   landing on the part can count as a grasp (CONTEXT.md, risk 5). Two things to know going in:
    custom-finger friction is *averaged* with the part's 0.9 / 0.8 by default (`--friction-combine`), and the batched
    view may refuse copies with different fingers in one chunk (`is_homogeneous`), which would force one design per chunk.
 9. **It's vendored upstream code.** Prefer wrappers over edits, and log any edits in `CONTEXT.md` (`MANIFEST.json` has the
@@ -92,7 +103,8 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
 ## Docs status
 
 - The first batch of pasted docs was **cut off at about 50k characters**; the Isaac Sim ROS 2 joint-control page is partial.
-- Still missing: the Compute guide, the Coding agents guide, Isaac Lab on DGX Spark, and the FANUC Tech Transfer library.
+- Still missing: the Compute guide, the Coding agents guide, Isaac Lab on DGX Spark, the Brev getting-started doc, and the
+  FANUC Tech Transfer library.
   The live list is in [../README.md](../README.md#not-yet-received).
 - The Tools and Resources page was pasted without its hyperlink URLs.
 
