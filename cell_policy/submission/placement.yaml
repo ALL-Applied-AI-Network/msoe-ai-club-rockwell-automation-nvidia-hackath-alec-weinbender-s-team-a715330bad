@@ -1,0 +1,44 @@
+# Written by cell_policy/make_placement.py. Every rollout has the same objects in the same place; only the prompt
+# changes: its [c2f ...] tag is the grasp offset policy.py commands (the app's test-plan offset), so the operator
+# places the screw and the bin the same way each time. A screw's position is its head; its yaw points to its tip.
+rollouts:
+  - objects:                                     # rollout 1
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R01 dx=+0.00 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"
+  - objects:                                     # rollout 2
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R02 dx=+1.50 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"
+  - objects:                                     # rollout 3
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R03 dx=-1.50 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"
+  - objects:                                     # rollout 4
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R04 dx=+3.00 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"
+  - objects:                                     # rollout 5
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R05 dx=-3.00 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"
+  - objects:                                     # rollout 6
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R06 dx=+4.50 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"
+  - objects:                                     # rollout 7
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R07 dx=-4.50 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"
+  - objects:                                     # rollout 8
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R08 dx=+6.00 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"
+  - objects:                                     # rollout 9
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R09 dx=-6.00 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"
+  - objects:                                     # rollout 10
+      screw: [420, -40, 90]
+      bin: [480, 120, 0]
+    prompt: "Put the screw into the yellow bin. [c2f trial=R10 dx=+0.00 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]"

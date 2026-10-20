@@ -1,0 +1,48 @@
+# Our submission for the organizers' cell (copy to submission/submission.yaml in the client package; see ../README.md).
+# Run: uv run run.py --submit
+#
+# Two runs make the comparison: this file as it is (the stock fingers, the baseline), then the same placement.yaml with
+# our printed fingers: change policy and custom_hardware to the commented values and submit again.
+
+team: Alec Weinbender's Team
+contact: <name, email>            # TODO: who the organizers should reach about this request
+policy: CAD2Fingers-Screw-Stock   # printed-finger run: CAD2Fingers-Screw-<finger ID>, e.g. CAD2Fingers-Screw-EXP-0001-D1
+
+# Choose the closest model type. This does not affect scoring.
+model_type: Hybrid
+# VA          Images -> actions (ACT, Diffusion Policy)
+# VLA         Images + instructions -> actions (NVIDIA GR00T)
+# WAM         Predicts future states to guide robot actions
+# VLM + BM    A VLM decides what to do; a behavior model executes actions
+# TAMP + FMs  Foundation models assist task and motion planning
+# Hybrid      Combines multiple approaches, or choose this if unsure
+
+# --- Task ---
+task_id: screw-bin-X              # TODO: replace X with our team letter
+task: Pick up the M6 screw and drop it into the yellow bin, with the grasp aimed at a set offset each rollout.
+                                  # Describe your task in one short sentence
+
+# --- Test Setup ---
+# The screw and the bin go in the same place every rollout. Only each rollout's prompt differs: it tells our policy which
+# grasp offset to command (a controlled position error, to compare finger designs at the same errors). That is why
+# layout is "different": placement.yaml needs one entry per rollout to carry its prompt.
+
+objects: same
+# same: Use the same set of objects for every rollout.
+# different: May use different objects across rollouts.
+
+layout: different
+# same: Place objects in the same positions for every rollout.
+# different: May change object positions across rollouts.
+
+# --- Evaluation ---
+rollouts: 10                      # Number of attempts in this test
+                                  # Each attempt is scored success or failure
+
+# --- Hardware ---
+custom_hardware: none
+# Printed-finger run (after the app's review gate approves the design, see ../README.md):
+# custom_hardware: >-
+#   3D-printed fingers (PETG), engraved EXP-0001-D1-L and -R, replacing the aluminium fingers. Each bolts to its SMC
+#   jaw with two M3 x 10 screws through the jaw's holes into the finger. Same length as the stock fingers, so the
+#   fingertip TCP (UTOOL1) is unchanged. We bring them to the slot; the stock fingers go back on after.
