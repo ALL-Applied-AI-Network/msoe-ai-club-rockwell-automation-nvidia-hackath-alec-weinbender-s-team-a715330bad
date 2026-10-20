@@ -133,4 +133,5 @@ def _in_hand(outcome: GraspOutcome, settings: GraspSettings, part: Part, planner
         planner.lift_tip(settings.tip_height),
         planner.spread_xy,
         expected_z=part.height / 2 - settings.tip_height,
+        cylinder_axis=part.cylinder_axis,
     )

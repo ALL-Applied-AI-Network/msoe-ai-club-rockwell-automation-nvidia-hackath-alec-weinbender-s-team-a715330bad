@@ -23,7 +23,8 @@ class BodyPose(BaseModel):
 class InHandPose(BaseModel):
     """The part in the hand at the end of the lift, relative to the commanded gripper frame G and to where a perfectly
     centred part would sit (robot/poses.in_hand_pose). dx along the closing direction (toward JawL), dy across it, dz
-    up, in metres; tilt is the angle between the part's z axis and G's, yaw the turn of its x axis about G's z."""
+    up, in metres; tilt is the angle between the part's z axis and G's, yaw the turn of its x axis about G's z. For a
+    cylinder both follow its own axis, so a roll about that axis reads zero."""
 
     model_config = ConfigDict(frozen=True)
 

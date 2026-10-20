@@ -149,6 +149,52 @@ def test_the_frame_only_needs_to_be_shared():
     assert reading(world) == pytest.approx(reading(in_hand_pose(position, q, GRIP, spread, EXPECTED_Z)))
 
 
+# Cylinders. With the jaws along base +Y (spread (0, 1)), G's x is base +Y and G's y is base -X, so a lying cylinder's
+# axis starts along base X ("y", across the jaws) or base Y ("x", along them).
+OWN_AXIS = {"y": (1, 0, 0), "x": (0, 1, 0), "z": (0, 0, 1)}  # each cylinder axis's line in the base frame, nominal pose
+RAISE_ABOUT = {"y": (0, 1, 0), "x": (1, 0, 0)}  # a turn about this horizontal line lifts that axis out of G's xy plane
+
+
+@pytest.mark.parametrize("cylinder_axis", ["y", "x", "z"])
+@pytest.mark.parametrize("roll_deg", [35.0, -70.0, 180.0])
+def test_a_cylinder_rolling_about_its_own_axis_reads_zero(cylinder_axis, roll_deg):
+    """The lying cylinder rolled 9..92 degrees in the jaws on Brev (2026-10-20) and read it all as tilt."""
+    spread = (0.0, 1.0)
+    position, q = placed(spread, turn=axis_angle(OWN_AXIS[cylinder_axis], roll_deg))
+    pose = in_hand_pose(position, q, GRIP, spread, EXPECTED_Z, cylinder_axis=cylinder_axis)
+    assert (pose.tilt_deg, pose.yaw_deg) == pytest.approx((0.0, 0.0), abs=1e-9)
+
+
+@pytest.mark.parametrize("cylinder_axis", ["y", "x"])
+def test_a_lying_cylinder_tilts_when_its_axis_leaves_the_horizontal(cylinder_axis):
+    spread = (0.0, 1.0)
+    roll_then_raise = qmul(axis_angle(RAISE_ABOUT[cylinder_axis], 10.0), axis_angle(OWN_AXIS[cylinder_axis], 50.0))
+    pose = in_hand_pose(*placed(spread, turn=roll_then_raise), GRIP, spread, EXPECTED_Z, cylinder_axis=cylinder_axis)
+    assert (pose.tilt_deg, pose.yaw_deg) == pytest.approx((10.0, 0.0), abs=1e-9)
+
+
+@pytest.mark.parametrize("cylinder_axis", ["y", "x"])
+@pytest.mark.parametrize(("turn_deg", "yaw"), [(15.0, 15.0), (-30.0, -30.0), (170.0, -10.0), (-100.0, 80.0), (90.0, 90.0), (-90.0, 90.0)])
+def test_a_lying_cylinder_yaw_is_its_axis_turning_about_g_z_with_both_ends_alike(cylinder_axis, turn_deg, yaw):
+    spread = (0.0, 1.0)
+    pose = in_hand_pose(*placed(spread, turn=axis_angle((0, 0, 1), turn_deg)), GRIP, spread, EXPECTED_Z, cylinder_axis=cylinder_axis)
+    assert pose.yaw_deg == pytest.approx(yaw) and -90.0 < pose.yaw_deg <= 90.0
+    assert pose.tilt_deg == pytest.approx(0.0, abs=1e-9)
+
+
+def test_a_standing_cylinder_reads_its_lean_and_no_yaw():
+    spread = (0.6, -0.8)
+    lean = qmul(axis_angle((0.8, 0.6, 0), 12.0), axis_angle((0, 0, 1), 40.0))  # turned about its axis, then leaning
+    pose = in_hand_pose(*placed(spread, dx=0.001, turn=lean), GRIP, spread, EXPECTED_Z, cylinder_axis="z")
+    assert reading(pose) == pytest.approx((0.001, 0.0, 0.0, 12.0, 0.0), abs=1e-9)
+
+
+def test_a_box_keeps_the_turn_a_cylinder_would_ignore():
+    spread = (0.0, 1.0)
+    pose = in_hand_pose(*placed(spread, turn=axis_angle(OWN_AXIS["y"], 35.0)), GRIP, spread, EXPECTED_Z)
+    assert pose.tilt_deg == pytest.approx(35.0)
+
+
 @pytest.mark.parametrize("q", [(0.0, 0.0, 0.0, 0.0), (float("nan"), 0.0, 0.0, 1.0)])
 def test_a_bad_quaternion_is_refused(q):
     with pytest.raises(ValueError):

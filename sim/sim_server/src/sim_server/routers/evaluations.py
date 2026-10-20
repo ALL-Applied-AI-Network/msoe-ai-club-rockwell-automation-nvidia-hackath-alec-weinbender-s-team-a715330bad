@@ -49,7 +49,9 @@ Contract v2, POST /evaluate_batch (millimetres, grams, degrees, newtons; the twi
 - held: the part's centre rose more than 25 mm during the lift (the twin's pickup check).
 - in_hand: where the part sits at the end of the lift, in the commanded gripper frame G, minus where a perfectly centred
   part would sit (0, 0, height / 2 - tip height): dx, dy, dz in mm, tilt (its z axis vs G's) and yaw (its x axis about
-  G's z, from G's x, in (-180, 180]) in degrees. null where the part wasn't held or the grasp wasn't simulated.
+  G's z, from G's x, in (-180, 180]) in degrees. A cylinder's angles follow its own axis, so a roll about it reads zero:
+  standing, its lean and yaw 0; lying, its axis's angle out of G's xy plane and its turn about G's z, in (-90, 90].
+  null where the part wasn't held or the grasp wasn't simulated.
 - held_after_transport: still more than 25 mm up at the end of the settle; null when transport is null.
 - sim: the scene's description, for the caller's run metadata: envs, device, friction_combine, physics_dt (seconds),
   the part body's solver_position_iterations and solver_velocity_iterations, the colliders' contact_offset_mm and

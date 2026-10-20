@@ -51,7 +51,11 @@ def main() -> None:
 
     scene = load_scene(config)
     sim_queue = SimQueue()
-    http_config = uvicorn.Config(create_app(scene, sim_queue), host=args.host, port=args.port, log_level=args.log_level.lower())
+    # loop="asyncio": with uvloop installed (uvicorn[standard]), "auto" sets uvloop's event-loop policy for the whole
+    # process, and Kit's extensions on the main thread then fail in asyncio.get_event_loop() on every stage edit.
+    http_config = uvicorn.Config(
+        create_app(scene, sim_queue), host=args.host, port=args.port, log_level=args.log_level.lower(), loop="asyncio"
+    )
     server = uvicorn.Server(http_config)
     http = threading.Thread(target=server.run, name="http", daemon=True)
     http.start()

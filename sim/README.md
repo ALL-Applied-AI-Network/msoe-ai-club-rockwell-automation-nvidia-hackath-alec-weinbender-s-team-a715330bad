@@ -3,7 +3,7 @@
 | Path | What | Ownership |
 | --- | --- | --- |
 | [`fanuc_er4ia_sim/`](fanuc_er4ia_sim/) | FANUC ER-4iA Isaac Sim digital twin, **hackathon starter v0.5** (unpacked from the organizers' `fanuc_er4ia_hackathon_starter_v05.zip`, SHA-256 `f5550340…331c2`; the zip itself is no longer in the repo but is in git history at commit `c7014b1`). Calibrated to the real cell's cameras. Demo task: stack six rotated 10 mm cubes. | Upstream (organizers). Edit sparingly and note changes in `../CONTEXT.md`. |
-| [`sim_server/`](sim_server/) | Our HTTP service that runs next to Isaac Sim and answers the app's `POST /evaluate_batch` grasp batches in the twin. | Ours. Host-tested only; **not yet run in Isaac** ([GPU test plan](../docs/notes/gpu-test-plan.md)). |
+| [`sim_server/`](sim_server/) | Our HTTP service that runs next to Isaac Sim and answers the app's `POST /evaluate_batch` grasp batches in the twin. | Ours. **Runs in Isaac on Brev** (2026-10-20): [GPU test plan](../docs/notes/gpu-test-plan.md) stages 0–3 pass on the reference path with stock fingers ([log](../docs/experiments/2026-10-20-brev-sim-server-bringup.md)); custom fingers, contract v2 and the vectorised path not yet checked. |
 
 ## Twin quick reference
 
@@ -112,7 +112,9 @@ approach and the end of the lift (the twin's pickup check). **In hand** = the pa
 (`RigidPrim.get_world_poses`) relative to the *commanded* gripper frame G at that moment, not the arm's measured pose: G's
 origin is the commanded fingertip point (site x, site y, surface + tip height + 0.13 m), x toward JawL, z up. dx, dy, dz
 are the part's centre in G minus where a centred part sits, (0, 0, height / 2 − tip height); tilt is the angle between the
-part's z axis and G's; yaw is its x axis's turn about G's z from G's x, in (−180, 180]. The math is
+part's z axis and G's; yaw is its x axis's turn about G's z from G's x, in (−180, 180]. A cylinder's angles follow its
+own axis instead, since it looks the same however far it rolls about it: standing, tilt is the axis's lean and yaw is 0;
+lying, tilt is the axis's angle out of G's xy plane and yaw its turn about G's z, in (−90, 90]. The math is
 `robot/poses.in_hand_pose`, host-tested. **Held after transport** = still more than 25 mm up at the end of the settle.
 
 **Gripper frame G** for custom `pieces` (`robot/gripper_frame.py`, checked against the twin's `cell.py` by
