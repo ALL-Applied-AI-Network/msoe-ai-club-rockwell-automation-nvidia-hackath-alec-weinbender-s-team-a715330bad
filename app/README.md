@@ -12,7 +12,10 @@ app/
 │   │                     routers/ -> services/ -> clients/ (sim, cad, llm, database), models/ (domain objects),
 │   │                     db/ (SQLAlchemy tables + Alembic migrations)
 │   └── tests/            pytest: routers/, services/, clients/, models/, db/
-├── frontend/             single-file UI (index.html), served by the backend at /
+├── frontend/             npm project: Vite + React + TypeScript (see "Frontend" below)
+│   ├── index.html        the old single-file UI: the page at /, from the backend and from the dev server
+│   ├── app.html, src/    the new React UI, at /app.html on the dev server; src/backend/ is the typed API client
+│   └── dist/             npm run build output (the new UI only), gitignored
 └── data/                 runtime only, gitignored: app.db, uploads/, outputs/, worker.log
 ```
 
@@ -39,6 +42,23 @@ automatically; real environment variables win). Every variable is in [`../.env.e
 | `ANTHROPIC_API_KEY`, `LLM_*` | The LLM client. The optimizer doesn't call it at the moment |
 
 If a selected backend is missing its key or URL, the API logs which variable and refuses to start.
+
+## Frontend
+
+The new UI is a Vite + React + TypeScript app in `frontend/` (setup in [../SETUP.md](../SETUP.md#web-app-app)). It's only
+an entry point so far; the wizard and results pages are built against the API contract in section 7 of
+[the input-flow plan](../docs/notes/input-flow-backend-plan.md).
+
+- `npm run dev` serves both UIs on <http://localhost:5173>, with `/api` forwarded to the backend on :8000 (`API_URL`
+  overrides): the old one at `/`, the new one at `/app.html`. Only the new one is built (`npm run build`); the backend
+  serves the old `index.html` straight from the folder.
+- API calls go through `src/backend/client.ts` ([openapi-fetch](https://openapi-ts.dev/openapi-fetch/)), typed by
+  `src/backend/schema.d.ts`. That file is generated and committed: after a backend change, `npm run gen:api` with the
+  backend running, then `npm run typecheck` lists every call that no longer matches.
+- Routes are hash routes (`#/jobs/...`), so deep links work while the backend serves the build as static files.
+- Other packages: TanStack Query (fetching, caching, polling), React Router, three.js (3D previews).
+- To switch to the new UI: delete the old `index.html`, rename `app.html` to `index.html` (and its entry in
+  `vite.config.ts`), `npm run build`, and point the static mount in `backend/src/api/main.py` at `frontend/dist`.
 
 ## How a job runs
 
