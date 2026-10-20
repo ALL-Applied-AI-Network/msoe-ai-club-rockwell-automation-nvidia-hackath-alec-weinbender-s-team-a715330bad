@@ -1,0 +1,13 @@
+{
+  "part": {
+    "shape": "box",
+    "box_mm": [10, 10, 10],
+    "mass_g": 4
+  },
+  "designs": [
+    {"id": "stock"}
+  ],
+  "offsets": [
+    {"dx": 0, "dy": 0, "yaw_deg": 0}
+  ]
+}

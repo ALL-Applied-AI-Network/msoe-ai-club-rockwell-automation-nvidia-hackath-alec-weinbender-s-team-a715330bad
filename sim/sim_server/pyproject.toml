@@ -5,6 +5,7 @@ description = "HTTP grasp-evaluation service that runs next to Isaac Sim"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
+    "numpy>=1.26",
     "uvicorn[standard]>=0.30",
 ]
 
