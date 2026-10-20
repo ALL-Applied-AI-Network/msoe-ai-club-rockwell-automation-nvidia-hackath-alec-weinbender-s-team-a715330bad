@@ -24,6 +24,9 @@ sim/
   sim_server/           uv member "sim-server", package src/sim_server/: routers/ -> services/ -> robot/, clients/ (Isaac) -> models/, plus the Isaac scene
                         and main-thread queue. Runs next to Isaac Sim and evaluates grasp batches (not yet run in Isaac)
 docs/                   Source documents, references, experiment log
+cad/                    The organizers' CAD of the cell, unchanged (SHA256SUMS); never edit, derive copies elsewhere
+cell_policy/            Our policy.py + submission for the organizers' real-robot platform (docs/06). Not a uv member: it
+                        runs inside a clone of their client package; its tests run from inside it with unittest
 data/                   Local datasets; contents gitignored except the README
 ```
 
@@ -53,6 +56,9 @@ uv run --package backend alembic -c app/backend/alembic.ini revision --autogener
 ./bootstrap.sh
 .venv/bin/python -m unittest test_sort_planning test_cube_perception test_cube_pose test_runtime_config
 
+# Real-cell policy tests, from cell_policy/ (root venv; on Windows ../.venv/Scripts/python)
+../.venv/bin/python -m unittest test_cell_policy
+
 # Format and lint (config in the root pyproject.toml; the vendored twin is excluded)
 uv run ruff format .
 uv run ruff check .
@@ -65,6 +71,8 @@ physics or model behaviour was validated from host tests or the mock simulator. 
 
 - **Never send commands to the physical FANUC arm or change controller, PLC, camera or network config.** That only happens at
   CSI with the plant manager and mentor present. Don't run ROS 2 driver launches with a real `robot_ip`. Use `use_mock:=true`.
+  The organizers' platform (`cell_policy/`, docs/06) is the supervised route to the arm. Agents may run its client with
+  `--mock`; `run.py --submit` and real runs (`run.py` without `--mock`) are only run by a teammate.
 - **No printed finger goes on the real robot before review.** Keep the app's review gate (`/review`, DRAFT label) intact.
 - **Don't commit** large datasets, run directories, videos, model weights or checkpoints, `.env` files, API keys, or the
   app's runtime `app/data/`. Files over 5 MB are blocked by `.githooks/pre-commit`.

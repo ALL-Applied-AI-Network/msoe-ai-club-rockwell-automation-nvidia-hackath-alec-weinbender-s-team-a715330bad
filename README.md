@@ -17,6 +17,8 @@ Project state, hardware facts and open questions: **[CONTEXT.md](CONTEXT.md)**. 
 app/        Finger Designer web app: FastAPI backend + single-file frontend      → app/README.md
 sim/        FANUC ER-4iA Isaac Sim twin (organizer starter v0.5) + sim service    → sim/README.md
 docs/       Event docs, team plan + feedback, references, experiment log         → docs/README.md
+cad/        The organizers' CAD of the cell (gripper, screw, bin, cubes, vial)   → cad/README.md
+cell_policy/ Our policy + submission for the organizers' real-robot platform     → cell_policy/README.md
 data/       Local datasets (gitignored)                                          → data/README.md
 SETUP.md    First-time setup: Git, uv, Python, VS Code, then each component
 AGENTS.md   Instructions for coding agents (CLAUDE.md and GEMINI.md import it)
