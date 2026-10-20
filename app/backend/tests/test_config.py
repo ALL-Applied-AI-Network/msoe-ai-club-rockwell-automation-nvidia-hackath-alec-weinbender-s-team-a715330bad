@@ -1,8 +1,9 @@
 import logging
 
 import pytest
+from pydantic import SecretStr, ValidationError
 
-from api.config import AppConfig, ConfigError, check_config, load_config
+from api.config import AppConfig, ConfigError, DbConfig, check_config, load_config
 
 
 @pytest.fixture(autouse=True)
@@ -73,3 +74,16 @@ def test_invalid_value_names_the_variable(monkeypatch, caplog):
         load_config()
 
     assert "SIM_BACKEND" in caplog.text
+
+
+def test_demo_data_runs_in_its_own_directory_and_database(tmp_path):
+    config = AppConfig(data_dir=tmp_path, demo_data=True)
+
+    assert config.data_dir == tmp_path / "demo"
+    assert config.db.url.get_secret_value().endswith("/demo/app.db")
+    assert any("Demo data" in warning for warning in check_config(config)[1])
+
+
+def test_demo_data_refuses_an_explicit_database(tmp_path):
+    with pytest.raises(ValidationError, match="DEMO_DATA"):
+        AppConfig(data_dir=tmp_path, demo_data=True, db=DbConfig(url=SecretStr("sqlite:///elsewhere.db")))

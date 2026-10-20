@@ -1,11 +1,21 @@
-"""Runs one job: batch Bayesian optimisation of the finger design in the simulator, then re-validation of the best.
+"""Runs one experiment: a batch Bayesian optimisation per finger family in the simulator, then the final dense test.
 
-Every design is scored the same way: tried at every point of a fixed grid of camera errors (api/models/offset_grid.py)
-and scored by its expected success under the job's error model. A round is one batch, one sim request. Round 0 is the
-stock and imprint baselines plus a Sobol sample of the search space; every later round fits a GP to all scores so far
-and picks the next batch with BoTorch's qLogNoisyExpectedImprovement. Each round is checkpointed to the database, so a
-crashed or cancelled job resumes at the next round. Finally the best designs and the baselines are re-tested together
-on a denser grid, and the winner's validated score is the predicted success we report.
+Every design is tried at every point of the job's fixed offset grid (api/models/offset_grid.py), and scored from its raw
+outcomes by the task (Task.success) and the error model (OffsetGrid.expected_success). The searches the plan lists
+(api/models/search_plan.py) run side by side, in rounds, and a round is one sim request carrying every active search's
+designs, so the sim's start-up and network cost is paid once per round however many families there are:
+
+- round 0: the stock and imprint baselines, every locked design (a family with nothing left free), and each search's
+  first designs, a Sobol sample (for a Sobol sweep, the whole sweep);
+- later rounds: each BO search still running fits its own GP to its own scores and proposes batch_size designs with
+  qLogNoisyExpectedImprovement, or a Sobol sample that round if the fit fails. A search stops when its budget is spent,
+  or when its last `patience` designs gained less than MIN_GAIN on its best (after at least one batch).
+
+Each round is checkpointed in one transaction, so a crashed, cancelled or interrupted job resumes after its last round
+and never redoes one. The final test re-runs the top FINALISTS of each search (a locked design is its search's only one)
+and both baselines on the dense grid. They're labelled D1, D2, ... by final score, capture radius breaking ties, and
+STOCK and IMP; those trials, the result with D1's printable CAD, and the run metadata are written in one transaction, so
+finishing is all or nothing and can simply be run again.
 """
 
 import logging
@@ -14,9 +24,12 @@ import platform
 import subprocess
 import time
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 
 import botorch
+import cadquery
+import gpytorch
 import torch
 from botorch.acquisition.logei import qLogNoisyExpectedImprovement
 from botorch.fit import fit_gpytorch_mll
@@ -24,249 +37,443 @@ from botorch.models import SingleTaskGP
 from botorch.models.transforms.outcome import Standardize
 from botorch.optim import optimize_acqf
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, update
 from torch.quasirandom import SobolEngine
 
-from api.clients.cad import CadClient
+from api.clients.cad import CadClient, FingerExport
 from api.clients.database import DatabaseClient
-from api.clients.sim import SimClient
+from api.clients.sim import SimClient, SimError, SimSettings
 from api.db.tables import JobRow, ResultRow, RunMetaRow, TrialRow
-from api.models.design import Design, DesignKind
+from api.models.cell_profile import CellProfileVersion, Gripper
+from api.models.design import Design
+from api.models.export_check import ExportCheck
 from api.models.finger import build_finger, problems
-from api.models.job import JobConfig
+from api.models.job import Job, Trial
 from api.models.offset_grid import OffsetGrid
-from api.models.part import Part
+from api.models.outcome import Outcomes
+from api.models.printed_finger import finger_id
+from api.models.results import BASELINE_LABELS, file_stem
+from api.models.search_plan import BASELINES, FINALISTS, SearchConfig
 from api.models.search_space import SearchSpace
+from api.services import cell_profiles
 from api.services.jobs import JobNotFoundError, get_job, update_job
+from api.services.results import grasp_pose_for, print_sheet
 
 logger = logging.getLogger(__name__)
 
-BASELINES: tuple[DesignKind, ...] = ("stock", "imprint")
-FINALISTS = 3  # top designs re-tested on the denser grid
-CURVE_SIGMAS_MM = (0.5, 1, 2, 3, 4, 5)  # error levels the result reports success at
-MIN_GAIN = 0.005  # a round only counts as an improvement if it beats the best score by this much
+BASELINE_SEARCH = "baseline"  # the search key the stock and imprint trials are stored under
+GP_RESTARTS, GP_RAW_SAMPLES = 8, 256
+SEED_STRIDE = 1000  # seeds of different searches in one job stay this far apart
+TRACEBACK_CHARS = 4000
+
+
+class JobRunError(RuntimeError):
+    """A failure the run can explain in one line, with the input step that fixes it when there is one."""
+
+    def __init__(self, line: str, step: int | None = None):
+        super().__init__(line)
+        self.line, self.step = line, step
+
+
+@dataclass(frozen=True)
+class _Run:
+    """What one worker runs a job with, loaded once."""
+
+    job: Job
+    profile: CellProfileVersion
+    gripper: Gripper
+    spaces: dict[str, SearchSpace]  # by search key
+    settings: SimSettings
+    clearance_mm: float | None  # the part's clearance on the table, which the searched and locked designs must keep
+
+    @property
+    def transport(self) -> bool:
+        return self.settings.transport is not None
 
 
 def run_job(db: DatabaseClient, job_id: str, *, sim: SimClient, cad: CadClient, outputs_dir: Path) -> None:
-    """Run or resume a job to completion. A failure is stored on the job (status 'failed' + traceback), not raised."""
+    """Run or resume a job to completion. A failure is stored on the job (status 'failed', the traceback, a one-line
+    failure and the input step that fixes it), not raised. A job that's already done is left alone."""
     started = time.time()
     try:
         job = get_job(db, job_id)
     except JobNotFoundError:
         logger.error("Job %s: not found", job_id)
         return
-    update_job(db, job_id, status="running", pid=os.getpid(), error=None, cancel_requested=0)
-    logger.info("Job %s: running (sim=%s)", job_id, sim.backend)
+    if job.status == "done":
+        logger.info("Job %s: already done", job_id)
+        return
+    update_job(db, job_id, status="running", pid=os.getpid(), error=None, failure=None, failed_step=None)
+    logger.info("Job %s (%s): running on the %s sim", job_id, job.experiment_id, sim.backend)
     try:
-        space, grid = SearchSpace(job.part), OffsetGrid.for_part(job.part, job.config.sigma_deg)
-        if not _optimize(db, job_id, job.part, job.config, space, grid, sim):
-            logger.info("Job %s: cancelled", job_id)
+        if sim.badge != job.sim_backend:
+            # A resumed job keeps its badge, so finishing it on another sim would label one sim's results as the other's.
+            raise JobRunError(
+                f"this experiment runs on the {job.sim_backend} sim, but this worker has the {sim.badge} one: set SIM_BACKEND "
+                "back to resume it, or duplicate it to run on this sim"
+            )
+        run = _load(db, job)
+        if not _search(db, run, sim) or _cancelled(db, job_id):
             return
-        _finalize(db, job_id, job.part, job.config, space, grid, sim=sim, cad=cad, outputs_dir=outputs_dir, started=started)
+        _finalize(db, run, sim=sim, cad=cad, outputs_dir=outputs_dir, started=started)
         logger.info("Job %s: done in %.0f s", job_id, time.time() - started)
-    except Exception:
+    except Exception as e:
         logger.exception("Job %s: failed", job_id)
-        update_job(db, job_id, status="failed", error=traceback.format_exc()[-2000:])
+        line, step = _failure(e)
+        update_job(db, job_id, status="failed", error=traceback.format_exc()[-TRACEBACK_CHARS:], failure=line, failed_step=step)
 
 
-def _optimize(db: DatabaseClient, job_id: str, part: Part, cfg: JobConfig, space: SearchSpace, grid: OffsetGrid, sim: SimClient) -> bool:
-    """Stage 1: rounds until the budget is spent or `patience` rounds pass without improvement. False if cancelled."""
-    update_job(db, job_id, stage="optimize", n_total=cfg.budget + len(BASELINES))
-    trials = _load_trials(db, job_id)
-    while True:
-        searched = [t for t in trials if t.kind == "search"]
-        if len(searched) >= cfg.budget or _stale_rounds(trials) >= cfg.patience:
-            return True
-        with db.session() as s:
-            if s.scalar(select(JobRow.cancel_requested).where(JobRow.id == job_id)):
-                update_job(db, job_id, status="cancelled", stage=None)
-                return False
-        number = trials[-1].round + 1 if trials else 0
-        q = min(cfg.batch_size, cfg.budget - len(searched))
-        designs = [Design(kind=kind) for kind in BASELINES] if number == 0 else []
-        designs += [space.from_unit(u) for u in _propose(space, searched, q, seed=cfg.seed + number)]
-        _run_round(db, job_id, part, cfg, grid, sim, number, designs, first=len(trials))
-        trials = _load_trials(db, job_id)
-        best = max(t.success_rate for t in trials if t.kind == "search")
-        logger.info("Job %s: round %d done, %d designs, best %.3f", job_id, number, len(trials), best)
-        update_job(db, job_id, n_done=len(trials), best_value=best)
-
-
-def _propose(space: SearchSpace, searched: list[TrialRow], q: int, seed: int) -> list[list[float]]:
-    """The next q points of the unit cube. A Sobol sample to start (and if fitting fails); after that, the batch that
-    BoTorch expects to improve most on the best score so far, chosen one point at a time with the earlier ones treated
-    as pending, so the batch spreads out instead of piling onto one optimum."""
-    d = len(space.names)
-    if len(searched) < 2:
-        return SobolEngine(d, scramble=True, seed=seed).draw(q, dtype=torch.double).tolist()
-    torch.manual_seed(seed)
-    x = torch.tensor([space.to_unit(Design(params=t.params)) for t in searched], dtype=torch.double)
-    y = torch.tensor([[t.success_rate] for t in searched], dtype=torch.double)
+def _load(db: DatabaseClient, job: Job) -> _Run:
     try:
+        profile = cell_profiles.get_profile(db, job.cell_profile_id)
+    except cell_profiles.CellProfileNotFoundError:
+        raise JobRunError(f"cell profile {job.cell_profile_id} no longer exists", step=4) from None
+    gripper = profile.profile.gripper
+    searches = job.plan.searches
+    return _Run(
+        job=job,
+        profile=profile,
+        gripper=gripper,
+        spaces={search.key: search.space(job.part, gripper) for search in searches},
+        settings=SimSettings(grip_force_n=job.plan.grip_force_n, transport=job.spec.task.transport),
+        clearance_mm=searches[0].clearance_mm if searches else None,
+    )
+
+
+def _search(db: DatabaseClient, run: _Run, sim: SimClient) -> bool:
+    """Rounds until every search has stopped. False if the job was cancelled."""
+    job_id, grid = run.job.id, run.job.plan.grid
+    while True:
+        trials = _load_trials(db, job_id, "search")
+        number = max(t.round for t in trials) + 1 if trials else 0
+        designs = _round_designs(run, trials, number)
+        if not designs:
+            return True
+        if _cancelled(db, job_id):
+            return False
+        _run_round(db, run, sim, grid, number, designs, trials)
+
+
+def _round_designs(run: _Run, trials: list[Trial], number: int) -> list[tuple[str, Design]]:
+    """The (search key, design) pairs of round `number`: see the module docstring."""
+    seed = run.job.spec.seed
+    out: list[tuple[str, Design]] = []
+    if number == 0:
+        out += [(BASELINE_SEARCH, Design(kind=kind)) for kind in BASELINES]
+    for i, search in enumerate(run.job.plan.searches):
+        space = run.spaces[search.key]
+        mine = [t for t in trials if t.search == search.key]
+        if number == 0:
+            if search.method == "single":
+                out.append((search.key, space.locked_design()))
+            else:
+                out += [(search.key, space.from_unit(u)) for u in _sobol(len(space.names), search.n_initial, seed + i * SEED_STRIDE)]
+        elif search.method == "bo" and _stop_reason(search, mine) is None:
+            q = min(search.batch_size, search.budget - len(mine))
+            points = _propose(space, mine, q, seed=seed + i * SEED_STRIDE, round_number=number)
+            out += [(search.key, space.from_unit(u)) for u in points]
+    return out
+
+
+def _stop_reason(search: SearchConfig, trials: list[Trial]) -> str | None:
+    """SearchConfig.stop_reason over the search's own search-grid trials, in the order they were evaluated."""
+    return search.stop_reason([t.success_rate for t in sorted(trials, key=lambda t: t.number)])
+
+
+def _propose(space: SearchSpace, trials: list[Trial], q: int, *, seed: int, round_number: int) -> list[list[float]]:
+    """The next q points of the search's unit cube: the batch BoTorch expects to improve most on the best score so far,
+    chosen one point at a time with the earlier ones treated as pending, so the batch spreads out instead of piling onto
+    one optimum. Falls back to continuing the search's Sobol sequence if the GP can't be fitted or optimised."""
+    d = len(space.names)
+    torch.manual_seed(seed + round_number)
+    try:
+        x = torch.tensor([space.to_unit(Design(kind="search", params=t.params)) for t in trials], dtype=torch.double)
+        y = torch.tensor([[t.success_rate] for t in trials], dtype=torch.double)
         model = SingleTaskGP(x, y, outcome_transform=Standardize(m=1))
         fit_gpytorch_mll(ExactMarginalLogLikelihood(model.likelihood, model))
         acquisition = qLogNoisyExpectedImprovement(model, X_baseline=x, prune_baseline=True)
         bounds = torch.stack([torch.zeros(d, dtype=torch.double), torch.ones(d, dtype=torch.double)])
-        candidates, _ = optimize_acqf(acquisition, bounds=bounds, q=q, num_restarts=8, raw_samples=256, sequential=True)
+        candidates, _ = optimize_acqf(
+            acquisition, bounds=bounds, q=q, num_restarts=GP_RESTARTS, raw_samples=GP_RAW_SAMPLES, sequential=True
+        )
         return candidates.tolist()
     except Exception:
         logger.warning("GP proposal failed; using a Sobol sample this round", exc_info=True)
-        return SobolEngine(d, scramble=True, seed=seed).draw(q, dtype=torch.double).tolist()
+        return _sobol(d, q, seed, skip=len(trials))
+
+
+def _sobol(d: int, n: int, seed: int, skip: int = 0) -> list[list[float]]:
+    """n points of the search's own scrambled Sobol sequence, after the first `skip`: round 0 takes the start, and a
+    failed GP fit continues it, so no point repeats."""
+    engine = SobolEngine(d, scramble=True, seed=seed)
+    if skip:
+        engine.fast_forward(skip)
+    return engine.draw(n, dtype=torch.double).tolist()
 
 
 def _run_round(
     db: DatabaseClient,
-    job_id: str,
-    part: Part,
-    cfg: JobConfig,
-    grid: OffsetGrid,
+    run: _Run,
     sim: SimClient,
+    grid: OffsetGrid,
     number: int,
-    designs: list[Design],
-    *,
-    first: int,
+    designs: list[tuple[str, Design]],
+    earlier: list[Trial],
 ) -> None:
-    """Simulate one batch and store it in one transaction: a round is checkpointed whole or not at all."""
-    started = time.time()
-    results = _simulate(part, designs, grid, sim)
-    duration = (time.time() - started) / len(designs)
+    """Simulate one round and store it, with the job's progress, in one transaction: a round is checkpointed whole or
+    not at all."""
+    job_id = run.job.id
+    outcomes, seconds = _simulate(run, sim, [design for _, design in designs], grid)
+    first = _next_number(db, job_id)
+    rows = [
+        _trial_row(run, grid, first + i, number, key, design, out, sec)
+        for i, ((key, design), out, sec) in enumerate(zip(designs, outcomes, seconds, strict=True))
+    ]
+    searched = [(t.success_rate, t.number) for t in earlier if t.search != BASELINE_SEARCH]
+    searched += [(row.success_rate, row.number) for row in rows if row.search != BASELINE_SEARCH]
+    best_value, best_trial = max(searched, key=lambda s: (s[0], -s[1])) if searched else (None, None)
     with db.session() as s:
-        for i, (design, (held, _)) in enumerate(zip(designs, results, strict=True)):
-            s.add(
-                TrialRow(
-                    job_id=job_id,
-                    number=first + i,
-                    round=number,
-                    kind=design.kind,
-                    params=design.params,
-                    success_rate=grid.expected_success(held, cfg.sigma_mm, cfg.sigma_deg),
-                    capture_radius_mm=grid.capture_radius(held),
-                    n_grasps=len(held),
-                    n_success=sum(held),
-                    held=held,
-                    duration=duration,
-                )
-            )
+        s.add_all(rows)
+        s.flush()
+        n_done = s.scalar(select(func.count()).select_from(TrialRow).where(TrialRow.job_id == job_id))
+        s.execute(
+            update(JobRow).where(JobRow.id == job_id).values(n_done=n_done, round=number + 1, best_value=best_value, best_trial=best_trial)
+        )
+    logger.info("Job %s: round %d done: %d designs in %.1f s, best %.3f", job_id, number, len(rows), sum(seconds), best_value or 0.0)
 
 
-def _simulate(part: Part, designs: list[Design], grid: OffsetGrid, sim: SimClient) -> list[tuple[list[bool], list[str]]]:
-    """Every design at every grid point, in one sim request: (held per point, problems) per design. A design that fails
-    the geometry checks isn't sent; it counts as failing every grasp."""
-    fingers, issues = [], []
+def _simulate(run: _Run, sim: SimClient, designs: list[Design], grid: OffsetGrid) -> tuple[list[Outcomes], list[float]]:
+    """Every design at every grid point, in one sim request: (outcomes, sim seconds) per design. A design that fails the
+    geometry checks (finger.problems) isn't sent; it fails every grasp, and its seconds are 0, which keeps it out of the
+    throughput estimate. The stock fingers are the robot's own: the sim gets None for them."""
+    part, gripper, n = run.job.part, run.gripper, grid.size
+    fingers, sent = [], []
     for design in designs:
-        finger = None if design.kind == "stock" else build_finger(part, design)
-        fingers.append(finger)
-        issues.append([] if finger is None else problems(part, finger))
-        if issues[-1]:
-            logger.info("Not simulating a %s design (%s): %s", design.kind, design.params, "; ".join(issues[-1]))
-    runnable = [finger for finger, found in zip(fingers, issues, strict=True) if not found]
-    rows = iter(sim.run_batch(part, runnable, grid.points()) if runnable else [])
-    n = len(grid.points())
-    return [([False] * n if found else next(rows), found) for found in issues]
+        if design.kind == "stock":
+            fingers.append(None)
+            sent.append(True)
+            continue
+        clearance = run.clearance_mm if design.kind in ("search", "locked") else None
+        try:
+            finger = build_finger(part, design, gripper)
+            found = problems(part, finger, gripper, clearance_mm=clearance)
+        except Exception as e:  # CadQuery and pydantic raise their own types; any failure here means no finger
+            finger, found = None, [f"no finger can be built ({e})"]
+        if found:
+            logger.info("Job %s: not simulating a %s design (%s): %s", run.job.id, design.kind, design.params, "; ".join(found))
+        else:
+            fingers.append(finger)
+        sent.append(not found)
+    started = time.perf_counter()
+    results = sim.run_batch(part, fingers, grid.points(), run.settings) if fingers else []
+    seconds = (time.perf_counter() - started) / len(fingers) if fingers else 0.0
+    if len(results) != len(fingers):
+        raise SimError(f"the sim answered for {len(results)} designs out of {len(fingers)}")
+    answers = iter(results)
+    outcomes = [next(answers) if ok else Outcomes.dropped(n, run.transport) for ok in sent]
+    return outcomes, [seconds if ok else 0.0 for ok in sent]
 
 
-def _finalize(
-    db: DatabaseClient,
-    job_id: str,
-    part: Part,
-    cfg: JobConfig,
-    space: SearchSpace,
+def _trial_row(
+    run: _Run,
     grid: OffsetGrid,
+    number: int,
+    round_number: int,
+    search: str,
+    design: Design,
+    outcomes: Outcomes,
+    seconds: float,
     *,
-    sim: SimClient,
-    cad: CadClient,
-    outputs_dir: Path,
-    started: float,
-) -> None:
-    """Stage 2: re-test the finalists and both baselines together on a denser grid, so the winner isn't just the design
-    that happened to suit the search grid, and the comparison is like for like. Store the winner and its CAD file."""
-    update_job(db, job_id, stage="finalize")
-    trials = _load_trials(db, job_id)
-    finalists = sorted((t for t in trials if t.kind == "search"), key=lambda t: (-t.success_rate, t.number))[:FINALISTS]
+    final: bool = False,
+) -> TrialRow:
+    """A design's trial on a grid, scored at the job's own task and error model. Final-test trials are labelled once
+    they're all scored."""
+    success = run.job.spec.task.success(outcomes)
+    return TrialRow(
+        job_id=run.job.id,
+        number=number,
+        round=round_number,
+        search=search,
+        grid="final" if final else "search",
+        kind=design.kind,
+        label=None,
+        params=None if design.params is None else design.params.model_dump(),
+        success_rate=grid.expected_success(success, run.job.spec.error),
+        capture_radius_mm=grid.capture_radius(success),
+        n_grasps=grid.size,
+        n_success=sum(success),
+        held=outcomes.held,
+        in_hand=[None if pose is None else list(pose) for pose in outcomes.in_hand],
+        held_after_transport=outcomes.held_after_transport,
+        duration=seconds,
+    )
+
+
+def _finalize(db: DatabaseClient, run: _Run, *, sim: SimClient, cad: CadClient, outputs_dir: Path, started: float) -> None:
+    """The final test: re-test the finalists of every search and both baselines together on the dense grid, so the
+    winner isn't just the design that happened to suit the search grid and the comparison is like for like. Then label
+    them, export D1's printable CAD, and store the labelled trials, the result and the run metadata together."""
+    job, plan = run.job, run.job.plan
+    update_job(db, job.id, status="finalizing")
+    trials = _load_trials(db, job.id, "search")
+    finalists = [t for search in plan.searches for t in _ranked([t for t in trials if t.search == search.key])[:FINALISTS]]
     if not finalists:
-        raise RuntimeError("the search produced no designs")
-    fine = grid.refined()
-    designs = [Design(params=t.params) for t in finalists] + [Design(kind=kind) for kind in BASELINES]
-    results = _simulate(part, designs, fine, sim)
-    scores = [fine.expected_success(held, cfg.sigma_mm, cfg.sigma_deg) for held, _ in results]
-    k = max(range(len(finalists)), key=lambda i: scores[i])
-    winner = finalists[k]
-
-    def entry(i: int) -> dict:
-        held, found = results[i]
-        name = "optimized" if i == k else f"#{finalists[i].number}" if i < len(finalists) else designs[i].kind
-        return {
-            "name": name,
-            "kind": designs[i].kind,
-            "trial_number": finalists[i].number if i < len(finalists) else None,
-            "success": scores[i],
-            "capture_radius_mm": fine.capture_radius(held),
-            "curve": {f"{sigma:g}": fine.expected_success(held, sigma, cfg.sigma_deg) for sigma in CURVE_SIGMAS_MM},
-            "problems": found,
-        }
-
-    order = [k, *range(len(finalists), len(designs)), *(i for i in range(len(finalists)) if i != k)]
-    finger = build_finger(part, designs[k])
-    outputs_dir.mkdir(parents=True, exist_ok=True)
-    cad_path = outputs_dir / f"{job_id}{cad.extension}"
-    cad_path.write_text(cad.export(finger, label=f"job {job_id}: trial #{winner.number}, {_describe(designs[k].params)}"))
-    meta = {
-        "started": started,
-        "runtime_s": time.time() - started,
-        "config": cfg.model_dump(),
-        "part": part.model_dump(),
-        "space": {"names": space.names, "bounds": space.bounds()},
-        "grid": grid.model_dump(),
-        "validation_grid": fine.model_dump(),
-        "sim_backend": sim.backend,
-        "sim_url": sim.url,
-        "botorch": botorch.__version__,
-        "torch": torch.__version__,
-        "python": platform.python_version(),
-        "cpus": os.cpu_count(),
-        "gpu": _gpu_name(),
-        "n_trials": len(trials),
-        "n_rounds": trials[-1].round + 1,
-    }
+        raise JobRunError("the search produced no designs", step=6)
+    designs = [(t.search, Design(kind=t.kind, params=t.params)) for t in finalists]
+    designs += [(BASELINE_SEARCH, Design(kind=kind)) for kind in BASELINES]
+    grid = plan.final_grid
+    outcomes, seconds = _simulate(run, sim, [design for _, design in designs], grid)
+    round_number = max(t.round for t in trials) + 1
+    # Numbered by finalist order for now, so equal final scores keep the search's own ranking; renumbered when stored.
+    rows = [
+        _trial_row(run, grid, i, round_number, key, design, out, sec, final=True)
+        for i, ((key, design), out, sec) in enumerate(zip(designs, outcomes, seconds, strict=True))
+    ]
+    order = _ranked(rows[: len(finalists)])
+    for rank, row in enumerate(order, 1):
+        row.label = f"D{rank}"
+    for row in rows[len(finalists) :]:
+        row.label = BASELINE_LABELS[row.kind]
+    winner = order[0]
+    design = Design(kind=winner.kind, params=winner.params)
+    pose = grasp_pose_for(job, run.gripper, design)
+    export = _export(run, cad, design, pose, outputs_dir)
+    meta = _run_meta(run, sim, trials, started)
     with db.session() as s:
+        s.execute(delete(TrialRow).where(TrialRow.job_id == job.id, TrialRow.grid == "final"))
+        first = (s.scalar(select(func.max(TrialRow.number)).where(TrialRow.job_id == job.id)) or 0) + 1
+        for i, row in enumerate(rows):
+            row.number = first + i
+        s.add_all(rows)
         s.merge(
             ResultRow(
-                job_id=job_id,
+                job_id=job.id,
+                label="D1",
                 trial_number=winner.number,
-                kind="search",
+                search=winner.search,
+                kind=winner.kind,
                 params=winner.params,
-                grasp_pose=finger.grasp_pose,
-                predicted_success=scores[k],
-                capture_radius_mm=fine.capture_radius(results[k][0]),
-                comparison=[entry(i) for i in order],
-                scad_path=str(cad_path),
+                grasp_pose=pose,
+                predicted_success=winner.success_rate,
+                capture_radius_mm=winner.capture_radius_mm,
+                cad_files={key: str(path) for key, path in export.files.items()},
+                checks=[check.model_dump() for check in export.checks],
+                created=time.time(),
             )
         )
-        s.merge(RunMetaRow(job_id=job_id, meta=meta))
-    update_job(db, job_id, status="done", stage=None, best_value=scores[k], best_trial=winner.number, finished=time.time())
+        s.merge(RunMetaRow(job_id=job.id, meta=meta))
+        s.flush()
+        n_done = s.scalar(select(func.count()).select_from(TrialRow).where(TrialRow.job_id == job.id))
+        values = {"n_done": n_done, "round": round_number + 1, "n_rounds": round_number + 1, "finished": time.time()}
+        values |= {"status": "done", "best_value": winner.success_rate, "best_trial": winner.number}
+        s.execute(update(JobRow).where(JobRow.id == job.id).values(**values))
+    logger.info("Job %s: D1 %.3f (stock %.3f)", job.id, winner.success_rate, next(r.success_rate for r in rows if r.label == "STOCK"))
 
 
-def _load_trials(db: DatabaseClient, job_id: str) -> list[TrialRow]:
+def _ranked(trials: list) -> list:
+    """Best first: target score, then capture radius (None: not even the centre held), then the earlier design."""
+    return sorted(trials, key=lambda t: (-t.success_rate, -(t.capture_radius_mm if t.capture_radius_mm is not None else -1.0), t.number))
+
+
+def _export(run: _Run, cad: CadClient, design: Design, pose: dict, outputs_dir: Path) -> FingerExport:
+    """D1's printable files and checks. An export that fails outright doesn't fail the job: the results stand, and the
+    failure is a blocking check, so the downloads say why."""
+    job = run.job
+    try:
+        return cad.export(
+            job.part,
+            design,
+            run.gripper,
+            finger_id=finger_id(job.experiment_id, "D1"),
+            stem=outputs_dir / job.id / file_stem(job.name, job.experiment_id, "D1", job.sim_backend),
+            sheet=print_sheet(run.profile, job, "D1", design, pose),
+        )
+    except Exception as e:
+        logger.exception("Job %s: exporting D1 failed", job.id)
+        return FingerExport(files={}, checks=[ExportCheck(name="export", ok=False, blocking=True, detail=f"the CAD export failed: {e}")])
+
+
+def _run_meta(run: _Run, sim: SimClient, trials: list[Trial], started: float) -> dict:
+    """What the run used, for whoever repeats or audits it. Built after the final batch, so the sim server's
+    describe() reports what it ran with."""
+    job, plan, cell = run.job, run.job.plan, run.profile.profile
+    described = sim.describe()
+    searches = []
+    for search in plan.searches:
+        mine = [t for t in trials if t.search == search.key]
+        searches.append(
+            {
+                "key": search.key,
+                "family": search.family,
+                "method": search.method,
+                "budget": search.budget,
+                "batch_size": search.batch_size,
+                "patience": search.patience,
+                "designs": len(mine),
+                "rounds": len({t.round for t in mine}),
+                "best": max((t.success_rate for t in mine), default=None),
+                "stop_reason": _stop_reason(search, mine) or "budget",
+            }
+        )
+    return {
+        "job_id": job.id,
+        "experiment_id": job.experiment_id,
+        "name": job.name,
+        "created": job.created,
+        "finished": time.time(),
+        "runtime_s": time.time() - started,  # this worker's; a resumed job's earlier workers aren't counted
+        "versions": {
+            "python": platform.python_version(),
+            "botorch": botorch.__version__,
+            "gpytorch": gpytorch.__version__,
+            "torch": torch.__version__,
+            "cadquery": cadquery.__version__,
+        },
+        "gpu": _gpu_name(),
+        "cpus": os.cpu_count(),
+        "seed": job.spec.seed,
+        "grids": {"search": plan.grid.model_dump(), "final": plan.final_grid.model_dump()},
+        "sim": {"backend": sim.backend, "badge": job.sim_backend, "url": sim.url, "describe": described},
+        "cell_profile": {"id": run.profile.id, "name": run.profile.name, "version": run.profile.version},
+        "grip_force_n": plan.grip_force_n,
+        "searches": searches,
+        "warnings": cell.sim.differences(described) + [f"cell profile vs the sim: {m}" for m in cell.twin_mismatches()],
+        "spec": job.spec.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+    }
+
+
+def _load_trials(db: DatabaseClient, job_id: str, grid: str) -> list[Trial]:
     with db.session() as s:
-        return list(s.scalars(select(TrialRow).where(TrialRow.job_id == job_id).order_by(TrialRow.number)))
+        rows = s.scalars(select(TrialRow).where(TrialRow.job_id == job_id, TrialRow.grid == grid).order_by(TrialRow.number))
+        return [Trial.model_validate(row) for row in rows]
 
 
-def _stale_rounds(trials: list[TrialRow]) -> int:
-    """Rounds since the best search score last improved."""
-    best, stale = None, 0
-    for number in sorted({t.round for t in trials}):
-        top = max((t.success_rate for t in trials if t.round == number and t.kind == "search"), default=None)
-        if top is None:
-            continue
-        if best is None or top > best + MIN_GAIN:
-            best, stale = top, 0
-        else:
-            stale += 1
-    return stale
+def _next_number(db: DatabaseClient, job_id: str) -> int:
+    with db.session() as s:
+        last = s.scalar(select(func.max(TrialRow.number)).where(TrialRow.job_id == job_id))
+    return 0 if last is None else last + 1
 
 
-def _describe(params: dict[str, float]) -> str:
-    return ", ".join(f"{name} {value:.1f}" for name, value in params.items())
+def _cancelled(db: DatabaseClient, job_id: str) -> bool:
+    """Whether a cancel was asked for; if so, marks the job cancelled (the rounds done so far stay, for a resume)."""
+    with db.session() as s:
+        if not s.scalar(select(JobRow.cancel_requested).where(JobRow.id == job_id)):
+            return False
+    update_job(db, job_id, status="cancelled")
+    logger.info("Job %s: cancelled", job_id)
+    return True
+
+
+def _failure(error: Exception) -> tuple[str, int | None]:
+    """The job card's one line for a failure, and the input step that fixes it when that's known."""
+    if isinstance(error, JobRunError):
+        return error.line, error.step
+    if isinstance(error, SimError):
+        return f"sim: {error}", None
+    text = next((line.strip() for line in str(error).splitlines() if line.strip()), "")
+    line = f"{type(error).__name__}: {text}" if text else type(error).__name__
+    return line[:300], None
 
 
 def _gpu_name() -> str | None:

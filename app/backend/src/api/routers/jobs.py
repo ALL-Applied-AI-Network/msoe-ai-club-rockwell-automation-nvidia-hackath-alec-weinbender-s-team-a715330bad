@@ -1,68 +1,72 @@
+"""Experiments: plan, create, list (cards), live progress, results, re-score, downloads, and the review gate.
+
+A blocked spec is refused with 422 and {message, reasons, failed_step, blockers}: each blocker names the input step whose
+screen fixes it. A blocked export (a failed blocking check) is refused with 409 and {message, failed_checks}. The CAD work
+(planning builds fingers, downloads export them) runs in a thread, so it never blocks the event loop.
+"""
+
 import asyncio
-from typing import Annotated, Any
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from fastapi import APIRouter, Form, HTTPException
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
-from api.dependencies import ConfigDep, DbDep
-from api.models.finger import STROKE_MM, Finger
-from api.models.job import FINISHED_STATUSES, Job, JobConfig, JobResult, Trial
-from api.models.part import Part
-from api.models.physical_trial import PhysicalTrial
+from api.dependencies import CadDep, ConfigDep, DbDep
+from api.models.error_model import ErrorModel
+from api.models.export_check import ExportCheck
+from api.models.job import FINISHED_STATUSES, Job, JobStatus
+from api.models.job_spec import JobSpec, SimBackend
+from api.models.results import FingerPreview, JobCard, ResultsView, grasp_pose_text, slug
 from api.models.review import Review
-from api.services import jobs, physical_trials, reviews
+from api.models.search_plan import JobPlan
+from api.models.task import Task
+from api.services import jobs, results, reviews
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 EVENT_POLL_S = 1.0
+MEDIA_TYPES = {"step": "model/step", "stl_left": "model/stl", "stl_right": "model/stl", "print_sheet": "application/pdf"}
 
 
-class CreateJobRequest(Part, JobConfig):
-    """The new-job form: the part, the search settings, the task text and an optional CAD file of the part."""
+class PlanResponse(JobPlan):
+    failed_step: int | None  # the earliest input step with a blocker; None when the job can run
 
-    task: str
-    part_file: UploadFile | None = None
+
+class CreateJobRequest(JobSpec):
+    duplicated_from: str | None = None  # the job this spec was duplicated from, if any
 
 
 class CreateJobResponse(BaseModel):
     id: str
+    experiment_id: str
+    name: str
 
 
-class JobResponse(Job):
-    progress: float  # n_done / n_total
-
-    @classmethod
-    def from_job(cls, job: Job, **extra) -> "JobResponse":
-        return cls(**job.model_dump(), progress=job.n_done / job.n_total if job.n_total else 0, **extra)
-
-
-class JobDetailResponse(JobResponse):
-    trials: list[Trial]
-    result: JobResult | None
-    meta: dict[str, Any] | None
+class JobDetailResponse(Job):
+    card: JobCard
     review: Review | None
-    physical: list[PhysicalTrial]
 
 
-class FingerResponse(BaseModel):
-    """The winning finger's geometry (gripper frame, mm, jaws closed; the other finger is its mirror image in x) and the
-    part it grips, for the 3D preview."""
-
-    part: Part
-    extent_mm: tuple[float, float, float]  # the part along the closing direction, across it, and its height
-    jaw_open_mm: float
-    finger: Finger
+class RenameJobRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=jobs.MAX_NAME)
 
 
-class JobEvent(BaseModel):
-    """One server-sent event: the job's progress fields."""
+class RescoreRequest(BaseModel):
+    """Score the stored outcomes at another error model or task; either left out keeps the job's own."""
 
-    status: str
-    stage: str | None
-    n_done: int
-    n_total: int
-    best_value: float | None
+    error: ErrorModel | None = None
+    task: Task | None = None
+
+
+class ChecksResponse(BaseModel):
+    label: str
+    checks: list[ExportCheck]
+    blocked: bool  # a blocking check failed: the files can't be downloaded
+    files: list[str]  # what's there to download: "step", "stl_left", "stl_right", "print_sheet"
 
 
 class ReviewRequest(BaseModel):
@@ -71,102 +75,168 @@ class ReviewRequest(BaseModel):
     notes: str = ""
 
 
-class PhysicalTrialRequest(BaseModel):
-    finger: str = "optimized"
-    success: int
-    placement_error_mm: float | None = None
-    cycle_time_s: float | None = None
-    recovered: int = 0
-    operator_intervention: int = 0
-    notes: str = ""
-
-
 class OkResponse(BaseModel):
     ok: bool = True
 
 
-@router.post("")
-async def create_job(form: Annotated[CreateJobRequest, Form()], db: DbDep, config: ConfigDep) -> CreateJobResponse:
-    f = form.part_file
-    upload = (f.filename, await f.read()) if f and f.filename else None
-    job_id = jobs.create_job(
-        db,
-        config,
-        task=form.task,
-        part=Part.model_validate(form.model_dump(include=set(Part.model_fields))),
-        job_config=JobConfig.model_validate(form.model_dump(include=set(JobConfig.model_fields))),
-        upload=upload,
-    )
-    return CreateJobResponse(id=job_id)
+@router.post("/plan")
+async def plan_job(spec: JobSpec, db: DbDep, config: ConfigDep) -> PlanResponse:
+    """Steps 6-8: the plan for a spec (searches, totals, time estimate, warnings), stored nowhere. Always 200: what
+    blocks the job is in blocked / blockers, each with the input step that fixes it."""
+    planned = await run_in_threadpool(jobs.plan_spec, db, config, spec)
+    plan = planned.plan
+    return PlanResponse(**plan.model_dump(), failed_step=min((b.step for b in plan.blockers), default=None))
+
+
+@router.post("", status_code=201)
+async def create_job(body: CreateJobRequest, db: DbDep, config: ConfigDep) -> CreateJobResponse:
+    """Step 8: store the experiment and start its run. 422 with the blockers if the spec can't run yet."""
+    spec = JobSpec.model_validate(body.model_dump(exclude={"duplicated_from"}))
+    with _http_errors():
+        job = await run_in_threadpool(lambda: jobs.create_job(db, config, spec, duplicated_from=body.duplicated_from))
+    return CreateJobResponse(id=job.id, experiment_id=job.experiment_id, name=job.name)
 
 
 @router.get("")
-def list_jobs(db: DbDep) -> list[JobResponse]:
-    return [JobResponse.from_job(job) for job in jobs.list_jobs(db)]
+def list_jobs(db: DbDep, part_id: str | None = None, status: JobStatus | None = None, backend: SimBackend | None = None) -> list[JobCard]:
+    """The job list: cards, newest first."""
+    return jobs.job_cards(db, part_id=part_id, status=status, backend=backend)
 
 
 @router.get("/{job_id}")
 def get_job(job_id: str, db: DbDep) -> JobDetailResponse:
-    try:
-        detail = jobs.get_job_detail(db, job_id)
-    except jobs.JobNotFoundError:
-        raise HTTPException(404) from None
-    return JobDetailResponse.from_job(detail.job, **detail.model_dump(exclude={"job"}))
+    """The job with its spec, posed part and plan, its card, and its review."""
+    with _http_errors():
+        job = jobs.get_job(db, job_id)
+        card = jobs.job_card(db, job_id)
+    return JobDetailResponse(**job.model_dump(), card=card, review=reviews.get_review(db, job_id))
+
+
+@router.patch("/{job_id}")
+def rename_job(job_id: str, body: RenameJobRequest, db: DbDep) -> JobCard:
+    """Rename the experiment. Its experiment ID never changes."""
+    with _http_errors():
+        jobs.rename_job(db, job_id, body.name)
+        return jobs.job_card(db, job_id)
+
+
+@router.post("/{job_id}/duplicate")
+def duplicate_job(job_id: str, db: DbDep) -> JobSpec:
+    """A copy of the job's spec named "<name> (copy)", for the wizard to edit and POST /api/jobs with duplicated_from.
+    Nothing is stored or started."""
+    with _http_errors():
+        return jobs.duplicate_job(db, job_id)
+
+
+@router.post("/{job_id}/cancel")
+def cancel_job(job_id: str, db: DbDep) -> OkResponse:
+    with _http_errors():
+        jobs.cancel_job(db, job_id)
+    return OkResponse()
+
+
+@router.post("/{job_id}/resume")
+def resume_job(job_id: str, db: DbDep, config: ConfigDep) -> OkResponse:
+    """Restart an interrupted, cancelled or failed job after its last checkpointed round (409 for any other status)."""
+    with _http_errors():
+        jobs.resume_job(db, config, job_id)
+    return OkResponse()
 
 
 @router.get("/{job_id}/events")
 async def job_events(job_id: str, db: DbDep) -> StreamingResponse:
-    """Server-sent events: pushes the job's progress so the UI updates live without polling logic of its own."""
+    """Server-sent events: the job's card each time it changes, ending once the job is finished (done, failed,
+    cancelled or interrupted)."""
+    with _http_errors():
+        await run_in_threadpool(jobs.get_job, db, job_id)
 
     async def stream():
         last = None
         while True:
             try:
-                job = jobs.get_job(db, job_id)
+                card = await run_in_threadpool(jobs.job_card, db, job_id)
             except jobs.JobNotFoundError:
                 return
-            event = JobEvent.model_validate(job.model_dump()).model_dump_json()
+            event = card.model_dump_json()
             if event != last:
                 yield f"data: {event}\n\n"
                 last = event
-            if job.status in FINISHED_STATUSES:
+            if card.status in FINISHED_STATUSES:
                 return
             await asyncio.sleep(EVENT_POLL_S)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
-@router.post("/{job_id}/cancel")
-def cancel_job(job_id: str, db: DbDep) -> OkResponse:
-    jobs.cancel_job(db, job_id)
-    return OkResponse()
+@router.get("/{job_id}/results")
+def get_results(job_id: str, db: DbDep) -> ResultsView:
+    """The results page at the job's own error model and task. The final-test sections are null until it has run."""
+    with _http_errors():
+        return results.results(db, job_id)
 
 
-@router.post("/{job_id}/resume")
-def resume_job(job_id: str, db: DbDep, config: ConfigDep) -> OkResponse:
-    try:
-        jobs.resume_job(db, config, job_id)
-    except jobs.JobNotResumableError:
-        raise HTTPException(409, "not resumable") from None
-    return OkResponse()
+@router.post("/{job_id}/rescore")
+def rescore(job_id: str, body: RescoreRequest, db: DbDep) -> ResultsView:
+    """The results page at another error model and/or task, from the stored outcomes: nothing is simulated or stored."""
+    with _http_errors():
+        return results.results(db, job_id, error=body.error, task=body.task)
 
 
 @router.get("/{job_id}/finger")
-def get_finger(job_id: str, db: DbDep) -> FingerResponse:
-    try:
-        part, finger = jobs.result_finger(db, job_id)
-    except jobs.JobNotFoundError:
-        raise HTTPException(404) from None
-    return FingerResponse(part=part, extent_mm=part.extent_mm, jaw_open_mm=STROKE_MM, finger=finger)
+async def get_finger(job_id: str, db: DbDep, design: str = "D1") -> FingerPreview:
+    """Both fingers of a final design (D1 by default) and the part, for the 3D preview."""
+    with _http_errors():
+        return await run_in_threadpool(results.finger_preview, db, job_id, design)
 
 
-@router.get("/{job_id}/scad")
-def download_cad(job_id: str, db: DbDep) -> FileResponse:
-    try:
-        path = jobs.result_file(db, job_id)
-    except jobs.JobNotFoundError:
-        raise HTTPException(404) from None
-    return FileResponse(path, filename=f"fingers_{job_id}{path.suffix}")
+@router.get("/{job_id}/designs/{label}/cad", response_class=FileResponse)
+async def download_cad(
+    job_id: str,
+    label: str,
+    db: DbDep,
+    config: ConfigDep,
+    cad: CadDep,
+    format: Literal["step", "stl"] = "step",
+    side: Literal["L", "R"] = "L",
+) -> FileResponse:
+    """The pair as one STEP, or one finger as an STL lying in its print orientation. 409 with the failed checks if the
+    export is blocked, 422 for STOCK."""
+    key = "step" if format == "step" else {"L": "stl_left", "R": "stl_right"}[side]
+    return await _download(db, config, cad, job_id, label, key)
+
+
+@router.get("/{job_id}/designs/{label}/print-sheet.pdf", response_class=FileResponse)
+async def download_print_sheet(job_id: str, label: str, db: DbDep, config: ConfigDep, cad: CadDep) -> FileResponse:
+    return await _download(db, config, cad, job_id, label, "print_sheet")
+
+
+@router.get("/{job_id}/designs/{label}/checks")
+async def export_checks(job_id: str, label: str, db: DbDep, config: ConfigDep, cad: CadDep) -> ChecksResponse:
+    """The export checks of a final design (exporting it first if it hasn't been yet): never blocked, it's where to see
+    why a download is."""
+    with _http_errors():
+        export = await run_in_threadpool(lambda: results.design_export(db, job_id, label, cad=cad, outputs_dir=config.outputs_dir))
+    return ChecksResponse(label=export.label, checks=export.checks, blocked=bool(export.blocked), files=sorted(export.files))
+
+
+@router.get("/{job_id}/designs/{label}/grasp-pose")
+async def get_grasp_pose(job_id: str, label: str, db: DbDep, format: Literal["json", "text"] = "json") -> Any:
+    """The grasp to give the robot with a final design, as JSON or as copyable "key: value" text."""
+    with _http_errors():
+        pose = await run_in_threadpool(results.grasp_pose, db, job_id, label)
+    if format == "text":
+        return PlainTextResponse(grasp_pose_text(pose))
+    return JSONResponse(pose)
+
+
+@router.get("/{job_id}/run-metadata.json")
+def run_metadata(job_id: str, db: DbDep) -> JSONResponse:
+    """What the run used: versions, GPU, grids, seed, sim backend and its settings, cell profile, plan, stop reasons."""
+    with _http_errors():
+        job = jobs.get_job(db, job_id)
+        meta = results.run_metadata(db, job_id)
+    filename = f"{slug(job.name)}_{job.experiment_id}_run-metadata.json"
+    return JSONResponse(meta, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @router.post("/{job_id}/review")
@@ -179,7 +249,27 @@ def review_job(job_id: str, form: Annotated[ReviewRequest, Form()], db: DbDep) -
     return OkResponse()
 
 
-@router.post("/{job_id}/physical")
-def add_physical_trial(job_id: str, form: Annotated[PhysicalTrialRequest, Form()], db: DbDep) -> OkResponse:
-    physical_trials.add_trial(db, job_id, **form.model_dump())
-    return OkResponse()
+async def _download(db, config, cad, job_id: str, label: str, key: str) -> FileResponse:
+    with _http_errors():
+        path, filename = await run_in_threadpool(
+            lambda: results.design_file(db, job_id, label, key, cad=cad, outputs_dir=config.outputs_dir)
+        )
+    return FileResponse(path, media_type=MEDIA_TYPES[key], filename=filename)
+
+
+@contextmanager
+def _http_errors() -> Iterator[None]:
+    """The services' domain errors as HTTP errors."""
+    try:
+        yield
+    except (jobs.JobNotFoundError, results.DesignNotFoundError) as e:
+        raise HTTPException(404, str(e) or "not found") from None
+    except (jobs.JobNotResumableError, results.ResultsNotReadyError) as e:
+        raise HTTPException(409, str(e)) from None
+    except results.ExportBlockedError as e:
+        raise HTTPException(409, {"message": str(e), "failed_checks": [c.model_dump() for c in e.checks]}) from None
+    except jobs.JobBlockedError as e:
+        detail = {"message": str(e), "reasons": [b.reason for b in e.blockers], "failed_step": e.failed_step}
+        raise HTTPException(422, detail | {"blockers": [b.model_dump() for b in e.blockers]}) from None
+    except (jobs.JobInputError, results.DesignNotExportableError) as e:
+        raise HTTPException(422, str(e)) from None

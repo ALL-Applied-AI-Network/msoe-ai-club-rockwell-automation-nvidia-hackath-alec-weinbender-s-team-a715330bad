@@ -33,7 +33,8 @@ def main() -> None:
         "--friction-combine",
         choices=FRICTION_COMBINE_MODES,
         default="average",
-        help="how PhysX combines custom-finger friction with the part's 0.9/0.8 (max = the twin's soft-tip convention)",
+        help="how PhysX combines custom-finger friction with the part's (the request's part friction, or the twin's 0.9/0.8); "
+        "set on both materials. max = the twin's soft-tip convention",
     )
     parser.add_argument("--twin-dir", type=Path, default=None, help="the twin's directory (default: sim/fanuc_er4ia_sim in this repo)")
     args = parser.parse_args()

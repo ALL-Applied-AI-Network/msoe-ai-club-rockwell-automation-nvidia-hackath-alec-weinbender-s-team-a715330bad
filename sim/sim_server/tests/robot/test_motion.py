@@ -16,6 +16,9 @@ from sim_server.robot.motion import (  # noqa: E402
     HOME_TIP,
     LIFT_HEIGHT,
     SEGMENT_SECONDS,
+    SETTLE_SECONDS,
+    TRANSPORT_MOVE,
+    TRANSPORT_SECONDS,
     GraspPlanner,
     ease,
     turn,
@@ -67,6 +70,53 @@ def test_plans_are_cached_and_follow_the_tip_height(planner):
     grasp = a.segment_end["descend"] - 1
     (_, tip_a), (_, tip_b) = tool_pose(planner, a.arm[grasp]), tool_pose(planner, b.arm[grasp])
     assert tip_b - tip_a == pytest.approx([0, 0, 0.002], abs=1e-4)
+
+
+def test_lift_tip_is_where_the_lift_ends(planner, geo):
+    plan = planner.plan(0.004, 0.0012)
+    _, top = tool_pose(planner, plan.arm[plan.segment_end["lift"] - 1])
+    assert planner.lift_tip(0.004) == pytest.approx((*planner.site_xy, geo.surface_dz + 0.004 + LIFT_HEIGHT))
+    assert top == pytest.approx(planner.lift_tip(0.004), abs=1e-3)
+
+
+@pytest.mark.parametrize("transport", ["slow", "normal", "fast"])
+def test_transport_carries_the_part_across_the_jaws_then_settles(planner, geo, transport):
+    plan = planner.plan(C.CUBE_TIP_CLEARANCE, C.CUBE_JAW_HALF_TARGET, transport)
+    ends = plan.segment_end
+    move_frames, settle_frames = round(TRANSPORT_SECONDS[transport] * FPS), round(SETTLE_SECONDS * FPS)
+    assert list(ends) == ["approach", "descend", "close", "dwell", "lift", "transport", "settle"]
+    assert ends["transport"] - ends["lift"] == move_frames and ends["settle"] - ends["transport"] == settle_frames == 15
+    assert plan.frames == ends["settle"] == 117 + move_frames + 15
+    without = planner.plan(C.CUBE_TIP_CLEARANCE, C.CUBE_JAW_HALF_TARGET)
+    assert np.array_equal(plan.arm[: ends["lift"]], without.arm) and np.array_equal(plan.jaw[: ends["lift"]], without.jaw)
+
+    _, top = tool_pose(planner, plan.arm[ends["lift"] - 1])
+    r, end = tool_pose(planner, plan.arm[ends["transport"] - 1])
+    assert end == pytest.approx(top + np.array(TRANSPORT_MOVE), abs=1e-3)  # 0.12 m along base +X, same height
+    assert end[0] == pytest.approx(0.42, abs=1e-3)
+    assert -(r @ np.array(C.TOOL_AXIS)) == pytest.approx([0, 0, 1], abs=1e-2)  # still pointing down
+    assert r @ np.array(C.FINGER_SPREAD_AXIS) == pytest.approx(planner.spread, abs=1e-2)  # jaws still along the spread
+    for frame in range(ends["transport"], ends["settle"]):  # settle: hold still
+        assert tool_pose(planner, plan.arm[frame])[1] == pytest.approx(end, abs=1e-6)
+    assert plan.jaw[ends["lift"] :] == pytest.approx(C.CUBE_JAW_HALF_TARGET)  # the jaws stay closed throughout
+    middle = tool_pose(planner, plan.arm[ends["lift"] + move_frames // 2 - 1])[1]
+    assert top[0] < middle[0] < end[0]  # eased, not a jump
+
+
+@pytest.mark.parametrize("tip_height", [0.0, 0.0025, 0.03, 0.08])
+def test_transport_is_reachable_across_tip_heights(planner, tip_height):
+    """The move ends at x = 0.42 m, inside the twin's pick span (x 0.24..0.46), at every plausible grasp height."""
+    for transport in TRANSPORT_SECONDS:
+        planner.plan(tip_height, 0.002, transport)  # raises GraspPlanError if any frame fails the IK checks
+
+
+def test_plans_are_keyed_by_transport(planner):
+    a = planner.plan(0.005, 0.002, "fast")
+    assert planner.plan(0.005, 0.002, "fast") is a
+    assert planner.plan(0.005, 0.002, "slow") is not a and planner.plan(0.005, 0.002) is not a
+    assert "transport" not in planner.plan(0.005, 0.002).segment_end
+    with pytest.raises(ValueError, match="transport"):
+        planner.plan(0.005, 0.002, "warp")
 
 
 def test_unreachable_grasp_is_refused(planner):

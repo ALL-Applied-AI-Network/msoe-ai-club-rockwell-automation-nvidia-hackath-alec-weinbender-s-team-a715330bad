@@ -35,6 +35,9 @@ uv sync --all-packages
 
 # Web app (mock LLM + mock sim). Startup also migrates the database.
 uv run --package backend uvicorn api.main:app --port 8000
+# ... on demo data instead (its own DB in app/data/demo, generated in the background on the first start): set DEMO_DATA=true
+# Regenerate the demo data (stop the API first)
+uv run --package backend python app/backend/scripts/demo_data.py --reset
 
 # Backend tests (offline; config in the root pyproject.toml)
 uv run pytest

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from api.config import LlmConfig
-from api.models.design import PARAMS
+from api.models.family import VPadParams
 from api.models.part import Part
 from api.models.search_space import SearchSpace
 
@@ -101,7 +101,10 @@ class HttpLlm:
 
 def describe_space(part: Part) -> str:
     """One line per design parameter: its range for this part and what it means."""
-    return "\n".join(f"- {name} ({lo:.1f} to {hi:.1f}): {PARAMS[name]}" for name, (lo, hi) in SearchSpace(part).bounds().items())
+    fields = VPadParams.model_fields
+    return "\n".join(
+        f"- {name} ({lo:.1f} to {hi:.1f}): {fields[name].description}" for name, (lo, hi) in SearchSpace(part).bounds().items()
+    )
 
 
 def create_llm_client(config: LlmConfig) -> LlmClient:

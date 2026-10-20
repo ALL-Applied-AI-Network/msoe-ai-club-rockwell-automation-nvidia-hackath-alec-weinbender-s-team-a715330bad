@@ -7,16 +7,35 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 
-from api.db.tables import Base, JobRow, PhysicalTrialRow, ResultRow, ReviewRow, TrialRow
+from api.db.tables import (
+    Base,
+    CellProfileRow,
+    JobRow,
+    PartRow,
+    PhysicalTrialRow,
+    PrintedFingerRow,
+    ResultRow,
+    ReviewRow,
+    TestPlanRow,
+    TrialRow,
+)
+from api.models.cell_profile import CellProfileVersion
 from api.models.job import Job, JobResult, Trial
+from api.models.part_record import PartRecord
 from api.models.physical_trial import PhysicalTrial
+from api.models.printed_finger import PrintedFinger
 from api.models.review import Review
+from api.models.test_plan import TestPlan
 
 MODEL_TABLE_PAIRS = [
+    (PartRecord, PartRow),
+    (CellProfileVersion, CellProfileRow),
     (Job, JobRow),
     (Trial, TrialRow),
     (JobResult, ResultRow),
     (Review, ReviewRow),
+    (PrintedFinger, PrintedFingerRow),
+    (TestPlan, TestPlanRow),
     (PhysicalTrial, PhysicalTrialRow),
 ]
 

@@ -5,18 +5,23 @@ durations, the same easing and wrist turn, 30 control frames per second with two
 IK acceptance test (converged, within 1 mm, jaws aligned). Of the twin's pick it uses approach, descend, close, dwell and
 lift; the held check (the part's centre rose more than 25 mm) is taken at the end of the lift, as the twin does.
 
+A batch can add a transport move after the lift, which the twin doesn't have: the gripper carries the part 0.12 m along
+base +X (across the jaws, which close along base Y at the nominal site), in 1.2, 0.6 or 0.3 s with the same easing, then
+holds still for a 0.5 s settle. Held after transport is checked at the end of the settle. The move ends at x = 0.42 m, at
+the lift height, inside the twin's pick span (x 0.24..0.46); tests/robot/test_motion.py checks the IK reaches it.
+
 sort_scene.py can't be imported here (it pulls in OpenCV through cube_pose), so its ease(), turn() and segment table are
 restated below; tests/robot/test_motion.py checks them against the twin's own segments().
 
-The plan depends only on the design's tip height and jaw target, never on the part's true pose, so every copy of a
-design in the vectorised path shares one joint trajectory.
+The plan depends only on the design's tip height and jaw target and the batch's transport, never on the part's true
+pose, so every copy of a design in the vectorised path shares one joint trajectory.
 """
 
 from dataclasses import dataclass
 
 import numpy as np
 
-from sim_server.models.grasp import GraspPlanError
+from sim_server.models.grasp import GraspPlanError, Transport
 from sim_server.models.gripper import GripperGeometry
 from sim_server.robot.poses import NOMINAL_SITE_XY, NOMINAL_SPREAD_XY
 
@@ -29,6 +34,10 @@ LIFT_HEIGHT = 0.13  # sort_scene.segments(): up = p + [0, 0, 0.13]
 HELD_RISE = 0.025  # sort_scene.py: an object counts as lifted when its centre rose more than 0.025 m
 # sort_scene.segments(), first five entries: (name, seconds). Jaws stay open until "close", then hold the target.
 SEGMENT_SECONDS = (("approach", 1.2), ("descend", 0.8), ("close", 0.6), ("dwell", 0.5), ("lift", 0.8))
+# Ours, not the twin's (decision D6 in docs/notes/input-flow-backend-plan.md).
+TRANSPORT_MOVE = (0.12, 0.0, 0.0)  # base frame, metres: across the jaws
+TRANSPORT_SECONDS = {"slow": 1.2, "normal": 0.6, "fast": 0.3}
+SETTLE_SECONDS = 0.5
 
 
 def ease(t: float) -> float:
@@ -49,7 +58,7 @@ class GraspPlan:
 
     arm: np.ndarray  # (frames, 6): J1..J6 position targets, radians
     jaw: np.ndarray  # (frames,): per-jaw opening, metres; cell.jaw_targets() turns it into the prismatic joint targets
-    segment_end: dict[str, int]  # number of frames done when each segment ends
+    segment_end: dict[str, int]  # frames done when each segment ends; "transport" and "settle" only in a transport plan
 
     @property
     def frames(self) -> int:
@@ -57,7 +66,7 @@ class GraspPlan:
 
 
 class GraspPlanner:
-    """Solves the home pose once and caches one plan per (tip height, jaw target). Needs twin.use_twin() first."""
+    """Solves the home pose once and caches one plan per (tip height, jaw target, transport). Needs twin.use_twin() first."""
 
     def __init__(self, geo: GripperGeometry, site_xy=NOMINAL_SITE_XY, nominal_spread_xy=NOMINAL_SPREAD_XY):
         import fk
@@ -81,33 +90,47 @@ class GraspPlanner:
         spread = np.array([*nominal_spread_xy, 0.0], float)
         spread /= np.linalg.norm(spread)
         self.spread = -spread if np.dot(r @ self._spread_axis, spread) < 0 else spread  # world direction toward JawL
-        self._plans: dict[tuple[float, float], GraspPlan] = {}
+        self._plans: dict[tuple[float, float, str | None], GraspPlan] = {}
 
     @property
     def spread_xy(self) -> tuple[float, float]:
         return float(self.spread[0]), float(self.spread[1])
 
-    def plan(self, tip_height: float, jaw_close: float) -> GraspPlan:
-        key = (round(tip_height, 7), round(jaw_close, 7))  # 0.1 um: closer than that is the same plan
+    def lift_tip(self, tip_height: float) -> tuple[float, float, float]:
+        """The commanded fingertip point (G's origin) at the end of the lift, in the base frame: where in-hand poses
+        are measured from (robot/poses.in_hand_pose)."""
+        return (self.site_xy[0], self.site_xy[1], self._geo.surface_dz + tip_height + LIFT_HEIGHT)
+
+    def plan(self, tip_height: float, jaw_close: float, transport: Transport | None = None) -> GraspPlan:
+        if transport is not None and transport not in TRANSPORT_SECONDS:
+            raise ValueError(f"unknown transport {transport!r}; use one of {sorted(TRANSPORT_SECONDS)}")
+        key = (round(tip_height, 7), round(jaw_close, 7), transport)  # 0.1 um: closer than that is the same plan
         if key not in self._plans:
-            self._plans[key] = self._solve(tip_height, jaw_close)
+            self._plans[key] = self._solve(tip_height, jaw_close, transport)
         return self._plans[key]
 
-    def _solve(self, tip_height: float, jaw_close: float) -> GraspPlan:
+    def _solve(self, tip_height: float, jaw_close: float, transport: Transport | None) -> GraspPlan:
         fk, ik, geo = self._fk, self._ik, self._geo
         pick = np.array([*self.site_xy, geo.surface_dz + tip_height])
         up = pick + [0.0, 0.0, LIFT_HEIGHT]
         opened = geo.jaw_open
-        segments = [  # (name, from, to, jaw from, jaw to), as in sort_scene.segments()
+        moves = [  # (name, from, to, jaw from, jaw to), as in sort_scene.segments()
             ("approach", np.array(HOME_TIP), up, opened, opened),
             ("descend", up, pick, opened, opened),
             ("close", pick, pick, opened, jaw_close),
             ("dwell", pick, pick, jaw_close, jaw_close),
             ("lift", pick, up, jaw_close, jaw_close),
         ]
+        segments = [(*move, seconds) for move, (_, seconds) in zip(moves, SEGMENT_SECONDS, strict=True)]
+        if transport is not None:
+            moved = up + np.array(TRANSPORT_MOVE)
+            segments += [
+                ("transport", up, moved, jaw_close, jaw_close, TRANSPORT_SECONDS[transport]),
+                ("settle", moved, moved, jaw_close, jaw_close, SETTLE_SECONDS),
+            ]
         q = self.q_home.copy()
         arm, jaw, segment_end = [], [], {}
-        for (name, p0, p1, j0, j1), (_, seconds) in zip(segments, SEGMENT_SECONDS, strict=True):
+        for name, p0, p1, j0, j1, seconds in segments:
             spread_start = None
             if name == "approach":  # turn the wrist from wherever home left it, as sort_scene.py does
                 r, _ = fk.fk(q)

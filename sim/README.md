@@ -60,27 +60,60 @@ yet;** [docs/notes/gpu-test-plan.md](../docs/notes/gpu-test-plan.md) is the runb
 | `--envs N` | `1` | `1`: the **reference path**, the twin's own robot, one grasp at a time. `N > 1`: the **vectorised path**, N copies of robot + gripper + mat + part stepped together. |
 | `--device` | `auto` | `cpu` or `cuda:N`. `auto` is `cpu` for 1 environment (like the twin's `sort_scene.py`), `cuda:0` otherwise. Any combination works, which helps isolate CPU-vs-GPU from 1-vs-N differences. |
 | `--env-spacing` | `2.0` | Metres between copies; far enough that copies can't touch. |
-| `--friction-combine` | `average` | How PhysX combines a custom finger's friction with the part's (0.9 / 0.8). `max` is the twin's soft-tip convention. |
+| `--friction-combine` | `average` | How PhysX combines a custom finger's friction with the part's (the request's `part.friction`, or the twin's 0.9 / 0.8). Set on both materials. `max` is the twin's soft-tip convention. |
 | `--twin-dir` | `sim/fanuc_er4ia_sim` | Where the twin's modules are imported from. The default is found relative to the package, so it needs the editable install. |
 | `--host`, `--port`, `--log-level` | `127.0.0.1`, `9000`, `INFO` | `--host 0.0.0.0` only if a firewall keeps the port private. |
 
-**Contract** (full version in [`routers/evaluations.py`](sim_server/src/sim_server/routers/evaluations.py)'s docstring): `POST /evaluate_batch`
-`{part, designs: [{id} | {id, pieces, friction, tip_height_mm, jaw_close_mm}], offsets: [{dx, dy, yaw_deg}]}` →
-`{held: [[bool per offset] per design]}`, in millimetres, grams and degrees (converted to the twin's metres in
-`services/batches.py`). Every design is tried at every offset. 422 for a request the twin can't run, 503 while shutting down.
-The old `POST /evaluate {part, design: {template, params}, offsets}` → `{successes}` still works for template `stock` (it
-runs the batch path with one design) and answers 501 for other templates, whose params can't become geometry here.
+**Contract v2** (full version in [`routers/evaluations.py`](sim_server/src/sim_server/routers/evaluations.py)'s docstring;
+the plan is section 5 of [input-flow-backend-plan.md](../docs/notes/input-flow-backend-plan.md)), in millimetres, grams,
+degrees and newtons (converted to the twin's metres in `services/batches.py`, both ways):
 
-**What a grasp is.** The part (a dynamic primitive with the twin's part material, 0.9 / 0.8) rests on the mat at the
-nominal site **(0.30, 0.0) m** in the robot base frame, straight below the twin's home pose; the jaws close along base Y
-there. The robot always plans at that nominal pose with the twin's IK (`robot/motion.py`, a restatement of
-`sort_scene.py`'s first five segments): home → approach above the part → descend until the fingertips are `tip_height` above
-the surface → close to `jaw_close` → dwell → lift 0.13 m, 30 control frames/s, two 1/60 s physics steps each. Only the
-world is set up from the offset (the part's true pose), never the robot's commands. **Held** = the part's centre rose more
-than 25 mm (the twin's pickup check). Each grasp starts from rest: robot at home, jaws open, part re-placed; the stage is
-only edited when the part or a copy's fingers change (stop, edit, reset, which re-parses physics). Stock fingers follow the
-twin's cube rule generalised to the part's width: tips 2.5 mm up, each jaw closed 0.3 mm past where its hook tip meets
-the part; a part wider than the 16 mm open tip gap counts as dropped without simulating.
+```text
+POST /evaluate_batch
+{part: {shape: "cylinder" | "box" | "mesh",
+        cylinder: diameter_mm, length_mm, axis "z" | "y" | "x"   (legacy "upright" true/false = "z"/"y" when axis is absent)
+        box:      box_mm [along the closing direction, across it, height]
+        mesh:     pieces [{points, triangles}]   grasp frame, mm, origin on the table under the grasp centre (z >= 0)
+        mass_g, friction: [static, dynamic] | null},              null = the twin's part material (0.9 / 0.8)
+ designs: [{id} | {id, pieces, friction, tip_height_mm, jaw_close_mm}],
+ offsets: [{dx, dy, yaw_deg}],
+ grip_force_n: float | null,                                       per-jaw force limit; null = the twin's 180 N
+ transport: null | "slow" | "normal" | "fast"}
+-> {held: [[bool]],
+    in_hand: [[[dx_mm, dy_mm, dz_mm, tilt_deg, yaw_deg] | null]],  end of the lift, vs the commanded gripper frame
+    held_after_transport: [[bool]] | null,                         null when transport is null
+    sim: {envs, device, friction_combine, physics_dt, solver_position_iterations, solver_velocity_iterations,
+          contact_offset_mm, rest_offset_mm, ...}}                 the keys the backend checks against its cell profile
+```
+
+Every design is tried at every offset; rows are designs, entries offsets. 422 for a request the twin can't run, 503 while
+shutting down. The old `POST /evaluate {part, design: {template, params}, offsets}` → `{successes}` still works for template
+`stock` (it runs the batch path with one design and returns held only) and answers 501 for other templates, whose params
+can't become geometry here. `GET /health` reports the queue plus the same `sim` description.
+
+**What a grasp is.** The part rests on the mat at the nominal site **(0.30, 0.0) m** in the robot base frame, straight below
+the twin's home pose; the jaws close along base Y there. It is one dynamic rigid body: a primitive (box, or a cylinder
+standing, lying across the jaws or lying along them), or for a mesh one PhysX `convexHull` collider per piece, recentred so
+the body's origin is at mid-height above the grasp centre. Its colliders get the request's friction as their own physics
+material (with `--friction-combine`), or the twin's part material when that's null. The robot always plans at the nominal
+pose with the twin's IK (`robot/motion.py`, a restatement of `sort_scene.py`'s first five segments): home → approach above
+the part → descend until the fingertips are `tip_height` above the surface → close to `jaw_close` → dwell → lift 0.13 m,
+30 control frames/s, two 1/60 s physics steps each. With a transport, the gripper then moves 0.12 m along base +X (across
+the jaws, ending at x = 0.42 m) in 1.2, 0.6 or 0.3 s (slow, normal, fast) with the same easing, and holds 0.5 s (settle).
+Only the world is set up from the offset (the part's true pose), never the robot's commands. The jaw drives' force limit
+is set before each chunk: `grip_force_n`, or the twin's 180 N. Each grasp starts from rest: robot at home, jaws open, part
+re-placed; the stage is only edited when the part (friction included) or a copy's fingers change (stop, edit, reset,
+which re-parses physics). Stock fingers follow the twin's cube rule generalised to the part's width (its extent along the
+closing direction, a mesh's too): tips 2.5 mm up, each jaw closed 0.3 mm past where its hook tip meets the part; a part
+wider than the 16 mm open tip gap counts as dropped without simulating.
+
+**What a grasp reports.** **Held** = the part's centre (a mesh's origin) rose more than 25 mm between the end of the
+approach and the end of the lift (the twin's pickup check). **In hand** = the part's pose at the end of the lift
+(`RigidPrim.get_world_poses`) relative to the *commanded* gripper frame G at that moment, not the arm's measured pose: G's
+origin is the commanded fingertip point (site x, site y, surface + tip height + 0.13 m), x toward JawL, z up. dx, dy, dz
+are the part's centre in G minus where a centred part sits, (0, 0, height / 2 − tip height); tilt is the angle between the
+part's z axis and G's; yaw is its x axis's turn about G's z from G's x, in (−180, 180]. The math is
+`robot/poses.in_hand_pose`, host-tested. **Held after transport** = still more than 25 mm up at the end of the settle.
 
 **Gripper frame G** for custom `pieces` (`robot/gripper_frame.py`, checked against the twin's `cell.py` by
 `tests/robot/test_gripper_frame.py`):
@@ -95,13 +128,24 @@ spans x 2.0..7.5, and an outer bevel runs from (x 7.5, z 0) to (x 12, z 14). Als
 fingers: the carriage collision proxy, x 0.15..15.65, y −4..4, z 58.7..79.85 mm in G (JawL at jaw = 0).
 
 **Testing without the app.** [`sim_server/scripts/send_batch.py`](sim_server/scripts/send_batch.py) (standard library only)
-posts a JSON batch and prints what was held; `--grid` swaps in the app's 81-point offset grid and draws a held map,
-`--out` saves the run, `--compare a.json b.json` reports where two runs disagree. Example batches are in
-[`sim_server/scripts/batches/`](sim_server/scripts/batches/).
+posts a JSON batch and prints what was held, the in-hand pose and held after transport; `--grid` swaps in the app's
+81-point offset grid and draws held maps, `--grip-force N|none` and `--transport slow|normal|fast|none` override the file's
+settings for sweeps, `--out` saves the run, `--compare a.json b.json` reports where two runs disagree (held and held after
+transport exactly, in-hand differences as median / max). Example batches are in
+[`sim_server/scripts/batches/`](sim_server/scripts/batches/):
+
+| Batch | What it exercises |
+| --- | --- |
+| `stock_cube.json`, `stock_cube_offsets.json` | the twin's own cube grasp, stock fingers |
+| `stock_cylinder_lying.json` | a cylinder lying across the jaws (legacy `upright: false`) |
+| `flat_pads.json` | custom fingers: two flat-pad designs vs stock |
+| `mesh_l_bracket.json` | a mesh part (an L-bracket of two convex boxes, aluminium friction), stock vs flat pads |
+| `stock_cube_transport.json` | a `normal` transport move after the lift |
+| `heavy_block_grip_force.json` | a 300 g, low-friction block with a 15 N grip-force limit (slip vs force; sweep with the overrides) |
 
 ```bash
 python sim/sim_server/scripts/send_batch.py sim/sim_server/scripts/batches/stock_cube.json --url http://127.0.0.1:9000
-uv run pytest sim/sim_server/tests        # host tests: models, frames, units, packing, IK plan, routes, layering (no Isaac)
+uv run pytest sim/sim_server/tests        # host tests: models, frames, units, packing, IK plan, in-hand math, routes, layering (no Isaac)
 ```
 
 **Code layout** (`src/sim_server/`, the backend's layers: routers -> services -> robot / clients -> models, one direction):
@@ -114,18 +158,20 @@ routers/         thin HTTP layer; request/response schemas (mm, g, deg) live her
   health.py        GET /health
   evaluations.py   POST /evaluate_batch, legacy POST /evaluate
 services/        the work the routers queue; Isaac-free, never imports FastAPI
-  evaluations.py   evaluate_batch(cell, batch): bookkeeping against a Cell protocol, the Isaac client handed in
-  batches.py       mm -> m conversion into models, the stock grasp rule, design warnings, chunking
+  evaluations.py   evaluate_batch(cell, batch) -> BatchOutcome: bookkeeping against a Cell protocol, the Isaac client handed in
+  batches.py       mm <-> m conversion (parts, pieces, designs, offsets in; in-hand poses out), the stock grasp rule,
+                   design warnings, chunking
 robot/           the arm and gripper, Isaac-free
-  motion.py        the top-down grasp (the twin's IK); a side grasp would be a sibling module
+  motion.py        the top-down grasp and the transport move (the twin's IK); a side grasp would be a sibling module
   gripper_frame.py the gripper frame G <-> flange and jaw bodies
-  poses.py         nominal and true part poses
+  poses.py         nominal and true part poses, and the in-hand pose (numpy-free)
 clients/         the external system, Isaac Sim
-  isaac.py         GraspCell: stage edits, physics, run_chunk (the only Isaac code besides scene.py)
+  isaac.py         GraspCell: stage edits, materials, grip force, physics, run_chunk (the only Isaac code besides scene.py)
   env_grid.py      environment layout, view-slot matching (Isaac-free)
-models/          frozen pydantic domain objects in the twin's units (m, kg, deg); import no other layer
-  part.py  finger.py (Piece, FingerDesign)  offset.py  batch.py (GraspBatch)
-  grasp.py (GraspSettings, EnvGrasp, GraspPlanError)  pose.py (PartPose)  gripper.py (GripperGeometry)
+models/          frozen pydantic domain objects in the twin's units (m, kg, N, deg); import no other layer
+  piece.py (Piece)  part.py  finger.py (FingerDesign)  offset.py  batch.py (GraspBatch)
+  grasp.py (GraspSettings, EnvGrasp, GraspPlanError, Transport)  pose.py (PartPose, BodyPose, InHandPose)
+  outcome.py (GraspOutcome, BatchOutcome)  gripper.py (GripperGeometry)
 scene.py         Isaac app lifecycle (load_scene, Scene)
 sim_queue.py     runs jobs on the main thread
 twin.py          makes the vendored twin importable

@@ -27,7 +27,7 @@ class SceneConfig:
     envs: int = 1
     device: str = "cpu"  # "cpu" or "cuda:N"
     env_spacing: float = 2.0  # metres between environment copies
-    friction_combine: str = "average"  # how PhysX combines custom-finger friction with the part's (see sim/README.md)
+    friction_combine: str = "average"  # how PhysX combines custom-finger friction with the part's material (see sim/README.md)
     twin_dir: Path | None = None  # default: sim/fanuc_er4ia_sim in this repo
     headless: bool = True
 
@@ -38,6 +38,8 @@ class Scene:
     cell: Any = field(repr=False)  # clients/isaac.GraspCell, which services/evaluations.evaluate_batch runs batches on
 
     def describe(self) -> dict:
+        """The cell's settings (envs, device, friction_combine, physics_dt, solver iterations, ...), recorded at startup:
+        /health reports them and every batch response carries them for the caller's run metadata."""
         return self.cell.describe()
 
     def close(self) -> None:

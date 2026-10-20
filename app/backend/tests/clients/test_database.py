@@ -6,7 +6,6 @@ from alembic.script import ScriptDirectory
 
 from api.clients.database import BASELINE_REVISION, MIGRATIONS_DIR, DatabaseClient
 from api.config import AppConfig
-from api.services import jobs
 
 # The schema the app created before Alembic, as found in teammates' existing app.db files.
 PRE_ALEMBIC_SCHEMA = """
@@ -54,10 +53,10 @@ def test_database_from_before_migrations_is_stamped_then_upgraded_clearing_old_j
 
     with db.engine.connect() as connection:
         version = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
-    remaining = jobs.list_jobs(db)
+        remaining = connection.exec_driver_sql("SELECT COUNT(*) FROM jobs").scalar()
     db.close()
     assert BASELINE_REVISION < version == _head_revision()
-    assert remaining == [], "revision 0002 clears jobs scored by the old design space"
+    assert remaining == 0, "revisions 0002 and 0003 clear jobs that don't fit the current design space"
 
 
 def test_migrating_an_up_to_date_database_changes_nothing(db):

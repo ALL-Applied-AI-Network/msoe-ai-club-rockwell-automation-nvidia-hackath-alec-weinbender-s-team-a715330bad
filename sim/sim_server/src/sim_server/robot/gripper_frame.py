@@ -20,8 +20,8 @@ z = 14.22 mm, so the hooked tip face at z = 0 spans only x 2.0..7.5 mm, and the 
 
 from collections.abc import Sequence
 
-from sim_server.models.finger import Point
 from sim_server.models.gripper import GripperGeometry
+from sim_server.models.piece import Point
 
 
 def geometry_from_twin() -> GripperGeometry:

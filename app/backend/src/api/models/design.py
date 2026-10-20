@@ -1,25 +1,32 @@
-"""A finger design. The optimizer searches six numbers (see search_space.py); two baselines are built from the part alone."""
+"""A finger design: a point of one family's search space (typed parameters, see family.py), or one of the baselines that
+every run includes."""
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
-DesignKind = Literal["search", "stock", "imprint"]
+from api.models.family import FamilyParams
 
-PARAMS: dict[str, str] = {
-    "pad_width_mm": "width of the contact pad, across the jaws",
-    "groove_angle_deg": "included angle of the V groove in the pad face (180 = flat)",
-    "groove_depth_mm": "depth of that groove",
-    "slack_mm": "gap between the pad face and the centred part, per side, with the jaws open",
-    "tip_height_mm": "fingertip height above the table when gripping (where the fingers hold the part)",
-    "lead_in_mm": "45 degree chamfer along the pad's bottom inner edge, guiding an off-centre part in",
-}
+DesignKind = Literal["search", "locked", "stock", "imprint"]
 
 
 class Design(BaseModel):
-    """What to build. 'search': a point of the search space, with the PARAMS above (the groove ones only for parts that
-    are round from above). 'stock': the fingers already on the robot. 'imprint': a pocket shaped like the part, the
-    usual hand-made design, which the judges' comparison needs."""
+    """What to build. 'search': a point the optimizer proposed. 'locked': a design the user fixed completely (a baseline
+    of its own, "test my own design"). 'stock': the fingers already on the robot. 'imprint': a pocket shaped like the part,
+    the usual hand-made design, which the judges' comparison needs. Search and locked designs carry their family's
+    parameters; the two baselines are built from the part alone."""
 
     kind: DesignKind = "search"
-    params: dict[str, float] = {}
+    params: FamilyParams | None = None
+
+    @model_validator(mode="after")
+    def _params_match_kind(self) -> "Design":
+        if self.kind in ("search", "locked") and self.params is None:
+            raise ValueError(f"a {self.kind} design needs its family's parameters")
+        if self.kind in ("stock", "imprint") and self.params is not None:
+            raise ValueError(f"the {self.kind} baseline has no parameters")
+        return self
+
+    @property
+    def family(self) -> str | None:
+        return None if self.params is None else self.params.family

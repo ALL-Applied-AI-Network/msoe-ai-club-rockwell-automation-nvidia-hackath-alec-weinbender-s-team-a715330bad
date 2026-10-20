@@ -1,22 +1,22 @@
 import os
 from dataclasses import dataclass
 
+import cadquery as cq
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from api.clients.cad import OpenScadCad
+from api.clients.cad import CadQueryCad
 from api.clients.database import DatabaseClient
-from api.clients.sim import MockSim
 from api.config import AppConfig
-from api.dependencies import get_config, get_db
+from api.db.tables import CellProfileRow
+from api.dependencies import get_cad, get_config, get_db
 from api.main import app
-from api.models.job import JobConfig
-from api.models.part import Part
-from api.services import jobs
-from api.services.optimizer import run_job
+from api.models.grasp import GraspChoice
+from api.models.job_spec import JobSpec
+from api.services import cell_profiles, jobs
 
 APP_VARIABLES = ("ANTHROPIC_API_KEY", "DATA_DIR", "LOG_LEVEL")
-SMALL_JOB = JobConfig(budget=6, batch_size=3)  # two rounds: the baselines + 3 Sobol designs, then 3 from the GP
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -46,46 +46,122 @@ def db(config) -> DatabaseClient:
 
 
 @pytest.fixture
-def spawned(monkeypatch) -> list[str]:
-    """Stops services from launching real worker processes. Records the job ids instead."""
+def profile_id(db) -> int:
+    """The default cell profile ("UWM CSI cell"), seeded as at API startup: its version id."""
+    cell_profiles.ensure_default_profile(db)
+    with db.session() as s:
+        return s.scalar(select(CellProfileRow.id))
+
+
+@pytest.fixture(scope="session")
+def cad() -> CadQueryCad:
+    return CadQueryCad()
+
+
+@pytest.fixture
+def spawned(monkeypatch) -> list[tuple[str, ...]]:
+    """Stops services from launching real worker processes. Records (job_id, *args) instead."""
     started = []
-    monkeypatch.setattr(jobs, "spawn_worker", lambda db, config, job_id: started.append(job_id))
+    monkeypatch.setattr(jobs, "spawn_worker", lambda db, config, job_id, *args: started.append((job_id, *args)))
     return started
 
 
 @pytest.fixture
-def client(config, db, spawned):
+def client(config, db, cad, spawned):
     """The API over the temporary database. The lifespan doesn't run, so nothing reads the real config."""
-    app.dependency_overrides = {get_config: lambda: config, get_db: lambda: db}
+    app.dependency_overrides = {get_config: lambda: config, get_db: lambda: db, get_cad: lambda: cad}
     yield TestClient(app)
     app.dependency_overrides = {}
 
 
-@dataclass
+# Test parts, built with CadQuery, in mm, as authored. The cap is cup-shaped like the yellow vial caps on the cell; the
+# tube lies along x; the plate is too wide for these fingers lying flat, but not standing on an edge.
+SHAPES = {
+    "cube": lambda: cq.Workplane("XY").box(10, 10, 10),
+    "vial_cap": lambda: cq.Workplane("XY").circle(15.875).extrude(15.7).faces(">Z").workplane().hole(28.0, 13.7),
+    "glass_tube": lambda: cq.Workplane("YZ").circle(8.5).extrude(140),
+    "l_bracket": lambda: cq.Workplane("XY").polyline([(0, 0), (30, 0), (30, 6), (6, 6), (6, 20), (0, 20)]).close().extrude(12),
+    "wide_plate": lambda: cq.Workplane("XY").box(120, 120, 4),
+}
+
+
+@pytest.fixture(scope="session")
+def shapes() -> dict[str, cq.Workplane]:
+    """The test parts by name: cube, vial_cap, glass_tube, l_bracket, wide_plate."""
+    return {name: make() for name, make in SHAPES.items()}
+
+
+@pytest.fixture
+def step_file(tmp_path):
+    """step_file(shape, name="part.step") -> the bytes of that shape as a STEP file, as a user would upload it."""
+
+    def write(shape: cq.Workplane | cq.Shape, name: str = "part.step") -> bytes:
+        path = tmp_path / name
+        cq.exporters.export(shape, str(path))
+        return path.read_bytes()
+
+    return write
+
+
+@pytest.fixture
+def stl_file(tmp_path):
+    """stl_file(shape, name="part.stl", scale=1.0) -> the bytes of an STL; scale=1/25.4 makes one in inches."""
+
+    def write(shape: cq.Workplane | cq.Shape, name: str = "part.stl", scale: float = 1.0) -> bytes:
+        solid = shape.val() if isinstance(shape, cq.Workplane) else shape
+        if scale != 1.0:
+            solid = solid.scale(scale)
+        path = tmp_path / name
+        cq.exporters.export(solid, str(path), tolerance=0.01, angularTolerance=0.1)
+        return path.read_bytes()
+
+    return write
+
+
+@dataclass(frozen=True)
 class FinishedJob:
     config: AppConfig
     db: DatabaseClient
     job_id: str
+    part_id: str
+    profile_id: int
+
+
+FINISHED_BUDGET = 18  # the vial cap has 6 free parameters: 16 Sobol designs in round 0, then two GP rounds of one
 
 
 @pytest.fixture(scope="session")
-def finished_job(tmp_path_factory) -> FinishedJob:
-    """A small job run to completion with the mock clients, shared by read-only tests. Fits a real GP, so it takes a few
-    seconds."""
+def finished_job(tmp_path_factory, cad) -> FinishedJob:
+    """A vial-cap experiment run to the end on the mock sim (a Sobol round, two GP rounds, the final test and D1's CAD) in
+    its own database, for tests that only read it. Shared by the whole session: don't change it."""
+    from api.clients.sim import MockSim
+    from api.services import parts
+    from api.services.optimizer import run_job  # here, so only the tests that need it pay for importing torch
+
     config = AppConfig(data_dir=tmp_path_factory.mktemp("finished"))
-    db = DatabaseClient(config.db)
-    db.migrate()
+    database = DatabaseClient(config.db)
+    database.migrate()
+    cell_profiles.ensure_default_profile(database)
+    profile = cell_profiles.list_profiles(database)[0]
+    path = config.data_dir / "vial_cap.step"
+    cq.exporters.export(SHAPES["vial_cap"](), str(path))
+    record = parts.create_part(database, config, cad, path.name, path.read_bytes(), None)
+    parts.update_part(database, record.id, {"material": "pla", "pose": 0})
+    best = parts.propose_grasps(database, record.id, profile.profile).candidates[0]
+    grasp = GraspChoice(angle_deg=best.angle_deg, centre_mm=best.centre_mm)
+    spec = JobSpec(part_id=record.id, cell_profile_id=profile.id, grasp=grasp, budget=FINISHED_BUDGET)
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(jobs, "spawn_worker", lambda *args: None)
-        job_id = jobs.create_job(db, config, task="pick and sort", part=Part(), job_config=SMALL_JOB)
-    run_job(db, job_id, sim=MockSim(), cad=OpenScadCad(), outputs_dir=config.outputs_dir)
-    yield FinishedJob(config, db, job_id)
-    db.close()
+        job = jobs.create_job(database, config, spec)
+    run_job(database, job.id, sim=MockSim(), cad=cad, outputs_dir=config.outputs_dir)
+    assert jobs.get_job(database, job.id).status == "done"
+    yield FinishedJob(config, database, job.id, record.id, profile.id)
+    database.close()
 
 
 @pytest.fixture
-def finished_client(finished_job):
-    """The API over the finished job's database. Read-only use only: the database is shared across tests."""
-    app.dependency_overrides = {get_config: lambda: finished_job.config, get_db: lambda: finished_job.db}
+def finished_client(finished_job, cad):
+    """The API over the finished job's database, for read-only route tests."""
+    app.dependency_overrides = {get_config: lambda: finished_job.config, get_db: lambda: finished_job.db, get_cad: lambda: cad}
     yield TestClient(app)
     app.dependency_overrides = {}

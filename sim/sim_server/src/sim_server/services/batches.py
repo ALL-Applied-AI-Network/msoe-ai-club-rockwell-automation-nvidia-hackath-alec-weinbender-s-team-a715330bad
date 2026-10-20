@@ -1,22 +1,30 @@
 """A batch in the twin's units, the grasp each design commands, and how a batch is split across environments. Isaac-free.
 
 Requests arrive in millimetres, grams and degrees (routers/evaluations.py validates their shape); the twin works in metres,
-kilograms and degrees. Everything is converted here, once, so the Isaac side never sees millimetres.
+kilograms and degrees. Everything is converted here, once, both ways: requests in, in-hand poses out. Nothing on the
+Isaac side sees millimetres.
 """
 
 from collections.abc import Sequence
 
-from sim_server.models.finger import FingerDesign, Piece, Point
+from sim_server.models.finger import FingerDesign
 from sim_server.models.grasp import GraspSettings
 from sim_server.models.gripper import GripperGeometry
 from sim_server.models.offset import Offset
 from sim_server.models.part import Part
+from sim_server.models.piece import Piece, Point
+from sim_server.models.pose import InHandPose
 
 M_PER_MM = 1e-3
+MM_PER_M = 1e3
 KG_PER_G = 1e-3
 # scene_config.CUBE_JAW_HALF_TARGET closes each jaw 0.3 mm past first contact at the hooked tip ("per-jaw seating travel").
 STOCK_SEATING = 0.0003
 MIN_PIECE_VOLUME_MM3 = 1e-3  # below this a piece is flat or degenerate and PhysX can't cook a convex hull from it
+TABLE_TOLERANCE_MM = 1e-3  # a mesh part's points may dip this far below the table (rounding), no further
+IN_HAND_DECIMALS = 4  # 0.1 um and 0.0001 deg: far below what the physics resolves, and it keeps responses small
+
+PiecesMm = Sequence[tuple[Sequence[Sequence[float]], Sequence[Sequence[int]]]]
 
 
 def part_from_mm(
@@ -25,23 +33,52 @@ def part_from_mm(
     mass_g: float,
     diameter_mm: float | None = None,
     length_mm: float | None = None,
-    upright: bool = True,
+    axis: str | None = None,
+    upright: bool | None = None,
     box_mm: Sequence[float] | None = None,
+    pieces_mm: PiecesMm | None = None,
+    friction: Sequence[float] | None = None,
 ) -> Part:
-    """Fields that don't apply to the shape are ignored (the app sends all of them)."""
+    """Fields that don't apply to the shape are ignored (the app sends all of them). A cylinder's axis defaults to the
+    legacy upright flag (true: "z", false: "y"), and to "z" without either.
+
+    A mesh's pieces arrive in the grasp frame (x along the closing direction, origin on the table under the grasp
+    centre, z >= 0) and are recentred to mid-height (z - height / 2, height = the highest point), so the part's origin
+    is where nominal_pose puts a primitive's centre and the held check works unchanged."""
     if mass_g <= 0:
         raise ValueError("mass_g must be positive")
+    common = {"mass": mass_g * KG_PER_G, "friction": None if friction is None else (float(friction[0]), float(friction[1]))}
     if shape == "cylinder":
         if not diameter_mm or not length_mm or diameter_mm <= 0 or length_mm <= 0:
             raise ValueError("a cylinder needs positive diameter_mm and length_mm")
+        if axis is None:
+            axis = "z" if upright is None or upright else "y"
         d, length = diameter_mm * M_PER_MM, length_mm * M_PER_MM
-        size, axis = ((d, d, length), "z") if upright else ((d, length, d), "y")
-        return Part(shape="cylinder", size=size, mass=mass_g * KG_PER_G, cylinder_axis=axis)
+        sizes = {"z": (d, d, length), "y": (d, length, d), "x": (length, d, d)}
+        if axis not in sizes:
+            raise ValueError(f"unknown cylinder axis {axis!r}; use 'z', 'y' or 'x'")
+        return Part(shape="cylinder", size=sizes[axis], cylinder_axis=axis, **common)
     if shape == "box":
         if box_mm is None or len(box_mm) != 3 or min(box_mm) <= 0:
             raise ValueError("a box needs box_mm = [along the closing direction, across it, height], all positive")
-        return Part(shape="box", size=tuple(v * M_PER_MM for v in box_mm), mass=mass_g * KG_PER_G)
-    raise ValueError(f"unknown part shape {shape!r}; use 'cylinder' or 'box'")
+        return Part(shape="box", size=tuple(v * M_PER_MM for v in box_mm), **common)
+    if shape == "mesh":
+        if not pieces_mm:
+            raise ValueError("a mesh part needs its convex pieces")
+        pieces = pieces_from_mm("the part", pieces_mm)
+        points = [p for piece in pieces for p in piece.points]
+        lowest = min(z for _, _, z in points)
+        if lowest < -TABLE_TOLERANCE_MM * M_PER_MM:
+            raise ValueError(f"the part's pieces reach {-lowest * MM_PER_M:.3f} mm below the table; the grasp frame has the table at z = 0")
+        height = max(z for _, _, z in points)
+        size = (
+            max(x for x, _, _ in points) - min(x for x, _, _ in points),
+            max(y for _, y, _ in points) - min(y for _, y, _ in points),
+            height,
+        )
+        centred = tuple(Piece(points=tuple((x, y, z - height / 2) for x, y, z in p.points), triangles=p.triangles) for p in pieces)
+        return Part(shape="mesh", size=size, pieces=centred, **common)
+    raise ValueError(f"unknown part shape {shape!r}; use 'cylinder', 'box' or 'mesh'")
 
 
 def piece_volume(points: Sequence[Point], triangles: Sequence[tuple[int, int, int]]) -> float:
@@ -53,10 +90,24 @@ def piece_volume(points: Sequence[Point], triangles: Sequence[tuple[int, int, in
     return total / 6
 
 
+def pieces_from_mm(owner: str, pieces_mm: PiecesMm) -> tuple[Piece, ...]:
+    """Convex pieces (points in mm, triangles indexing them) to metres, checked the same way for fingers and parts:
+    every triangle indexes a real point, and the triangles close a hull with volume. owner names them in errors."""
+    pieces = []
+    for n, (points, triangles) in enumerate(pieces_mm):
+        tris = tuple((int(a), int(b), int(c)) for a, b, c in triangles)
+        if any(not 0 <= i < len(points) for t in tris for i in t):
+            raise ValueError(f"{owner}, piece {n}: a triangle indexes a point that doesn't exist")
+        if abs(piece_volume(points, tris)) < MIN_PIECE_VOLUME_MM3:
+            raise ValueError(f"{owner}, piece {n}: zero volume (flat, degenerate, or triangles don't close the hull)")
+        pieces.append(Piece(points=tuple((x * M_PER_MM, y * M_PER_MM, z * M_PER_MM) for x, y, z in points), triangles=tris))
+    return tuple(pieces)
+
+
 def design_from_mm(
     design_id: str,
     *,
-    pieces_mm: Sequence[tuple[Sequence[Sequence[float]], Sequence[Sequence[int]]]] | None = None,
+    pieces_mm: PiecesMm | None = None,
     friction: Sequence[float] | None = None,
     tip_height_mm: float | None = None,
     jaw_close_mm: float | None = None,
@@ -72,21 +123,28 @@ def design_from_mm(
         raise ValueError(f"design {design_id!r}: 'pieces' is empty; omit it for stock fingers")
     if friction is None or tip_height_mm is None or jaw_close_mm is None:
         raise ValueError(f"design {design_id!r}: custom fingers need 'friction', 'tip_height_mm' and 'jaw_close_mm'")
-    pieces = []
-    for n, (points, triangles) in enumerate(pieces_mm):
-        tris = tuple((int(a), int(b), int(c)) for a, b, c in triangles)
-        if any(not 0 <= i < len(points) for t in tris for i in t):
-            raise ValueError(f"design {design_id!r}, piece {n}: a triangle indexes a point that doesn't exist")
-        if abs(piece_volume(points, tris)) < MIN_PIECE_VOLUME_MM3:
-            raise ValueError(f"design {design_id!r}, piece {n}: zero volume (flat, degenerate, or triangles don't close the hull)")
-        pieces.append(Piece(points=tuple((x * M_PER_MM, y * M_PER_MM, z * M_PER_MM) for x, y, z in points), triangles=tris))
     return FingerDesign(
-        id=design_id, pieces=tuple(pieces), friction=(float(friction[0]), float(friction[1])), tip_height=tip, jaw_close=jaw
+        id=design_id,
+        pieces=pieces_from_mm(f"design {design_id!r}", pieces_mm),
+        friction=(float(friction[0]), float(friction[1])),
+        tip_height=tip,
+        jaw_close=jaw,
     )
 
 
 def offset_from_mm(dx_mm: float, dy_mm: float, yaw_deg: float) -> Offset:
     return Offset(dx=dx_mm * M_PER_MM, dy=dy_mm * M_PER_MM, yaw_deg=float(yaw_deg))
+
+
+def in_hand_to_mm(pose: InHandPose | None) -> list[float] | None:
+    """The response's [dx_mm, dy_mm, dz_mm, tilt_deg, yaw_deg], or None. Yaw stays in (-180, 180] after rounding."""
+    if pose is None:
+        return None
+    values = (pose.dx * MM_PER_M, pose.dy * MM_PER_M, pose.dz * MM_PER_M, pose.tilt_deg, pose.yaw_deg)
+    out = [round(v, IN_HAND_DECIMALS) + 0.0 for v in values]  # + 0.0 turns -0.0 into 0.0
+    if out[4] <= -180.0:
+        out[4] += 360.0
+    return out
 
 
 def grasp_settings(design: FingerDesign, part: Part, geo: GripperGeometry) -> GraspSettings:
@@ -104,8 +162,8 @@ def grasp_settings(design: FingerDesign, part: Part, geo: GripperGeometry) -> Gr
 
 
 def stock_fits(part: Part, geo: GripperGeometry) -> bool:
-    """Whether the part's nominal width fits between the open stock hook tips at all. If not, every grasp fails and
-    isn't simulated (the fingertips would land on top of the part)."""
+    """Whether the part's nominal width (its extent along the closing direction, a mesh's too) fits between the open
+    stock hook tips at all. If not, every grasp fails and isn't simulated (the fingertips would land on top of it)."""
     return part.width < geo.open_tip_gap
 
 

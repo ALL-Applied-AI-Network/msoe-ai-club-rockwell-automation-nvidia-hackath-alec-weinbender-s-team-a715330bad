@@ -1,17 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 
-Point = tuple[float, float, float]
-
-
-class Piece(BaseModel):
-    """One convex piece of a custom finger: points in G (metres, JawL's finger, jaws closed; see robot/gripper_frame.py)
-    and the hull's outward triangles. Physics uses the convex hull of the points; the triangles only make a valid mesh
-    to author."""
-
-    model_config = ConfigDict(frozen=True)
-
-    points: tuple[Point, ...]
-    triangles: tuple[tuple[int, int, int], ...]
+from sim_server.models.piece import Piece
 
 
 class FingerDesign(BaseModel):

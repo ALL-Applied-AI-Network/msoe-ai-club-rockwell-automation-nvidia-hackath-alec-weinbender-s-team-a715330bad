@@ -1,7 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from sim_server.models.finger import FingerDesign, Piece
+from sim_server.models.finger import FingerDesign
+from sim_server.models.piece import Piece
 
 PIECE = Piece(points=((0, 0, 0), (0.01, 0, 0), (0, 0.01, 0), (0, 0, 0.01)), triangles=((0, 2, 1), (0, 1, 3), (0, 3, 2), (1, 2, 3)))
 

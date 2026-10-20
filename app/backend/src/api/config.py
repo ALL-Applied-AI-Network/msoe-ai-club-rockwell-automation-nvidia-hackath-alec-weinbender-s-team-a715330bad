@@ -18,6 +18,8 @@ from sqlalchemy.exc import ArgumentError
 APP_DIR = Path(__file__).resolve().parents[3]  # app/  (this file is app/backend/src/api/config.py)
 ENV_FILE = APP_DIR.parent / ".env"
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
+DEMO_DIR_NAME = "demo"  # DEMO_DATA=true runs in DATA_DIR/demo
+DEMO_SCRIPT = APP_DIR / "backend" / "scripts" / "demo_data.py"
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,7 @@ class SimConfig(BaseModel):
     backend: Literal["mock", "http"] = "mock"
     url: str | None = None  # http backend: the sim server's base URL; the client posts to {url}/evaluate_batch
     timeout_s: float = 3600  # one request is a whole round (designs x grid points), which can take a while
+    grasps_per_s: float | None = Field(None, gt=0)  # throughput for time estimates until runs on this backend have measured it
 
 
 class DbConfig(BaseModel):
@@ -63,6 +66,9 @@ class AppConfig(BaseSettings):
     data_dir: Path = APP_DIR / "data"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     anthropic_api_key: SecretStr | None = None
+    # Run on generated demo data (app/backend/scripts/demo_data.py) in DATA_DIR/demo, with its own SQLite file, never the
+    # real database. The API generates it in the background on the first start.
+    demo_data: bool = False
 
     llm: LlmConfig = Field(default_factory=LlmConfig)
     sim: SimConfig = Field(default_factory=SimConfig)
@@ -79,6 +85,11 @@ class AppConfig(BaseSettings):
             self.llm.api_key = self.anthropic_api_key
         if self.llm.backend is None:
             self.llm.backend = "anthropic" if self.llm.api_key else "mock"
+        if self.demo_data:
+            if self.db.url is not None:
+                raise ValueError("DEMO_DATA=true keeps the demo in its own SQLite file under DATA_DIR/demo; unset DB_URL")
+            if self.data_dir.name != DEMO_DIR_NAME:
+                self.data_dir = self.data_dir / DEMO_DIR_NAME
         if self.db.url is None:
             self.db.url = SecretStr(f"sqlite:///{(self.data_dir / 'app.db').as_posix()}")
         return self
@@ -117,6 +128,11 @@ def check_config(config: AppConfig) -> tuple[list[str], list[str]]:
         make_url(config.db.url.get_secret_value())
     except ArgumentError:
         errors.append("DB_URL isn't a valid SQLAlchemy URL (e.g. postgresql+psycopg://user:password@host/dbname).")
+    if config.demo_data:
+        warnings.append(
+            f"Demo data: running on generated demo data in {config.data_dir} (mock results, made-up physical trials), "
+            "not the real database. Unset DEMO_DATA for real work."
+        )
     return errors, warnings
 
 
