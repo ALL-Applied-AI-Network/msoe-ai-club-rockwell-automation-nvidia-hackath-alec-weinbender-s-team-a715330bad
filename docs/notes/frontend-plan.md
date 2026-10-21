@@ -62,6 +62,7 @@ any of it:
 | `format.ts` | A few number formatters. The rule it serves stays (all number-to-text in one place), but the file is yours to rewrite. |
 | `app/frontend/index.html` | The old single-file UI, served at `/` by the backend. It predates the current API and doesn't work against it. Don't build on it: the new app replaces it, in the four steps listed in [app/README.md, "Frontend"](../../app/README.md#frontend). |
 | `src/pages/` | Doesn't exist yet. |
+| `public/task-examples/` | **Ready to use:** Isaac Sim example videos of the three tasks (`drop`, `place`, `insert`), each with a still of its result, for the task step (step 3). Vite serves them at `/task-examples/<task>.mp4` and `.jpg`, and the build copies them. Keep these. |
 
 **Keep the tooling:** the stack and its pinned dependencies, the Vite setup (the `/api` proxy), and the typed API client
 (`src/backend/client.ts` with the generated `schema.d.ts`). The repo rule against hand-writing types the backend already
@@ -455,6 +456,38 @@ That's CONTEXT.md risk 6. It's a warning, not a block.
 | Pick and place | Held, and the part sits within the offset tolerance | Centring features: V-groove, lead-in |
 | Pick and insert | Held, within the offset and tilt tolerances | Strong centring, a grip that holds the part's shape |
 
+**An example video of each task, from Isaac Sim.** Clicking a task (or focusing it with the keyboard) shows a short
+video of it next to the choices, so the user sees what they're picking before they read the table.
+
+- **What they show:** the twin's FANUC arm and stock fingers pick a 10 mm cube, lift it, carry it 10 cm, and then:
+  - **drop:** open over a bin, and the cube falls in;
+  - **place:** set it down on a marked square;
+  - **insert:** lower it into a square socket 0.75 mm wider than the cube on each side, and let go.
+- **They're the same for everyone.** It's one default example per task, not the user's part or fingers. Caption it:
+  "Example in Isaac Sim: the robot's stock fingers and a 10 mm cube. Your part and fingers will differ."
+- **What the sim actually scores:** the grasp, the lift, any transport move, and how the part sits in the hand. It
+  doesn't simulate the drop, the place or the insert themselves; a place or insert counts as a success when the part
+  sits in the hand within the tolerances. Put that under the video in one line, so the video doesn't overpromise.
+- **The files** are in `app/frontend/public/task-examples/`, served at `/task-examples/<task>.mp4`. Each has a still of
+  its result at `/task-examples/<task>.jpg`, for the video's poster. `<task>` is the task kind's `name` from
+  `/api/meta`: `drop`, `place` or `insert`.
+
+  | File | Length | Size |
+  | --- | --- | --- |
+  | `drop.mp4` | 7.5 s | 337 KB |
+  | `place.mp4` | 8.4 s | 404 KB |
+  | `insert.mp4` | 8.4 s | 408 KB |
+
+  All are H.264, 1280 × 720, 30 fps, with no sound.
+- **How to play them:**
+  - Autoplay, muted, looping and inline (`autoplay muted loop playsinline`), with the still as the poster.
+  - If the user prefers reduced motion (`prefers-reduced-motion`), show the still with a Play button instead.
+  - Give the video a text alternative that describes the task in words.
+  - Use the same video component as the Isaac Sim clips (7.5).
+- **To make them again** (for example after a change to the twin, or for another object): run
+  `sim/sim_server/scripts/record_task_examples.py` with Isaac's Python on a GPU machine, then re-encode for the web
+  (`-c:v libx264 -crf 24 -preset slow -pix_fmt yuv420p -movflags +faststart -an`). The script says how.
+
 **The fields:**
 
 - **Tolerances:** show only the fields the kind needs. `task_kinds[].tolerances` lists them: an offset tolerance in mm
@@ -594,7 +627,7 @@ The screen that explains the method at a glance.
 **One summary screen**, a section per step, each with an Edit link back to its step:
 
 - the part (thumbnail, size, material and mass) and its pose;
-- the task;
+- the task, with its example still (`/task-examples/<task>.jpg`, step 3);
 - the cell profile and its version;
 - the grasp;
 - the families and their ranges;
@@ -811,7 +844,9 @@ couldn't show what actually happens during the grasp.
   ready GPU (4.6). A clip is ready about 12 s after it's asked for, longer behind a running job.
 - **A clip's outcome can differ from the results.** Near the capture edge, about 9% of grid points flip between runs
   (CONTEXT.md risk 5). Label each clip with its own outcome, and say when it differs from the stored result.
-- **Mock results have no clips.** Show "Needs the Isaac sim".
+- **Mock results have no clips.** Say "Needs the Isaac sim", and show the experiment's task example from step 3
+  (`/task-examples/<task>.mp4`) instead, captioned as an example, not this experiment. Do the same before an Isaac
+  experiment has any clips.
 - **Clips wait behind jobs.** The sim server runs one thing at a time, so a clip queues behind a running job's batches.
   Suggest recording after the job finishes.
 
@@ -1060,7 +1095,8 @@ histogram (in-hand), and a scatter (sim vs real).
 picking for the manual grasp, and ghosts for the previews. One viewer, configured per use.
 
 **Video player** for the Isaac Sim clips (7.5): two clips side by side, played together, with pause, loop and slow
-motion, and each clip's label and outcome under it.
+motion, and each clip's label and outcome under it. The task step's example videos (step 3) use it too, one at a time,
+muted and looping.
 
 **Icon:** inline SVG, for the rare control that needs one.
 
@@ -1076,6 +1112,7 @@ video shows first, and against demo data, so nothing waits on the GPU or the rob
 | Results: summary, success-vs-error curves, held maps, best finger with downloads, caveat banners, sim path | Must |
 | Wizard steps 1 (STEP upload, size, material, mass), 3 (task), 4 (confirm the cell), 7 (error presets and grid), 8 (review and run) | Must |
 | Wizard step 5 with the auto proposal, and step 6 with sliders and per-parameter ghosts | Must |
+| Step 3's example video of each task (the files are ready in `public/task-examples/`) | Should |
 | GPU page: targets, starting steps, help cards, readiness gating on Run and Resume | Must |
 | Validation: print selection, printed fingers, test plan download and upload, predicted vs measured per design | Must |
 | Mock badge everywhere | Must |

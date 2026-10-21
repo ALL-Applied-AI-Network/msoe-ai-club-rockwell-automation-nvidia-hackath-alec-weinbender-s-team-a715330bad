@@ -119,6 +119,27 @@ def test_plans_are_keyed_by_transport(planner):
         planner.plan(0.005, 0.002, "warp")
 
 
+def test_a_task_plan_is_the_grasp_then_its_own_moves(planner, geo):
+    """The example videos' moves (scripts/record_task_examples.py): carry 0.10 m along base -Y, lower to the table, open,
+    rise. The twin places vials at (0.30, +-0.08) on the table, so this is within its reach."""
+    tip, jaw = C.CUBE_TIP_CLEARANCE, C.CUBE_JAW_HALF_TARGET
+    up = (0.30, -0.10, geo.surface_dz + tip + LIFT_HEIGHT)
+    down = (0.30, -0.10, geo.surface_dz + tip + 0.0015)
+    moves = [("carry", up, jaw, 1.2), ("lower", down, jaw, 0.9), ("release", None, geo.jaw_open, 0.5), ("rise", up, geo.jaw_open, 0.8)]
+
+    plan = planner.plan_task(tip, jaw, moves)
+
+    grasp = planner.plan(tip, jaw)
+    ends = plan.segment_end
+    assert list(ends) == ["approach", "descend", "close", "dwell", "lift", "carry", "lower", "release", "rise"]
+    assert np.array_equal(plan.arm[: ends["lift"]], grasp.arm)  # the grasp is the batch's own
+    assert plan.frames == grasp.frames + round((1.2 + 0.9 + 0.5 + 0.8) * FPS)
+    assert tool_pose(planner, plan.arm[ends["lower"] - 1])[1] == pytest.approx(down, abs=1e-3)
+    released = tool_pose(planner, plan.arm[ends["release"] - 1])[1]
+    assert released == pytest.approx(down, abs=1e-3)  # None: it stays put while the jaws open (within the IK's 1 mm)
+    assert plan.jaw[ends["lower"] - 1] == pytest.approx(jaw) and plan.jaw[-1] == pytest.approx(geo.jaw_open)
+
+
 def test_unreachable_grasp_is_refused(planner):
     with pytest.raises(GraspPlanError):
         planner.plan(0.6, 0.001)  # fingertips 0.6 m up: the wrist can't get there pointing down

@@ -109,11 +109,36 @@ class GraspPlanner:
             self._plans[key] = self._solve(tip_height, jaw_close, transport)
         return self._plans[key]
 
+    def plan_task(
+        self, tip_height: float, jaw_close: float, after_lift: list[tuple[str, tuple[float, float, float] | None, float, float]]
+    ) -> GraspPlan:
+        """The grasp, then more moves after the lift, for a whole task (an example video: carry, lower, release). Each move
+        is (name, fingertip target in the base frame or None to stay put, jaw opening at its end, seconds), eased like the
+        rest. Not cached: only scripts use it."""
+        segments = self._grasp_segments(tip_height, jaw_close)
+        tip, jaw = segments[-1][2], jaw_close
+        for name, target, jaw_to, seconds in after_lift:
+            to = tip if target is None else np.array(target, float)
+            segments.append((name, tip, to, jaw, jaw_to, seconds))
+            tip, jaw = to, jaw_to
+        return self._solve_segments(segments, tip_height)
+
     def _solve(self, tip_height: float, jaw_close: float, transport: Transport | None) -> GraspPlan:
-        fk, ik, geo = self._fk, self._ik, self._geo
-        pick = np.array([*self.site_xy, geo.surface_dz + tip_height])
+        segments = self._grasp_segments(tip_height, jaw_close)
+        if transport is not None:
+            up = segments[-1][2]
+            moved = up + np.array(TRANSPORT_MOVE)
+            segments += [
+                ("transport", up, moved, jaw_close, jaw_close, TRANSPORT_SECONDS[transport]),
+                ("settle", moved, moved, jaw_close, jaw_close, SETTLE_SECONDS),
+            ]
+        return self._solve_segments(segments, tip_height)
+
+    def _grasp_segments(self, tip_height: float, jaw_close: float) -> list[tuple]:
+        """(name, tip from, tip to, jaw from, jaw to, seconds) for approach, descend, close, dwell and lift."""
+        pick = np.array([*self.site_xy, self._geo.surface_dz + tip_height])
         up = pick + [0.0, 0.0, LIFT_HEIGHT]
-        opened = geo.jaw_open
+        opened = self._geo.jaw_open
         moves = [  # (name, from, to, jaw from, jaw to), as in sort_scene.segments()
             ("approach", np.array(HOME_TIP), up, opened, opened),
             ("descend", up, pick, opened, opened),
@@ -121,13 +146,10 @@ class GraspPlanner:
             ("dwell", pick, pick, jaw_close, jaw_close),
             ("lift", pick, up, jaw_close, jaw_close),
         ]
-        segments = [(*move, seconds) for move, (_, seconds) in zip(moves, SEGMENT_SECONDS, strict=True)]
-        if transport is not None:
-            moved = up + np.array(TRANSPORT_MOVE)
-            segments += [
-                ("transport", up, moved, jaw_close, jaw_close, TRANSPORT_SECONDS[transport]),
-                ("settle", moved, moved, jaw_close, jaw_close, SETTLE_SECONDS),
-            ]
+        return [(*move, seconds) for move, (_, seconds) in zip(moves, SEGMENT_SECONDS, strict=True)]
+
+    def _solve_segments(self, segments: list[tuple], tip_height: float) -> GraspPlan:
+        fk, ik = self._fk, self._ik
         q = self.q_home.copy()
         arm, jaw, segment_end = [], [], {}
         for name, p0, p1, j0, j1, seconds in segments:

@@ -15,6 +15,7 @@ app/
 ├── frontend/             npm project: Vite + React + TypeScript (see "Frontend" below)
 │   ├── index.html        the old single-file UI: the page at /, from the backend and from the dev server
 │   ├── app.html, src/    the new React UI, at /app.html on the dev server; src/backend/ is the typed API client
+│   ├── public/           static files: task-examples/, the Isaac Sim video of each task for the wizard's task step
 │   └── dist/             npm run build output (the new UI only), gitignored
 └── data/                 runtime only, gitignored: app.db, uploads/, outputs/, worker.log
 ```

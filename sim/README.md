@@ -160,6 +160,12 @@ python sim/sim_server/scripts/send_batch.py sim/sim_server/scripts/batches/stock
 uv run pytest sim/sim_server/tests        # host tests: models, frames, units, packing, IK plan, in-hand math, routes, layering (no Isaac)
 ```
 
+**The task example videos.** [`sim_server/scripts/record_task_examples.py`](sim_server/scripts/record_task_examples.py)
+films the app's three tasks in Isaac Sim, for the wizard's task step: the stock fingers pick the 10 mm cube, then drop it
+into a bin, place it on a mark, or insert it into a socket. It runs with Isaac's Python on a GPU machine (not through the
+server), takes about 35 s for all three, and writes one mp4 per task. The web copies are in
+`app/frontend/public/task-examples/`.
+
 **Code layout** (`src/sim_server/`, the backend's layers: routers -> services -> robot / clients -> models, one direction):
 
 ```text

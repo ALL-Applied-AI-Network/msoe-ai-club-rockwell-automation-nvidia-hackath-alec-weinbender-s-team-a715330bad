@@ -46,6 +46,7 @@ from sim_server.models.outcome import GraspOutcome
 from sim_server.models.part import Part
 from sim_server.models.piece import Point
 from sim_server.models.pose import BodyPose
+from sim_server.models.recording import PropBox
 from sim_server.robot.gripper_frame import geometry_from_twin, jaw_body_points, jaw_body_triangles
 from sim_server.robot.motion import FPS, HELD_RISE, PHYSICS_DT, PHYSICS_STEPS_PER_FRAME, GraspPlanner
 from sim_server.robot.poses import nominal_pose, yaw_quaternion
@@ -68,6 +69,7 @@ FINGER_COLOR, PART_COLOR = (0.95, 0.55, 0.10), (0.85, 0.70, 0.05)
 # site, framing CLOSEUP_WIDTH there: the part on the table and at the top of the 0.13 m lift both stay in frame. The side
 # view is the twin's own side camera.
 RECORDING_ROOT = "/World/Recording"
+PROPS_ROOT = "/World/Props"  # set_props(): bins, sockets, marks for example videos
 CLOSEUP_DISTANCE, CLOSEUP_WIDTH, CLOSEUP_AIM_Z, CLOSEUP_EYE_Z = 0.35, 0.32, 0.07, 0.15  # metres
 APERTURE_MM = 20.955  # the twin's cameras' horizontal aperture
 HOLD_FRAMES = 30  # a second after the lift, holding it, so a clip shows whether the part stayed
@@ -142,12 +144,21 @@ class GraspCell:
         return dict(self._description)
 
     def record(
-        self, part: Part, grasp: EnvGrasp, grip_force: float | None, views: list[str], size: tuple[int, int], out_dir: Path
+        self,
+        part: Part,
+        grasp: EnvGrasp,
+        grip_force: float | None,
+        views: list[str],
+        size: tuple[int, int],
+        out_dir: Path,
+        camera_configs: dict[str, dict] | None = None,
     ) -> tuple[GraspOutcome, int, dict[str, str]]:
         """One grasp on environment 0, run exactly as run_chunk runs it, with rendering on: each control frame is read
         from every view's camera and written to out_dir/<view>.mp4, then HOLD_FRAMES more hold the lift so the outcome
-        shows. Returns (the outcome, the frame count, view -> mp4 path)."""
-        cameras = {view: self._camera(view, size) for view in views}
+        shows. Returns (the outcome, the frame count, view -> mp4 path). camera_configs places other views than closeup
+        and side, as cell.camera() takes them, in world coordinates (scripts/record_task_examples.py)."""
+        configs = camera_configs or {}
+        cameras = {view: self._camera(view, size, configs.get(view)) for view in views}
         writers = {view: Mp4Writer(out_dir / f"{view}.mp4", size, FPS) for view in views}
 
         def capture() -> None:
@@ -509,15 +520,36 @@ class GraspCell:
 
     # ------------------------------------------------------------------ recording
 
-    def _camera(self, view: str, size: tuple[int, int]):
+    def set_props(self, props: list[PropBox]) -> None:
+        """Static boxes for an example video (scripts/record_task_examples.py), placed relative to environment 0. They
+        replace the previous ones, and physics parses the stage again."""
+        self.world.stop()
+        if self.stage.GetPrimAtPath(PROPS_ROOT).IsValid():
+            self.stage.RemovePrim(PROPS_ROOT)
+        ox, oy = self.envs[0].origin
+        for prop in props:
+            geom = UsdGeom.Cube.Define(self.stage, f"{PROPS_ROOT}/{prop.name}")
+            geom.CreateSizeAttr(1.0)
+            x, y, z = prop.centre
+            xform = UsdGeom.Xformable(geom)
+            xform.AddTranslateOp().Set(Gf.Vec3d(ox + x, oy + y, self.geometry.table_top_z + z))
+            xform.AddScaleOp().Set(Gf.Vec3f(*prop.size))
+            geom.CreateDisplayColorAttr([Gf.Vec3f(*prop.color)])
+            if prop.collide:  # static: a collider without a rigid body
+                UsdPhysics.CollisionAPI.Apply(geom.GetPrim())
+                twin_cell.small_contact_offsets(geom.GetPrim())
+        self._restart()
+        logger.info("Props: %s", ", ".join(prop.name for prop in props) or "none")
+
+    def _camera(self, view: str, size: tuple[int, int], config: dict | None = None):
         """The view's camera at this size, made on first use and kept: each camera is a render product, so making one per
-        recording would pile them up."""
+        recording would pile them up. config places a view other than closeup and side."""
         key = (view, size)
         if key not in self._cameras:
             from isaacsim.sensors.camera import Camera  # rendering only; a batch never needs it
 
             path = f"{RECORDING_ROOT}/{view.capitalize()}_{size[0]}x{size[1]}"
-            twin_cell.camera(self.stage, path, self._camera_config(view, size))
+            twin_cell.camera(self.stage, path, {**config, "resolution": size} if config else self._camera_config(view, size))
             camera = Camera(prim_path=path, resolution=size)
             camera.initialize()
             self._cameras[key] = camera

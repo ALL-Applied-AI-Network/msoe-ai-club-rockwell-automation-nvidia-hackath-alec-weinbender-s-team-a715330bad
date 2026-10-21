@@ -13,6 +13,19 @@ RECORD_VIEWS: tuple[RecordView, ...] = ("closeup", "side")
 RECORD_FPS = 30  # one frame per control frame, as robot/motion.FPS: two 1/60 s physics steps
 
 
+class PropBox(BaseModel):
+    """A static box added to the scene for an example video (a bin wall, a socket wall, a target mark): its centre in
+    the base frame and its size, in metres. collide False: drawn only."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    centre: tuple[float, float, float]
+    size: tuple[float, float, float]
+    color: tuple[float, float, float]
+    collide: bool = True
+
+
 class GraspRecording(BaseModel):
     """One grasp, filmed: its outcome (as evaluate_batch would report it) and one mp4 per view, by path."""
 
