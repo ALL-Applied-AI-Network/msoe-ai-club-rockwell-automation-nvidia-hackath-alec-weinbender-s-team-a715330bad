@@ -1,28 +1,29 @@
-import { useId, type SelectHTMLAttributes } from "react";
-import styles from "./Select.module.css";
+import type { ReactNode, SelectHTMLAttributes } from "react";
+import { Field, fieldStyles } from "./Field";
 
 type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
   label: string;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; disabled?: boolean }[];
   placeholder?: string; // shown first, with an empty value, until something is chosen
+  hint?: ReactNode;
+  error?: string;
+  isPlaceholder?: boolean; // the value isn't measured yet: marks the field "Placeholder"
 };
 
 /** A labelled dropdown. */
-export function Select({ label, options, placeholder, ...props }: SelectProps) {
-  const id = useId();
+export function Select({ label, options, placeholder, hint, error, isPlaceholder, ...props }: SelectProps) {
   return (
-    <div className={styles.field}>
-      <label className={styles.label} htmlFor={id}>
-        {label}
-      </label>
-      <select id={id} className={styles.select} {...props}>
-        {placeholder !== undefined && <option value="">{placeholder}</option>}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    <Field label={label} hint={hint} error={error} isPlaceholder={isPlaceholder}>
+      {(id) => (
+        <select id={id} className={fieldStyles.control} {...props}>
+          {placeholder !== undefined && <option value="">{placeholder}</option>}
+          {options.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      )}
+    </Field>
   );
 }

@@ -1,4 +1,4 @@
-# Finger Designer (web app)
+# Auto-Grasp (web app)
 
 Web front end + job runner: takes a part, searches finger designs in the simulator, and reports the best one next to the
 stock and imprint baselines.
@@ -101,8 +101,9 @@ CLI not logged in) shows its error in the panel; the others are still listed. Lo
 
 ## Frontend
 
-The new UI is a Vite + React + TypeScript app in `frontend/` (setup in [../SETUP.md](../SETUP.md#web-app-app)). So far it
-has the page shell and the GPU panel. What's still to build, screen by screen, is in
+The new UI is a Vite + React + TypeScript app in `frontend/` (setup in [../SETUP.md](../SETUP.md#web-app-app)). It has every
+screen in the plan: the experiments list, the new-experiment wizard, the experiment page (progress, then results), the
+GPU page, validation, the quick logger, parts and settings ([status](../docs/notes/frontend-plan.md#1-where-the-frontend-stands)). The screens and what each one shows are in
 [the frontend plan](../docs/notes/frontend-plan.md); the calls each screen makes are in
 [backend-api.md](../docs/notes/backend-api.md).
 

@@ -1,0 +1,44 @@
+.stat {
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.value {
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.sm {
+  font-size: var(--text-md);
+}
+
+.lg {
+  font-size: var(--text-2xl);
+  line-height: 1.2;
+}
+
+.ink {
+  color: var(--ink);
+}
+
+.acc {
+  color: var(--acc-text);
+}
+
+.bad {
+  color: var(--bad);
+}
+
+.detail {
+  font-size: var(--text-sm);
+  color: var(--faint);
+}

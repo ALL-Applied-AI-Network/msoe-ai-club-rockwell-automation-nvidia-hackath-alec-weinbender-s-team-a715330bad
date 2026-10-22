@@ -1,5 +1,5 @@
 {
-  "name": "finger-designer-ui",
+  "name": "auto-grasp-ui",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,11 +11,14 @@
     "gen:api": "openapi-typescript http://localhost:8000/openapi.json -o src/backend/schema.d.ts"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@tanstack/react-query": "5.104.0",
     "openapi-fetch": "0.17.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-router": "8.4.0",
+    "recharts": "3.10.1",
     "three": "0.186.1"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-"""The Finger Designer API and the static UI.
+"""The Auto-Grasp API and the static UI.
 
     uv run --package backend uvicorn api.main:app --port 8000
 
@@ -77,7 +77,7 @@ def start_demo_data(db: DatabaseClient, config: AppConfig) -> None:
     logger.warning("Demo data: generating it in the background (pid %s, log %s); experiments appear as they finish", pid, log)
 
 
-app = FastAPI(title="Finger Designer", lifespan=lifespan)
+app = FastAPI(title="Auto-Grasp", lifespan=lifespan)
 for module in (
     health,
     meta,

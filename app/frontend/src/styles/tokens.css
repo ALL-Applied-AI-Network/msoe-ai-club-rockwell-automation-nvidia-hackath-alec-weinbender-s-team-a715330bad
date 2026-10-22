@@ -1,76 +1,83 @@
 /* Design tokens: the only place the UI's colors, fonts, radii, spacing and shadows are set. Components use these
-   variables, never raw values (.claude/rules/coding-style.md, "Frontend"). Carried over from the old UI (index.html). */
+   variables, never raw values (.claude/rules/coding-style.md, "Frontend"). The look follows NVIDIA Brev's console:
+   near-black surfaces, thin zinc borders instead of shadows, NVIDIA green for actions. Dark only. */
 
 :root {
-  color-scheme: light;
-  --bg: #f1f1f1;
-  --card: #ffffff;
-  --ink: #111111;
-  --mute: #5b5b5b;
-  --line: #dadada;
-  --soft: #efefef;
-  --acc: #76b900; /* NVIDIA green: actions and progress */
+  color-scheme: dark;
+
+  /* Surfaces, darkest first */
+  --bg: #0c0c0c; /* the page */
+  --surface: #121212; /* cards, the top bar */
+  --surface-2: #181818; /* inputs, hovered rows, inset panels */
+  --surface-3: #222225; /* pressed, selected */
+  --line: #27272a; /* borders and dividers */
+  --line-strong: #3f3f46; /* hovered borders, input borders */
+
+  /* Text */
+  --ink: #fafafa;
+  --mute: #c6c6c6; /* secondary text */
+  --faint: #8f8f8f; /* captions, units, timestamps */
+
+  /* Actions */
+  --acc: #76b900; /* NVIDIA green: primary actions and progress */
+  --acc-hover: #8ad000;
   --acc-ink: #000000; /* text on --acc */
-  --acc-text: #3f6b00; /* links and accented text */
-  --brand: #cd163f; /* Rockwell red: the header line */
-  --ok: #3f6b00;
-  --warn: #a85d00;
-  --bad: #cd163f;
-  --baseline: #cd163f; /* stock and imprint fingers in charts */
-  --search: #5a9400; /* searched designs in charts */
-  --best: #111111; /* the best-so-far line */
-  --font: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
-  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  --r: 8px; /* cards */
-  --r-sm: 6px; /* buttons, inputs */
-  --r-pill: 99px; /* badges */
-  --gap: 16px; /* between cards, inside a card */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
+  --acc-text: #8ad000; /* links and accented text */
+  --acc-soft: rgba(118, 185, 0, 0.12);
+
+  /* Tones: text, tinted background, border. Badges, banners and help cards use them. */
+  --ok: #8ad000;
+  --ok-soft: rgba(118, 185, 0, 0.12);
+  --ok-line: rgba(118, 185, 0, 0.35);
+  --active: #22d3ee; /* running, starting: Brev's cyan */
+  --active-soft: rgba(6, 182, 212, 0.12);
+  --active-line: rgba(6, 182, 212, 0.35);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.1);
+  --warn-line: rgba(251, 191, 36, 0.35);
+  --bad: #ff5a78;
+  --bad-soft: rgba(255, 90, 120, 0.1);
+  --bad-line: rgba(255, 90, 120, 0.35);
+  --neutral: #c6c6c6;
+  --neutral-soft: rgba(255, 255, 255, 0.05);
+  --neutral-line: #3f3f46;
+
+  /* Charts */
+  --baseline: #ff5a78; /* stock and imprint fingers */
+  --search: #76b900; /* searched designs */
+  --best: #fafafa; /* the best-so-far line */
+
+  /* Type */
+  --font: "Inter Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Mono", Consolas, monospace;
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 14px;
   --text-lg: 16px;
   --text-xl: 20px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-}
+  --text-2xl: 26px;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
 
-/* Dark: follows the system unless the page sets data-theme="light"; data-theme="dark" forces it. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --bg: #0a0a0a;
-    --card: #151515;
-    --ink: #f2f2f2;
-    --mute: #a3a3a3;
-    --line: #2b2b2b;
-    --soft: #1e1e1e;
-    --acc-text: #76b900;
-    --ok: #76b900;
-    --warn: #f0a53a;
-    --bad: #ff5a78;
-    --baseline: #ff5a78;
-    --search: #76b900;
-    --best: #f2f2f2;
-    --shadow: none;
-  }
-}
+  /* Shape and space */
+  --r: 8px; /* cards, dialogs */
+  --r-sm: 6px; /* buttons, inputs */
+  --r-pill: 99px; /* badges, the GPU chip */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --gap: 16px; /* between cards, inside a card */
+  --content-width: 1280px;
+  --topbar-height: 56px;
+  --control-height: 34px; /* buttons, inputs, selects */
+  --control-height-sm: 28px;
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #0a0a0a;
-  --card: #151515;
-  --ink: #f2f2f2;
-  --mute: #a3a3a3;
-  --line: #2b2b2b;
-  --soft: #1e1e1e;
-  --acc-text: #76b900;
-  --ok: #76b900;
-  --warn: #f0a53a;
-  --bad: #ff5a78;
-  --baseline: #ff5a78;
-  --search: #76b900;
-  --best: #f2f2f2;
-  --shadow: none;
+  /* Depth: only for things that float over the page (dialogs, menus). Cards use borders. */
+  --shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --transition: 120ms ease;
 }

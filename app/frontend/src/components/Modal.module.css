@@ -1,0 +1,39 @@
+.dialog {
+  width: min(460px, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100vh - 2 * var(--space-6));
+  padding: var(--space-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-pop);
+}
+
+.wide {
+  width: min(720px, calc(100vw - 2 * var(--space-4)));
+}
+
+.dialog::backdrop {
+  background: var(--scrim);
+}
+
+.title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  color: var(--mute);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}

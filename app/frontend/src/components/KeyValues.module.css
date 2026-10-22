@@ -1,0 +1,50 @@
+.list {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3) var(--space-5);
+}
+
+.grid .item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-5);
+}
+
+.inline .item {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.item {
+  min-width: 0;
+}
+
+.item dt {
+  color: var(--faint);
+}
+
+.item dd {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--mono);
+}

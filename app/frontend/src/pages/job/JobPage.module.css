@@ -1,0 +1,144 @@
+/* Layout for the experiment page and its sections. The cards, badges, tables and fields themselves are the shared
+   components; this only places them. */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.id {
+  font-family: var(--mono);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  color: var(--faint);
+}
+
+.rename {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: min(520px, 100%);
+}
+
+.grow {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-4);
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-5);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.mapTitle {
+  margin-bottom: var(--space-2);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+.note {
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+.lead {
+  color: var(--mute);
+}
+
+.error {
+  font-size: var(--text-sm);
+  color: var(--bad);
+}
+
+.warn {
+  font-size: var(--text-sm);
+  color: var(--warn);
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.list li + li {
+  margin-top: var(--space-1);
+}
+
+.design {
+  color: var(--ink);
+  font-family: var(--mono);
+}
+
+@media (max-width: 860px) {
+  .pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,20 @@
+.track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+}
+
+.fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 400ms ease;
+}
+
+.acc {
+  background: var(--acc);
+}
+
+.warn {
+  background: var(--warn);
+}

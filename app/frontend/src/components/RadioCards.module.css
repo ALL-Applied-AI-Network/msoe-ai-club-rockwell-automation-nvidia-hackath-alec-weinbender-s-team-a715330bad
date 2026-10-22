@@ -1,0 +1,92 @@
+.group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    background var(--transition);
+}
+
+.card:hover {
+  border-color: var(--faint);
+}
+
+.card:focus-within {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.checked {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+}
+
+.checked:hover {
+  border-color: var(--acc);
+}
+
+.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+/* Wraps rather than squeezing: in a narrow card the aside (a badge) drops under the label. */
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+/* The radio's own mark: a ring, filled with green when chosen. */
+.dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--faint);
+  border-radius: 50%;
+}
+
+.checked .dot {
+  border-color: var(--acc);
+  background: radial-gradient(circle, var(--acc) 0 3.5px, transparent 4px);
+}
+
+.label {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.aside {
+  margin-left: auto;
+}
+
+.description {
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 860px) {
+  .group {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
