@@ -1,0 +1,124 @@
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.disabled {
+  opacity: 0.45;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px var(--space-2);
+  min-height: 28px;
+}
+
+.label {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.value {
+  margin-left: auto;
+  color: var(--mute);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The track is drawn here; the range inputs sit on top of it with transparent tracks, so only their thumbs show, and
+   only the thumbs take the pointer, which lets two inputs share one track. */
+.track {
+  position: relative;
+  height: 20px;
+}
+
+.track::before {
+  content: "";
+  position: absolute;
+  inset: 8px 0;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+}
+
+.fill {
+  position: absolute;
+  top: 8px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+}
+
+.input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  appearance: none;
+}
+
+.input::-webkit-slider-runnable-track {
+  height: 20px;
+  background: none;
+}
+
+.input::-moz-range-track {
+  background: none;
+}
+
+.input::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 2px solid var(--acc);
+  border-radius: 50%;
+  background: var(--ink);
+  cursor: grab;
+  pointer-events: auto;
+  appearance: none;
+}
+
+.input::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--acc);
+  border-radius: 50%;
+  background: var(--ink);
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.input:focus-visible {
+  outline: none;
+}
+
+.input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--acc-soft);
+}
+
+.input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px var(--acc-soft);
+}
+
+.input:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+}
+
+.limits {
+  display: flex;
+  justify-content: space-between;
+  color: var(--faint);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  color: var(--faint);
+  font-size: var(--text-sm);
+}

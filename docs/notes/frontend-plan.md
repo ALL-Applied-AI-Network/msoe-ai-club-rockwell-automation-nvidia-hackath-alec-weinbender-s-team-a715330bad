@@ -48,28 +48,32 @@ section 14 lists the differences.
 
 ## 1. Where the frontend stands
 
-**Stack** (set up, pinned in `package.json`): Vite, React 19, TypeScript, TanStack Query for server data, React Router
-with hash routes (`#/jobs/...`), `openapi-fetch` as the typed API client, CSS modules on design tokens, and three.js for
-3D.
+**Stack** (pinned in `package.json`): Vite, React 19, TypeScript, TanStack Query for server data, React Router with
+hash routes (`#/jobs/...`), `openapi-fetch` as the typed API client, CSS modules on design tokens (NVIDIA Brev's look,
+dark only), three.js for 3D, and Recharts for every chart.
 
-**You don't need to reuse any of the current UI.** What's in `app/frontend` now is a stub. Replace, restyle or delete
-any of it:
+**Built (2026-10-22), on the `frontend-shell` branch:** every screen in sections 3 to 9, against the demo data.
 
-| Piece | What it is |
-| --- | --- |
-| `Page`, `Card`, `Button`, `Select`, `StatusBadge` in `src/components/` | Placeholder components. Keep, rewrite or drop them. |
-| `GpuPanel` | A working first version of the GPU controls: it lists targets, starts and stops Brev, connects and disconnects the GB10, shows other GPU processes and explains failures. Read it if it helps you see how the compute API behaves; build the GPU page (section 4) however you like. |
-| `format.ts` | A few number formatters. The rule it serves stays (all number-to-text in one place), but the file is yours to rewrite. |
-| `app/frontend/index.html` | The old single-file UI, served at `/` by the backend. It predates the current API and doesn't work against it. Don't build on it: the new app replaces it, in the four steps listed in [app/README.md, "Frontend"](../../app/README.md#frontend). |
-| `src/pages/` | Doesn't exist yet. |
-| `public/task-examples/` | **Ready to use:** Isaac Sim example videos of the three tasks (`drop`, `place`, `insert`), each with a still of its result, for the task step (step 3). Vite serves them at `/task-examples/<task>.mp4` and `.jpg`, and the build copies them. Keep these. |
+| Area | Where | Notes |
+| --- | --- | --- |
+| Shell: top bar, sim badge, GPU chip, demo banner | `components/Page.tsx`, `GpuChip.tsx` | The app is called Auto-Grasp. Nav: Experiments (home), Parts, Validation, Settings. |
+| Experiments list with live cards | `pages/experiments/` | SSE per running card on screen; polls past 6 running. |
+| Wizard, all eight steps | `pages/wizard/` | `draft.tsx` holds the draft (localStorage too) and the debounced plan; each step reports its gate. |
+| Experiment page: progress, then results | `pages/job/` | Re-score bar, curves, held maps (click a dot to pick a clip), in-hand, failures, best finger and downloads, clips, final test with print boxes, review gate, run details. |
+| GPU page and help cards | `pages/gpu/`, `gpuHelp.ts`, `components/HelpCard.tsx` | Starting steps, retries as "Retrying", switch-target flow, session log, setup checklist. |
+| Validation, per experiment and across them | `pages/validation/` | The five stages, the spreadsheet round trip, predicted vs measured, the mismatch map, the sim-vs-real scatter. |
+| Quick logger | `pages/log/` | Phone layout; no Undo yet (no API to delete a trial). |
+| Parts library | `pages/parts/` | Upload, size check, 3D view, material and mass. |
+| Settings | `pages/settings/` | Cell-profile editor with placeholders and version history; GPU targets and About, read-only. |
 
-**Keep the tooling:** the stack and its pinned dependencies, the Vite setup (the `/api` proxy), and the typed API client
-(`src/backend/client.ts` with the generated `schema.d.ts`). The repo rule against hand-writing types the backend already
-defines still applies.
+**Not built:** the design-space cloud (Later), the 3D robot and cell render (no model endpoint), richer provisional
+results and several grasp axes (both need the backend changes in section 13), and one-click sample parts from `cad/`
+(no API path). The old `index.html` is still served at `/` until the switch-over steps in
+[app/README.md, "Frontend"](../../app/README.md#frontend).
 
-The coding-style rule "reuse components before writing new ones" is about the components you build: make each one
-once and use it on every page that needs it.
+**The rules for adding to it:** [coding-style.md](../../.claude/rules/coding-style.md#frontend) lists the shared
+components. Reuse them, keep API types generated (`npm run gen:api`), and use `unwrapAs` in `src/backend/client.ts`
+when a response holds tuples.
 
 **Running it:**
 
@@ -111,7 +115,7 @@ These hold on every page. Most of the design work is applying them consistently.
    The ID never changes, and it's what printed fingers and logged trials refer to.
 8. **One look across the app** ([coding-style.md](../../.claude/rules/coding-style.md#frontend)):
    - Shared components only; section 11 lists the ones still to build.
-   - Tokens only; check both themes.
+   - Tokens only. Dark only, in the style of NVIDIA Brev (decided 2026-10-22).
    - Sentence-case text that says what happens.
    - No emojis, and no arrow or check glyphs in place of words.
 9. **Nothing the app can't undo happens without asking.** Stopping a Brev instance, cancelling a job and approving a
@@ -137,7 +141,8 @@ These hold on every page. Most of the design work is applying them consistently.
 
 **The header** (part of `Page`, on every page) carries:
 
-- the app name and the navigation: Experiments, New experiment, Parts, Validation, Settings;
+- the app name, Auto-Grasp, which links home, and the navigation: Experiments (home), Parts, Validation, Settings.
+  New experiment is the main button on the Experiments page, not a nav item;
 - the sim badge from `GET /api/meta` (`sim.badge`): Mock or Isaac;
 - the GPU chip (4.2), which opens the GPU page or a drawer;
 - the demo-data banner, when it applies.

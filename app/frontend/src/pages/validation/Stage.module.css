@@ -1,0 +1,74 @@
+.stage {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* The line joining one stage's number to the next. */
+.rail::after {
+  content: "";
+  flex: 1;
+  width: 1px;
+  margin-top: var(--space-2);
+  background: var(--line);
+}
+
+.stage:last-child .rail::after {
+  display: none;
+}
+
+.number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--mute);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.done {
+  border-color: var(--acc);
+  background: var(--acc);
+  color: var(--acc-ink);
+}
+
+.main {
+  min-width: 0;
+  padding-bottom: var(--space-6);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 28px;
+}
+
+.title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: 28px;
+}
+
+.description {
+  max-width: 72ch;
+  color: var(--faint);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}

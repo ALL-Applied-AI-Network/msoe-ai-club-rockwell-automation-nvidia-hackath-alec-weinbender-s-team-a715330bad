@@ -15,7 +15,7 @@ User instructions take precedence over this file.
 
 ```text
 pyproject.toml          uv workspace root (member list, ruff config, dev tools); uv.lock is the only lockfile
-app/                    Finger Designer web app (FastAPI + single-file UI)
+app/                    Auto-Grasp web app (FastAPI + single-file UI)
   backend/              uv member "backend", package src/api/: routers/ -> services/ -> clients/ (LLM, sim, CAD, database),
                         models/ (domain), db/ (SQLAlchemy tables + Alembic migrations); tests/ next to src/
   frontend/index.html   UI served at /

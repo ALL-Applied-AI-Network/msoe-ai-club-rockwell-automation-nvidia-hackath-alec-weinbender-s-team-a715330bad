@@ -1,0 +1,83 @@
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legendItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 320px;
+  font-size: var(--text-sm);
+}
+
+.legendItem svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.legendLabel {
+  color: var(--ink);
+}
+
+.legendDescription {
+  display: block;
+  color: var(--faint);
+}
+
+.note {
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+.tooltip {
+  min-width: 140px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--text-sm);
+}
+
+.tooltipTitle {
+  margin-bottom: var(--space-1);
+  color: var(--mute);
+}
+
+.tooltipRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.tooltipRow strong {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltipRow span {
+  color: var(--faint);
+}

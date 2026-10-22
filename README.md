@@ -14,7 +14,7 @@ Project state, hardware facts and open questions: **[CONTEXT.md](CONTEXT.md)**. 
 ## Repository layout
 
 ```text
-app/        Finger Designer web app: FastAPI backend + single-file frontend      → app/README.md
+app/        Auto-Grasp web app: FastAPI backend + single-file frontend      → app/README.md
 sim/        FANUC ER-4iA Isaac Sim twin (organizer starter v0.5) + sim service    → sim/README.md
 docs/       Event docs, team plan + feedback, references, experiment log         → docs/README.md
 cad/        The organizers' CAD of the cell (gripper, screw, bin, cubes, vial)   → cad/README.md

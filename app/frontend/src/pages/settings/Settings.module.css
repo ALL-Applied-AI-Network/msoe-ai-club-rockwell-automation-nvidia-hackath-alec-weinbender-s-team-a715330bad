@@ -1,0 +1,215 @@
+/* Layout for the Settings sections. Controls, cards, badges and tables come from components/. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.lead {
+  color: var(--faint);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: var(--gap);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.list li + li {
+  margin-top: 2px;
+}
+
+.note {
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+}
+
+.itemHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.editorHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.editorTitle {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.subtle {
+  margin-top: 2px;
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
+  gap: var(--gap);
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.side {
+  position: sticky;
+  top: calc(var(--topbar-height) + var(--space-4));
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* The save bar stays in view at the bottom of the window while there are unsaved changes. */
+.saveBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+
+.saveText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+.saveText strong {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.saveError {
+  color: var(--bad);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.versions {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.version {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.version:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.versionHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.versionDate {
+  color: var(--faint);
+  font-size: var(--text-sm);
+  font-weight: normal;
+}
+
+@media (max-width: 1080px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .side {
+    position: static;
+  }
+}
+
+@media (max-width: 860px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

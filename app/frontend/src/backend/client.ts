@@ -17,6 +17,14 @@ export async function unwrap<T>(call: Promise<{ data?: T; error?: unknown; respo
   return data;
 }
 
+/** `unwrap`, typed as the schema's own type: `unwrapAs<Schemas["JobPlan"]>(api.POST("/api/jobs/plan", ...))`. Use it
+ *  when a response holds fixed-length tuples (`extent_mm`, `friction`, `centre_mm`): openapi-fetch widens those to plain
+ *  arrays in response types, so its inferred type no longer matches the `Schemas` one. The backend's types are the
+ *  truth, so this is a type-level fix only. */
+export function unwrapAs<T>(call: Promise<{ data?: unknown; error?: unknown; response: Response }>): Promise<T> {
+  return unwrap(call) as Promise<T>;
+}
+
 function detail(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("detail" in error)) return undefined;
   const value = (error as { detail: unknown }).detail;

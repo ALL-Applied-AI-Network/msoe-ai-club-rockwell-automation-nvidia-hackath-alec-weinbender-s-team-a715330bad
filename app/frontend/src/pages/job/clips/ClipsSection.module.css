@@ -1,0 +1,124 @@
+/* Leaves room for the sticky top bar when a held-map click scrolls here. */
+.anchor {
+  scroll-margin-top: calc(var(--topbar-height) + var(--space-4));
+}
+
+.heading {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-2);
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--mute);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+
+.option:hover {
+  border-color: var(--faint);
+}
+
+.option[aria-checked="true"] {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+}
+
+.optionLabel {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.optionAt {
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  color: var(--mute);
+}
+
+.optionWhy {
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+.recordRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.waiting {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--space-2);
+  aspect-ratio: 16 / 9;
+  padding: var(--space-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+}
+
+.slotDesign {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.caption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.captionHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink);
+}
+
+.differs {
+  color: var(--warn);
+}
+
+.note {
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+.error {
+  font-size: var(--text-sm);
+  color: var(--bad);
+}
+
+@media (max-width: 720px) {
+  .waiting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

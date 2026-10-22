@@ -2,20 +2,28 @@ import type { ReactNode } from "react";
 import styles from "./Card.module.css";
 
 type CardProps = {
-  title: string;
-  aside?: ReactNode; // shown at the right of the title, e.g. a badge
-  children: ReactNode;
+  title?: ReactNode; // a heading, or a link for cards that open a page
+  subtitle?: ReactNode; // a line under the title, e.g. an ID
+  aside?: ReactNode; // at the right of the title, e.g. a badge
+  footer?: ReactNode; // a bar under a divider, e.g. timestamps and actions
+  children?: ReactNode;
 };
 
-/** A titled section: every page's content sits in cards. */
-export function Card({ title, aside, children }: CardProps) {
+/** A bordered surface: every page's content sits in cards. */
+export function Card({ title, subtitle, aside, footer, children }: CardProps) {
   return (
     <section className={styles.card}>
-      <header className={styles.header}>
-        <h2 className={styles.title}>{title}</h2>
-        {aside}
-      </header>
-      {children}
+      {(title || aside) && (
+        <header className={styles.header}>
+          <div className={styles.heading}>
+            {title && <h2 className={styles.title}>{title}</h2>}
+            {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
+          </div>
+          {aside && <div className={styles.aside}>{aside}</div>}
+        </header>
+      )}
+      {children && <div className={styles.body}>{children}</div>}
+      {footer && <footer className={styles.footer}>{footer}</footer>}
     </section>
   );
 }

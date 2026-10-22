@@ -3,7 +3,7 @@
 Living summary of where the project stands. Keep it short and current. Source documents live in [docs/](docs/README.md);
 this file records what they mean for us. Gotchas and warnings: [docs/notes/things-to-know.md](docs/notes/things-to-know.md). Update it whenever a fact, decision, deadline or open question changes.
 
-*Last updated: 2026-10-20*
+*Last updated: 2026-10-22*
 
 ## One-line pitch
 
@@ -73,7 +73,7 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 | Component | Path | State |
 | --- | --- | --- |
 | Web app backend (input flow, batch BO, results, tracker, exports) | `app/backend/` | Works end-to-end with the **mock** sim, a geometric capture check (not physics): 466+ tests, plus an end-to-end run against a live server with real worker processes |
-| Web app frontend | `app/frontend/` | New Vite + React UI being built against [backend-api.md](docs/notes/backend-api.md); the old single-file UI no longer matches the API |
+| Web app frontend (Auto-Grasp) | `app/frontend/` | New Vite + React UI in NVIDIA Brev's dark style, on the `frontend-shell` branch (2026-10-22): every screen in the [frontend plan](docs/notes/frontend-plan.md) works against the demo data; not yet served at `/` (the old single-file UI still is) |
 | Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | Contract v2: mesh parts, part friction, grip-force limit, transport, in-hand pose. **Runs in Isaac on Brev and the GB10** (2026-10-20). Stages 0–3 pass on both, and they agree ([Brev](docs/experiments/2026-10-20-brev-sim-server-bringup.md), [GB10](docs/experiments/2026-10-20-gb10-sim-server-bringup.md)). Stages 4–6 ran on the GB10 ([log](docs/experiments/2026-10-20-gb10-stages-4-6.md)): finger swaps, the in-hand readout, mesh parts and transport work. Heavy parts don't (risk 6), and the GPU path is biased (risk 7). 2.75 grasps/s reference, ~5 with CPU copies, 16–28 on the GPU |
 | Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored from the organizers. Host tests and the headless scene build pass on Brev and the GB10 (2026-10-20); the stacking demo needs a Cosmos env and hasn't run. Only edit: the `.sh` files marked executable in git (2026-10-20, contents unchanged) |
 | CAD output | `app/backend/src/api/models/finger_cad.py`, `clients/cad.py` | CadQuery STEP (the pair) + STL per side, the cell profile's mount (default since 2026-10-20: SMC's jaw from its STEP, the root cut back for the jaw's tongue, M3 holes along the jaw travel; **confirm on the real jaw**), engraved IDs, export checks, print sheet. Checked against the STEP's jaw solid: no overlap, faces touching, holes aligned |

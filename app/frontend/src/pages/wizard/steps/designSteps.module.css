@@ -1,0 +1,136 @@
+/* Layout shared by the wizard's steps 5 to 7: a view beside its controls, and panels of related fields. */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+
+.panelTitle {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.list {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-5);
+}
+
+.list li + li {
+  margin-top: var(--space-1);
+}
+
+.note {
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+
+.error {
+  color: var(--bad);
+  font-size: var(--text-sm);
+}
+
+.params {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.param {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.param:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.closedGap {
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.sticky {
+  position: sticky;
+  top: calc(var(--topbar-height) + var(--space-4));
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+
+.swatchMin {
+  background: var(--active);
+}
+
+.swatchMax {
+  background: var(--warn);
+}
+
+.swatchFinger {
+  background: var(--acc);
+}
+
+@media (max-width: 1000px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sticky {
+    position: static;
+  }
+}

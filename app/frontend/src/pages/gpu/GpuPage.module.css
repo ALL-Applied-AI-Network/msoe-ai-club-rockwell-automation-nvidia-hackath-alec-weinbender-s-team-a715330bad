@@ -1,0 +1,185 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.targets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--gap);
+}
+
+.note {
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+.message {
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  color: var(--mute);
+  overflow-wrap: anywhere;
+}
+
+.error {
+  font-size: var(--text-sm);
+  color: var(--bad);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.cellStrong {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.cellSub {
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+/* Starting steps: a vertical list, each with a marker; the current one pulses, done ones are filled. */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  list-style: none;
+}
+
+.steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.marker {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border: 2px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.done .marker {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.current .marker {
+  border-color: var(--active);
+  background: var(--active);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.stepLabel {
+  color: var(--faint);
+}
+
+.done .stepLabel {
+  color: var(--mute);
+}
+
+.current .stepLabel {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.stepState {
+  margin-left: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--ok);
+}
+
+.retry {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--mute);
+}
+
+/* Setup help: a disclosure, open until the first connection. */
+.help {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+
+.helpSummary {
+  padding: var(--space-3) var(--space-4);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.helpBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checklistHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.checklistTitle {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.checklistSteps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--mute);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .current .marker {
+    animation: none;
+  }
+}

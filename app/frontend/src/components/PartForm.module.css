@@ -1,0 +1,68 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4) 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+.legend {
+  float: left; /* keeps the legend inside the fieldset's flow, under the border, not on it */
+  width: 100%;
+  padding: 0;
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.computed {
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.used {
+  color: var(--acc-text);
+  font-weight: var(--weight-medium);
+}
+
+/* Lines a tick box up with the fields beside it, whose labels sit above their controls. */
+.measured {
+  padding-top: 26px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.error {
+  margin-right: auto;
+  color: var(--bad);
+  font-size: var(--text-sm);
+}
+
+.saved {
+  margin-right: auto;
+  color: var(--ok);
+  font-size: var(--text-sm);
+}
