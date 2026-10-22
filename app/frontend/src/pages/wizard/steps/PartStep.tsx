@@ -67,23 +67,26 @@ export function PartStep() {
           <p className={styles.note}>No parts yet: upload a STEP or STL file.</p>
         ) : (
           <div className={styles.choiceGrid} role="radiogroup" aria-label="Part">
-            {parts.data.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="radio"
-                aria-checked={p.id === draft.part_id}
-                className={styles.choice}
-                onClick={() => choose(p.id)}
-              >
-                <PartViewer url={meshUrl(p.id)} label={p.name} mode="thumbnail" />
-                <span className={styles.choiceLabel}>{p.name}</span>
-                <span className={styles.choiceNote}>
-                  {dims(p.extent_mm)}
-                  {p.confirmed_mass_g != null && `, ${mass(p.confirmed_mass_g, p.mass_unit)}`}
-                </span>
-              </button>
-            ))}
+            {[...parts.data]
+              .sort((a, b) => Number(b.lab) - Number(a.lab)) // the UWM lab's parts first, then uploads, newest first
+              .map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={p.id === draft.part_id}
+                  className={styles.choice}
+                  onClick={() => choose(p.id)}
+                >
+                  <PartViewer url={meshUrl(p.id)} label={p.name} mode="thumbnail" />
+                  <span className={styles.choiceLabel}>{p.name}</span>
+                  <span className={styles.choiceNote}>
+                    {p.lab && "UWM lab, "}
+                    {dims(p.extent_mm)}
+                    {p.confirmed_mass_g != null && `, ${mass(p.confirmed_mass_g, p.mass_unit)}`}
+                  </span>
+                </button>
+              ))}
           </div>
         )}
       </div>

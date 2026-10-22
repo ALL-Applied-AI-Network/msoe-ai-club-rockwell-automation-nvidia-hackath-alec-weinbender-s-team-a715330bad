@@ -91,6 +91,12 @@ job's SSE stream.
 
 **Reading parts back:** `GET /api/parts` (newest first) and `GET /api/parts/{id}`.
 
+- **The UWM lab's parts are always there.** At startup the API loads the organizers' CAD of the cell from the repo's
+  `cad/` folder into the database, once: the M6 × 30 screw (steel), the bin, the 10 and 16 mm cubes, the vial and its
+  cap. They have fixed ids (`lab-m6-screw`, ...), readable names and `lab: true`; uploads have `lab: false`. They're
+  ordinary parts otherwise: confirm their material and pose like an upload's. The catalog is
+  `app/backend/src/api/models/lab_parts.py`.
+
 - Lists leave out the convex pieces (`measured.pieces` is empty there).
 - `measured.extent_mm` is the bounding box. Show it, so a units mistake is caught.
 - `measured.material_hint` pre-selects the material.

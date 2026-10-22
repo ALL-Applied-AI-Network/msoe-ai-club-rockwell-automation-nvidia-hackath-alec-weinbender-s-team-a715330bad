@@ -5,8 +5,10 @@ from pathlib import Path
 import pytest
 import trimesh
 
+from api.config import CAD_DIR
 from api.models.cell_profile import DEFAULT_PROFILE
 from api.models.grasp import GraspPick
+from api.models.lab_parts import LAB_PARTS
 from api.services import cell_profiles, parts
 
 
@@ -83,6 +85,35 @@ def test_parts_are_listed_newest_first(db, upload):
     first, second = upload("cube"), upload("l_bracket")
 
     assert [p.id for p in parts.list_parts(db)] == [second.id, first.id]
+
+
+def test_the_lab_parts_load_once_each_from_the_repos_cad_folder(db, config, cad):
+    added = parts.ensure_lab_parts(db, config, cad, CAD_DIR)
+    again = parts.ensure_lab_parts(db, config, cad, CAD_DIR)
+
+    stored = {p.id: p for p in parts.list_parts(db)}
+    assert added == [lab.id for lab in LAB_PARTS] and again == [] and set(stored) == set(added)
+    screw, vial = stored["lab-m6-screw"], stored["lab-vial"]
+    assert screw.name == "M6 × 30 countersunk screw" and Path(screw.file_path).name == "ISO10642-M6x30-countersunk-screw.step"
+    assert screw.material == "steel" and screw.confirmed_mass_g == pytest.approx(7.5, abs=0.2)  # the M6 x 30's 7.5 g
+    assert vial.source == "stl" and vial.units == "mm" and vial.measured.extent_mm[2] == pytest.approx(203, abs=0.5)
+    assert vial.material is None  # not known: the user confirms it, as for an upload
+    assert not parts.has_uploaded_parts(db)
+
+
+def test_a_missing_lab_file_is_skipped_and_the_rest_still_load(db, config, cad, tmp_path):
+    (tmp_path / "cad").mkdir()
+    (tmp_path / "cad" / LAB_PARTS[2].file).write_bytes((CAD_DIR / LAB_PARTS[2].file).read_bytes())
+
+    assert parts.ensure_lab_parts(db, config, cad, tmp_path / "cad") == [LAB_PARTS[2].id]
+
+
+def test_uploads_count_as_uploaded_parts_and_lab_parts_dont(db, config, cad, upload):
+    parts.ensure_lab_parts(db, config, cad, CAD_DIR)
+    assert not parts.has_uploaded_parts(db)
+
+    upload("cube")
+    assert parts.has_uploaded_parts(db)
 
 
 def test_an_unknown_part_is_not_found(db):

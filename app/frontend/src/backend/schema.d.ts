@@ -3093,6 +3093,11 @@ export interface components {
                 number
             ];
             /**
+             * Lab
+             * @description One of the UWM lab's parts (the organizers' CAD of the real cell), loaded at startup rather than uploaded.
+             */
+            readonly lab: boolean;
+            /**
              * Density
              * @description g/cm3: the entered density, else the material's.
              */

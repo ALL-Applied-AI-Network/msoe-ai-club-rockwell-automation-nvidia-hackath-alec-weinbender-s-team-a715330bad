@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from api.clients.cad import create_cad_client
 from api.clients.compute import create_compute_clients
 from api.clients.database import DatabaseClient, create_database_client
-from api.config import APP_DIR, DEMO_SCRIPT, AppConfig, load_config, setup_logging
+from api.config import APP_DIR, CAD_DIR, DEMO_SCRIPT, AppConfig, load_config, setup_logging
 from api.routers import (
     cell_profiles,
     clips,
@@ -35,7 +35,7 @@ from api.routers import (
 from api.services import compute as compute_sessions
 from api.services.cell_profiles import ensure_default_profile
 from api.services.jobs import mark_interrupted
-from api.services.parts import list_parts
+from api.services.parts import ensure_lab_parts, has_uploaded_parts
 from api.services.processes import spawn_detached
 
 logger = logging.getLogger(__name__)
@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: logging, then the config check (startup stops on errors), then the database, its migrations and the
-    default cell profile. Long-lived resources the API itself needs are created here, stored on app.state for
+    """Startup: logging, then the config check (startup stops on errors), then the database, its migrations, the
+    default cell profile and the lab parts. Long-lived resources the API itself needs are created here, stored on app.state for
     dependencies.py, and closed after the yield."""
     setup_logging()
     config = load_config()
@@ -56,8 +56,10 @@ async def lifespan(app: FastAPI):
     mark_interrupted(db)
     compute_sessions.recover(db, config)
     if config.demo_data:
-        start_demo_data(db, config)
-    app.state.config, app.state.db, app.state.cad = config, db, create_cad_client()
+        start_demo_data(db, config)  # before the lab parts: it only starts on a database nobody has uploaded to
+    cad = create_cad_client()
+    ensure_lab_parts(db, config, cad, CAD_DIR)
+    app.state.config, app.state.db, app.state.cad = config, db, cad
     app.state.compute = create_compute_clients(config.compute, config.data_dir)
     logger.info("API ready")
     yield
@@ -68,9 +70,9 @@ async def lifespan(app: FastAPI):
 
 
 def start_demo_data(db: DatabaseClient, config: AppConfig) -> None:
-    """DEMO_DATA=true: on the first start (no parts yet), generate the demo data (scripts/demo_data.py) in a detached
+    """DEMO_DATA=true: on the first start (no uploaded parts yet), generate the demo data (scripts/demo_data.py) in a detached
     process, so the API answers at once and the experiments appear as they finish, in about two minutes."""
-    if list_parts(db):
+    if has_uploaded_parts(db):
         return
     log = config.data_dir / "demo_data.log"
     pid = spawn_detached([sys.executable, str(DEMO_SCRIPT), "--data-dir", str(config.data_dir)], log)

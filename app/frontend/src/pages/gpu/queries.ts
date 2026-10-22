@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, unwrap, type Schemas } from "../../backend/client";
+import { useCompute } from "../../backend/queries";
 
 // The GPU page's own data. The session status itself is useCompute() (backend/queries.ts), shared with the header chip.
 
@@ -18,12 +19,20 @@ export function useInstances(refreshEveryMinute: boolean) {
   });
 }
 
-/** The session log, latest first: which target was connected when, and why it ended. */
+/** The session log, latest first: which target was connected when, and why it ended. Fetched again whenever the live
+ *  session moves on (started, ready, stopping, ended), so its row never shows a stale state. */
 export function useSessions() {
-  return useQuery({
+  const live = useCompute().data?.session;
+  const liveKey = live ? `${live.id}:${live.status}` : "none";
+  const query = useQuery({
     queryKey: ["compute", "sessions"],
     queryFn: () => unwrap(api.GET("/api/compute/sessions", { params: { query: { limit: 50 } } })),
   });
+  const { refetch } = query;
+  useEffect(() => {
+    void refetch();
+  }, [liveKey, refetch]);
+  return query;
 }
 
 /** Start, stop, and switch: stop the current target, wait until it has stopped, then start the chosen one. Every one

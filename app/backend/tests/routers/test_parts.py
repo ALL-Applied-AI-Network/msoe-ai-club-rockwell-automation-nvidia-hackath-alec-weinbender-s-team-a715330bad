@@ -3,6 +3,9 @@ import io
 import pytest
 import trimesh
 
+from api.config import CAD_DIR
+from api.services import parts
+
 
 @pytest.fixture
 def upload(client, shapes, step_file):
@@ -24,6 +27,15 @@ def test_an_upload_returns_the_record_with_its_bounding_box(upload):
     assert (part["name"], part["source"], part["units"], part["pose"]) == ("vial_cap.step", "step", "mm", None)
     assert [part[k] for k in ("material", "density", "computed_mass_g", "mass_source", "confirmed_mass_g")] == [None] * 5
     assert part["friction_vs_pad"] == [0.6, 0.5]
+
+
+def test_lab_parts_are_flagged_and_uploads_are_not(client, db, config, cad, upload):
+    parts.ensure_lab_parts(db, config, cad, CAD_DIR)
+    uploaded = upload("cube")
+
+    listed = {p["id"]: p for p in client.get("/api/parts").json()}
+    assert listed["lab-vial-cap"]["lab"] and listed["lab-vial-cap"]["name"] == "Vial cap, Ø32 mm"
+    assert not listed[uploaded["id"]]["lab"] and not uploaded["lab"]
 
 
 def test_an_stl_needs_units_and_inches_become_mm(client, shapes, stl_file):

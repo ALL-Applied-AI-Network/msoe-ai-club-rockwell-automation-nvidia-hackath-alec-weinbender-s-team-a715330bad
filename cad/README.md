@@ -36,4 +36,5 @@ that uses it, with a note naming the source file.
   This is the default finger mount in the app's cell profile (`app/backend/src/api/models/cell_profile.py`,
   `SMC_FLAT_JAW_MOUNT`). Confirm it on the real jaw before printing.
 - Every STEP and STL here imports through the app's part upload (`CadQueryCad.read_part`), so the screw, the cubes and the
-  vial can be used as parts directly.
+  vial can be used as parts directly. The app does this itself at startup: the screw, bin, cubes, vial and cap are its
+  "UWM lab" parts, always in the parts library (`app/backend/src/api/models/lab_parts.py`).

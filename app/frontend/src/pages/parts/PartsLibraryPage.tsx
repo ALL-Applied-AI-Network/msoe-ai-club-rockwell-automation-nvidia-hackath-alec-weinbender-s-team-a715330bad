@@ -19,9 +19,12 @@ import styles from "./PartsLibraryPage.module.css";
 
 type Part = Schemas["PartResponse"];
 
-/** #/parts: every uploaded part, ready to reuse in a new experiment. */
+/** #/parts: the UWM lab's parts (always there: the backend loads them at startup) and every uploaded part, ready to
+ *  reuse in a new experiment. */
 export function PartsLibraryPage() {
   const parts = useParts();
+  const lab = parts.data?.filter((part) => part.lab).sort((a, b) => a.created - b.created) ?? []; // in the catalog's order
+  const uploaded = parts.data?.filter((part) => !part.lab) ?? [];
   const navigate = useNavigate();
   const [uploading, setUploading] = useState(false);
   const upload = (
@@ -34,7 +37,7 @@ export function PartsLibraryPage() {
   return (
     <Page
       title="Parts"
-      description="Every part you've uploaded, measured and ready to reuse. Open one to check its size and set its material and mass."
+      description="The lab's parts and every part you've uploaded, measured and ready to reuse. Open one to check its size and set its material and mass."
       actions={upload}
     >
       {parts.isPending && (
@@ -45,18 +48,37 @@ export function PartsLibraryPage() {
         </div>
       )}
       {parts.isError && <ErrorState title="Couldn't load the parts" message={parts.error.message} onRetry={() => parts.refetch()} />}
-      {parts.isSuccess && parts.data.length === 0 && (
-        <EmptyState title="No parts yet" action={upload}>
-          Upload a STEP or STL of the part to pick. It's measured and split into convex pieces once, then any experiment
-          can use it.
-        </EmptyState>
+      {parts.isSuccess && lab.length > 0 && (
+        <section className={styles.section}>
+          <div>
+            <h2 className={styles.heading}>From the UWM lab</h2>
+            <p className={styles.note}>
+              The objects on the real cell, from the organizers' CAD. They're always here, in every database.
+            </p>
+          </div>
+          <div className={styles.grid}>
+            {lab.map((part) => (
+              <PartCard key={part.id} part={part} />
+            ))}
+          </div>
+        </section>
       )}
-      {parts.isSuccess && parts.data.length > 0 && (
-        <div className={styles.grid}>
-          {parts.data.map((part) => (
-            <PartCard key={part.id} part={part} />
-          ))}
-        </div>
+      {parts.isSuccess && (
+        <section className={styles.section}>
+          <h2 className={styles.heading}>Uploaded</h2>
+          {uploaded.length === 0 ? (
+            <EmptyState title="Nothing uploaded yet" action={upload}>
+              Upload a STEP or STL of the part to pick. It's measured and split into convex pieces once, then any
+              experiment can use it.
+            </EmptyState>
+          ) : (
+            <div className={styles.grid}>
+              {uploaded.map((part) => (
+                <PartCard key={part.id} part={part} />
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       <Modal open={uploading} title="Upload a part" onClose={() => setUploading(false)}>
@@ -77,7 +99,7 @@ function PartCard({ part }: { part: Part }) {
   return (
     <Card
       title={<Link to={`/parts/${part.id}`}>{part.name}</Link>}
-      subtitle={part.source === "stl" ? `STL file, read in ${part.units === "in" ? "inches" : "millimetres"}` : "STEP file"}
+      subtitle={`${part.lab ? "UWM lab part, " : ""}${part.source === "stl" ? `STL file, read in ${part.units === "in" ? "inches" : "millimetres"}` : "STEP file"}`}
       aside={
         <>
           {part.fragile && <Badge tone="warn" label="Fragile" />}
@@ -86,7 +108,7 @@ function PartCard({ part }: { part: Part }) {
       }
       footer={
         <>
-          <span className={styles.time}>Uploaded {timeAgo(part.created)}</span>
+          <span className={styles.time}>{part.lab ? "Always available" : `Uploaded ${timeAgo(part.created)}`}</span>
           <div className={styles.actions}>
             <LinkButton variant="ghost" size="sm" to={`/new/pose?part=${part.id}`}>
               New experiment with this part
