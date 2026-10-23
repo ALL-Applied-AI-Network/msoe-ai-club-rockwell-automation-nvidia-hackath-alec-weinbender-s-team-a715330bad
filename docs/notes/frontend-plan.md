@@ -63,12 +63,13 @@ dark only), three.js for 3D, and Recharts for every chart.
 | GPU page and help cards | `pages/gpu/`, `gpuHelp.ts`, `components/HelpCard.tsx` | Starting steps, retries as "Retrying", switch-target flow, session log, setup checklist. |
 | Validation, per experiment and across them | `pages/validation/` | The five stages, the spreadsheet round trip, predicted vs measured, the mismatch map, the sim-vs-real scatter. |
 | Quick logger | `pages/log/` | Phone layout; no Undo yet (no API to delete a trial). |
-| Parts library | `pages/parts/` | The UWM lab's parts (always loaded by the backend) first, then uploads; upload, size check, 3D view, material and mass. |
+| Parts library | `pages/parts/` | Upload, size check, 3D view, material and mass. |
 | Settings | `pages/settings/` | Cell-profile editor with placeholders and version history; GPU targets and About, read-only. |
 
-**Not built:** the design-space cloud (Later), the 3D robot and cell render (no model endpoint), and richer provisional
-results and several grasp axes (both need the backend changes in section 13). The old `index.html` is still served at
-`/` until the switch-over steps in [app/README.md, "Frontend"](../../app/README.md#frontend).
+**Not built:** the design-space cloud (Later), the 3D robot and cell render (no model endpoint), richer provisional
+results and several grasp axes (both need the backend changes in section 13), and one-click sample parts from `cad/`
+(no API path). The old `index.html` is still served at `/` until the switch-over steps in
+[app/README.md, "Frontend"](../../app/README.md#frontend).
 
 **The rules for adding to it:** [coding-style.md](../../.claude/rules/coding-style.md#frontend) lists the shared
 components. Reuse them, keep API types generated (`npm run gen:api`), and use `unwrapAs` in `src/backend/client.ts`

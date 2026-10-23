@@ -19,7 +19,6 @@ from api.clients.database import DatabaseClient
 from api.dependencies import CadDep, ConfigDep, DbDep
 from api.models.cell_profile import DEFAULT_PROFILE, CellProfile
 from api.models.grasp import GraspCandidate, GraspChoice, GraspPick, GraspProposals
-from api.models.lab_parts import is_lab_part
 from api.models.material import Material, Surface
 from api.models.part_record import MassUnit, PartRecord
 from api.models.resting_pose import RestingPose
@@ -44,12 +43,6 @@ class PartResponse(PartRecord):
     @property
     def extent_mm(self) -> tuple[float, float, float]:
         return self.measured.extent_mm
-
-    @computed_field
-    @property
-    def lab(self) -> bool:
-        """One of the UWM lab's parts (the organizers' CAD of the real cell), loaded at startup rather than uploaded."""
-        return is_lab_part(self.id)
 
     @computed_field
     @property

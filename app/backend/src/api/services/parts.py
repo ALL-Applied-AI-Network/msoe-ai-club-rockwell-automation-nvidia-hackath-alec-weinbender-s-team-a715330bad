@@ -24,7 +24,6 @@ from api.db.tables import PartRow
 from api.models import grasp
 from api.models.cell_profile import CellProfile
 from api.models.grasp import GraspCandidate, GraspPick, GraspProposals
-from api.models.lab_parts import LAB_PARTS, is_lab_part
 from api.models.part_cad import PartMesh
 from api.models.part_record import PartRecord
 from api.models.resting_pose import AS_AUTHORED, IDENTITY, RestingPose
@@ -61,37 +60,27 @@ class PoseNotChosenError(RuntimeError):
 
 
 def create_part(
-    db: DatabaseClient,
-    config: AppConfig,
-    cad: CadClient,
-    filename: str,
-    content: bytes,
-    units: Literal["mm", "in"] | None,
-    *,
-    part_id: str | None = None,
-    display_name: str | None = None,
+    db: DatabaseClient, config: AppConfig, cad: CadClient, filename: str, content: bytes, units: Literal["mm", "in"] | None
 ) -> PartRecord:
     """Read, measure and store an uploaded STEP or STL. An STL needs its units (STEP files carry their own). The material
-    starts as whatever the file names, if anything. part_id and display_name are for the lab parts, which have fixed ids
-    and readable names; an upload gets a new id and is named after its file."""
-    file_name = Path(filename or "").name  # never a path the client chose
-    if not file_name:
+    starts as whatever the file names, if anything."""
+    name = Path(filename or "").name  # never a path the client chose
+    if not name:
         raise PartFileError("the upload has no file name")
-    name = display_name or file_name
     if len(content) > MAX_UPLOAD_BYTES:
-        raise PartFileError(f"{file_name}: larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
-    if Path(file_name).suffix.lower() == ".stl" and units is None:
+        raise PartFileError(f"{name}: larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
+    if Path(name).suffix.lower() == ".stl" and units is None:
         raise PartFileError("units required for STL: mm or in")
     try:
-        measured, mesh = cad.read_part(file_name, content, units or "mm")
+        measured, mesh = cad.read_part(name, content, units or "mm")
     except UnsupportedCadFormatError as e:
         raise UnsupportedPartFormatError(str(e)) from e
     except ValueError as e:
         raise PartFileError(str(e)) from e
-    part_id = part_id or uuid.uuid4().hex[:12]
+    part_id = uuid.uuid4().hex[:12]
     folder = config.uploads_dir / f"part_{part_id}"
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / file_name
+    path = folder / name
     path.write_bytes(content)
     np.savez_compressed(folder / MESH_FILE, vertices=mesh.vertices, triangles=mesh.triangles)
     with db.session() as s:
@@ -109,36 +98,6 @@ def create_part(
         record = PartRecord.model_validate(row)
     logger.info("Part %s: %s, %s, %d pieces", part_id, name, measured.fit, len(measured.pieces))
     return record
-
-
-def ensure_lab_parts(db: DatabaseClient, config: AppConfig, cad: CadClient, cad_dir: Path) -> list[str]:
-    """Load the UWM lab's parts (api/models/lab_parts.py) this database doesn't have yet, from the repo's cad/ folder,
-    as uploads would be. Each takes a second or so to read, once per database. A file that's missing or can't be read is
-    logged and skipped, so the rest still load. Returns the ids it added."""
-    with db.session() as s:
-        have = set(s.scalars(select(PartRow.id).where(PartRow.id.in_([lab.id for lab in LAB_PARTS]))))
-    added = []
-    for lab in LAB_PARTS:
-        if lab.id in have:
-            continue
-        path = cad_dir / lab.file
-        try:
-            units = "mm" if path.suffix.lower() == ".stl" else None  # the lab's STLs are in mm (cad/README.md)
-            create_part(db, config, cad, path.name, path.read_bytes(), units, part_id=lab.id, display_name=lab.name)
-        except (OSError, PartFileError, UnsupportedPartFormatError) as e:
-            logger.warning("Lab part %s: not loaded (%s)", lab.name, e)
-            continue
-        if lab.material:
-            update_part(db, lab.id, {"material": lab.material})
-        added.append(lab.id)
-    if added:
-        logger.info("Lab parts: loaded %d of %d from %s", len(added), len(LAB_PARTS), cad_dir)
-    return added
-
-
-def has_uploaded_parts(db: DatabaseClient) -> bool:
-    """Whether anyone has uploaded a part: the lab's own parts don't count."""
-    return any(not is_lab_part(part.id) for part in list_parts(db))
 
 
 def list_parts(db: DatabaseClient) -> list[PartRecord]:

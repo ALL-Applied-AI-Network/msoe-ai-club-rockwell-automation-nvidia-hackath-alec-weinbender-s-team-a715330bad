@@ -292,12 +292,12 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _has_data(config: AppConfig) -> bool:
-    """Whether the database already holds uploaded parts or experiments (the lab parts don't count). An empty one (the
-    API creates and migrates it on its first start with DEMO_DATA=true, then starts this script) is fine to fill."""
+    """Whether the database already holds parts or experiments. An empty one (the API creates and migrates it on its first
+    start with DEMO_DATA=true, then starts this script) is fine to fill."""
     db = DatabaseClient(config.db)
     with closing(db):
         db.migrate()
-        return bool(parts.has_uploaded_parts(db) or jobs.list_jobs(db))
+        return bool(parts.list_parts(db) or jobs.list_jobs(db))
 
 
 if __name__ == "__main__":

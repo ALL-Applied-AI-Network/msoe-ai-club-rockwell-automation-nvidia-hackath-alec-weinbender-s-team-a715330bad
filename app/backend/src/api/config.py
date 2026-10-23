@@ -25,7 +25,6 @@ ENV_FILE = APP_DIR.parent / ".env"
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 DEMO_DIR_NAME = "demo"  # DEMO_DATA=true runs in DATA_DIR/demo
 DEMO_SCRIPT = APP_DIR / "backend" / "scripts" / "demo_data.py"
-CAD_DIR = APP_DIR.parent / "cad"  # the organizers' CAD of the cell: the lab parts load from here
 
 logger = logging.getLogger(__name__)
 
