@@ -17,6 +17,9 @@ export const CAVEATS = {
   placeholderCell: "Placeholder: not yet measured at the cell.",
   twinMismatch: "The sim models the twin's SMC MHZL2-16D2 gripper; this profile differs in:",
   estimatedFriction: "Friction values are estimates until measured.",
+  poseRecognition:
+    "Scored over several resting poses: the cell has to recognise how each part landed and run that pose's grasp. The " +
+    "poses' shares are trimesh's estimates, not measured.",
   demoData:
     "Demo data: these experiments ran on the mock sim, and their physical trials are made up. Unset DEMO_DATA for " +
     "real data.",

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api, unwrap, type Schemas } from "../../backend/client";
 import { useCompute } from "../../backend/queries";
 
-// The GPU page's own data. The session status itself is useCompute() (backend/queries.ts), shared with the header chip.
+// The GPU page's own data. The session status itself is useCompute() (backend/queries.ts), shared with the status bar.
 
 type Instance = Schemas["ComputeInstance"];
 

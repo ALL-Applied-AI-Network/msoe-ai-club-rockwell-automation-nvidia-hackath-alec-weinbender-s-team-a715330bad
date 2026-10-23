@@ -45,7 +45,7 @@ export function PartUpload({ onUploaded }: { onUploaded: (part: Part) => void })
     return (
       <div className={styles.units}>
         <p className={styles.question}>
-          <strong>{stl.name}</strong> is an STL, which doesn't record its units. Was it drawn in millimetres or inches?
+          Units for <strong>{stl.name}</strong>?
         </p>
         <div className={styles.actions}>
           <Button disabled={upload.isPending} onClick={() => upload.mutate({ file: stl, units: "mm" })}>
@@ -68,9 +68,9 @@ export function PartUpload({ onUploaded }: { onUploaded: (part: Part) => void })
     <FileDrop
       label="Drop a STEP or STL file here"
       accept=".step,.stp,.stl"
-      busy={upload.isPending ? "Reading the part: measuring it and splitting it into convex pieces" : undefined}
+      busy={upload.isPending ? "Reading the part" : undefined}
       error={upload.error?.message}
-      hint="STEP is best: exact geometry, with its units. From SolidWorks: File > Save As > STEP. Native SolidWorks files can't be read."
+      hint="STEP keeps its units. SolidWorks files: save as STEP first."
       onFile={choose}
     />
   );

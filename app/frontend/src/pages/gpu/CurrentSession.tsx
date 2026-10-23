@@ -27,7 +27,7 @@ export function CurrentSession({ compute, session, target }: { compute: Compute;
   const badge = sessionBadge(session, alwaysOn, reconnecting);
 
   const facts: KeyValue[] = [
-    { label: "Asked for at", value: clockTime(session.requested) },
+    { label: "Requested", value: clockTime(session.requested) },
     session.status === "starting"
       ? { label: alwaysOn ? "Connecting for" : "Starting for", value: duration(now - session.requested) }
       : session.ready_at
@@ -44,7 +44,7 @@ export function CurrentSession({ compute, session, target }: { compute: Compute;
   if (!alwaysOn) {
     facts.push({
       label: "Stops by itself",
-      value: compute.auto_stop_minutes > 0 ? `After ${minutes(compute.auto_stop_minutes)} without a job` : "Never: auto-stop is off",
+      value: compute.auto_stop_minutes > 0 ? `After ${minutes(compute.auto_stop_minutes)} idle` : "Never",
     });
   }
 
@@ -53,25 +53,18 @@ export function CurrentSession({ compute, session, target }: { compute: Compute;
     <Card
       title={session.instance}
       subtitle={backendLabel}
-      aside={<Badge {...badge} dot={badge.tone === "active" || badge.tone === "ok"} />}
-      footer={
+      aside={
         <>
-          <span className={styles.note}>
-            {alwaysOn
-              ? "Disconnecting closes only this laptop's connection: the sim server keeps running for teammates."
-              : "Stopping the instance ends its credit use. Jobs that need the sim wait until a GPU is ready again."}
-          </span>
-          <div className={styles.actions}>
-            {alwaysOn ? (
-              <Button variant="secondary" disabled={ending || stop.isPending} onClick={() => stop.mutate()}>
-                Disconnect
-              </Button>
-            ) : (
-              <Button variant="danger" disabled={ending || stop.isPending} onClick={() => setConfirming(true)}>
-                Stop the GPU
-              </Button>
-            )}
-          </div>
+          <Badge {...badge} dot={badge.tone === "active" || badge.tone === "ok"} />
+          {alwaysOn ? (
+            <Button variant="secondary" size="sm" disabled={ending || stop.isPending} onClick={() => stop.mutate()}>
+              Disconnect
+            </Button>
+          ) : (
+            <Button variant="danger" size="sm" disabled={ending || stop.isPending} onClick={() => setConfirming(true)}>
+              Stop the GPU
+            </Button>
+          )}
         </>
       }
     >
@@ -82,9 +75,7 @@ export function CurrentSession({ compute, session, target }: { compute: Compute;
         <HelpCard tone="warn" message={session.message} {...helpProps(session.message)} />
       )}
       {target?.other_gpu_processes ? (
-        <p className={styles.note}>
-          Another team's or a teammate's work is on the GPU too, so the sim may run slower. It doesn't stop yours.
-        </p>
+        <p className={styles.note}>Other work on this GPU may slow the sim.</p>
       ) : null}
       {stop.error && <p className={styles.error}>{stop.error.message}</p>}
       <ConfirmDialog
@@ -98,8 +89,8 @@ export function CurrentSession({ compute, session, target }: { compute: Compute;
         onConfirm={() => stop.mutate(undefined, { onSuccess: () => setConfirming(false) })}
         onClose={() => setConfirming(false)}
       >
-        Brev stops the instance, so it stops using the team's credits. Running jobs and predictions wait for a GPU, and
-        carry on once you start one again. Starting it again takes about 4 minutes.
+        The instance stops using credits. Running jobs wait and carry on once a GPU is ready again. Starting it again
+        takes about 4 minutes.
       </ConfirmDialog>
     </Card>
   );

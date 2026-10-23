@@ -5,7 +5,7 @@ export const WIZARD_STEPS = [
   { slug: "part", label: "Part" },
   { slug: "pose", label: "Resting pose" },
   { slug: "task", label: "Task" },
-  { slug: "cell", label: "Cell profile" },
+  { slug: "cell", label: "Cell" },
   { slug: "grasp", label: "Grasp" },
   { slug: "families", label: "Finger families" },
   { slug: "error", label: "Camera error" },

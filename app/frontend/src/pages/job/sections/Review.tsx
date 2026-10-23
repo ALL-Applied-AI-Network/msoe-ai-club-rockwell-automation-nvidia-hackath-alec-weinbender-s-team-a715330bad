@@ -48,8 +48,7 @@ export function ReviewSection({ jobId, experimentId, review }: { jobId: string; 
   return (
     <Card title="Review" aside={<Badge tone={status.tone} label={status.label} />}>
       <p className={styles.lead}>
-        No printed finger goes on the real arm until a named reviewer approves it. Testing happens only at the cell,
-        with a supervisor.
+        Printed fingers go on the real arm only after a named reviewer approves them, for supervised tests at the cell.
       </p>
       {review && review.status !== "pending" && (
         <KeyValues
@@ -71,7 +70,7 @@ export function ReviewSection({ jobId, experimentId, review }: { jobId: string; 
           autoComplete="name"
         />
       </div>
-      <Field label="Notes" hint="Optional: what was checked, or why it's rejected.">
+      <Field label="Notes" hint="Optional">
         {(id) => <textarea id={id} className={fieldStyles.control} value={notes} onChange={(event) => setNotes(event.target.value)} />}
       </Field>
       <div className={styles.row}>

@@ -56,18 +56,12 @@ export function Targets({ compute }: { compute: Compute }) {
   return (
     <section className={styles.section} aria-labelledby="targets-title">
       <div className={styles.sectionHead}>
-        <div>
-          <h2 id="targets-title" className={styles.sectionTitle}>
-            {session ? "Targets" : "Choose a target"}
-          </h2>
-          <p className={styles.note}>
-            One target at a time. The list comes from COMPUTE_BACKENDS in the backend's .env; new Brev instances are
-            made in the Brev console.
-          </p>
-        </div>
+        <h2 id="targets-title" className={styles.sectionTitle}>
+          {session ? "Targets" : "Choose a target"}
+        </h2>
         <Button variant="secondary" size="sm" disabled={instances.isFetching} onClick={() => void instances.refetch()}>
           <Icon name="refresh" />
-          {instances.isFetching ? "Asking the targets" : "Refresh the list"}
+          {instances.isFetching ? "Refreshing" : "Refresh"}
         </Button>
       </div>
 
@@ -89,7 +83,7 @@ export function Targets({ compute }: { compute: Compute }) {
       {instances.isPending && (
         <div className={styles.targets}>
           {[0, 1].map((i) => (
-            <Skeleton key={i} height={170} />
+            <Skeleton key={i} height={196} />
           ))}
         </div>
       )}
@@ -167,7 +161,7 @@ function TargetCard({
   if (target.other_gpu_processes != null) {
     facts.push({ label: "On it right now", value: count(target.other_gpu_processes, "other GPU process", "other GPU processes") });
   }
-  facts.push({ label: "Role", value: target.always_on ? "Always on, shared with other teams, free" : "Started when needed, uses credits" });
+  facts.push({ label: "Cost", value: target.always_on ? "Free, shared" : "Uses credits" });
 
   return (
     <Card
@@ -180,7 +174,7 @@ function TargetCard({
             <Badge tone="ok" label="In use" dot />
           ) : otherActive ? (
             <Button variant="secondary" disabled={busy} onClick={onSwitch}>
-              Switch to this target
+              Switch to this one
             </Button>
           ) : (
             <Button disabled={busy} onClick={onStart}>

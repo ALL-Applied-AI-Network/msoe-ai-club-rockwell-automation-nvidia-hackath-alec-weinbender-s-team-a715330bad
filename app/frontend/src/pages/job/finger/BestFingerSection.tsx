@@ -25,15 +25,18 @@ type VPadParams = Schemas["VPadParams"];
 export function BestFingerSection({ jobId, results }: { jobId: string; results: Results }) {
   const designs = results.final_table.filter((row) => row.kind !== "stock");
   const [chosen, setChosen] = useState(results.best_finger?.label ?? designs[0]?.label ?? "");
+  const [pose, setPose] = useState<string | null>(null);
   if (designs.length === 0) return null;
   const label = designs.some((d) => d.label === chosen) ? chosen : designs[0].label;
   const row = designs.find((d) => d.label === label)!;
+  const poses = row.poses && row.poses.length > 1 ? row.poses : null; // the same finger, regripped in each pose
+  const shownPose = poses?.find((p) => p.key === pose)?.key ?? poses?.[0].key ?? null;
   const base = `/api/jobs/${encodeURIComponent(jobId)}/designs/${encodeURIComponent(label)}`;
 
   return (
     <Card
       title="Best finger"
-      subtitle="The finger pair to print, with the grasp pose the robot program needs."
+      subtitle="The pair to print, and the grasp pose for the robot program."
       aside={
         designs.length > 1 && (
           <Segmented
@@ -47,7 +50,17 @@ export function BestFingerSection({ jobId, results }: { jobId: string; results: 
     >
       {results.header.sim_backend === "mock" && <p className={styles.caveat}>{CAVEATS.mock} The geometry is real CAD.</p>}
       <div className={styles.layout}>
-        <PairView jobId={jobId} label={label} />
+        <div className={styles.pair}>
+          {poses && (
+            <Segmented
+              label="Resting pose"
+              value={shownPose!}
+              onChange={setPose}
+              options={poses.map((p) => ({ value: p.key, label: capitalise(p.label ?? "unnamed pose") }))}
+            />
+          )}
+          <PairView jobId={jobId} label={label} pose={shownPose} />
+        </div>
         <div className={styles.side}>
           <section className={styles.block}>
             <h3 className={styles.heading}>
@@ -65,12 +78,14 @@ export function BestFingerSection({ jobId, results }: { jobId: string; results: 
 }
 
 /** Both fingers, left and its mirror, closed on the part. */
-function PairView({ jobId, label }: { jobId: string; label: string }) {
+function PairView({ jobId, label, pose }: { jobId: string; label: string; pose: string | null }) {
   const finger = useQuery({
-    queryKey: ["job", jobId, "finger", label],
+    queryKey: ["job", jobId, "finger", label, pose],
     queryFn: () =>
       unwrapAs<FingerView>(
-        api.GET("/api/jobs/{job_id}/finger", { params: { path: { job_id: jobId }, query: { design: label } } }),
+        api.GET("/api/jobs/{job_id}/finger", {
+          params: { path: { job_id: jobId }, query: { design: label, ...(pose ? { pose } : {}) } },
+        }),
       ),
     staleTime: Infinity,
   });
@@ -90,9 +105,9 @@ function PairView({ jobId, label }: { jobId: string; label: string }) {
     <FingerViewer
       part={finger.data.part}
       fingers={fingers}
-      label={`${designLabel(label)}: the left finger and its mirror closed on the part`}
+      label={`${designLabel(label)}: the left finger and its mirror closed on the part${finger.data.pose_label ? `, ${finger.data.pose_label}` : ""}`}
       height={380}
-      frameKey={label}
+      frameKey={`${label}-${pose ?? ""}`}
     />
   );
 }

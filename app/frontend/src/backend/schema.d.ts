@@ -239,7 +239,8 @@ export interface paths {
         put?: never;
         /**
          * Propose Grasps
-         * @description Step 5: up to 3 grasp axes for the part in its chosen pose, on the profile's gripper; or why nothing fits.
+         * @description Step 5: up to 3 grasp axes for the part in a resting pose (by default its chosen one), on the profile's gripper;
+         *     or why nothing fits.
          */
         post: operations["propose_grasps_api_parts__part_id__grasps_post"];
         delete?: never;
@@ -568,7 +569,8 @@ export interface paths {
         };
         /**
          * Get Finger
-         * @description Both fingers of a final design (D1 by default) and the part, for the 3D preview.
+         * @description Both fingers of a final design (D1 by default) and the part, for the 3D preview: in the primary resting pose, or
+         *     the job's pose with this key ("p1", ...; the plan's poses).
          */
         get: operations["get_finger_api_jobs__job_id__finger_get"];
         put?: never;
@@ -1322,17 +1324,29 @@ export interface components {
         };
         /**
          * CheckGraspRequest
-         * @description An angle, or one or two face picks (table frame, from the 3D view), not both.
+         * @description An angle, or one or two face picks (table frame of the pose, from the 3D view), not both.
          */
         CheckGraspRequest: {
             /** Cell Profile Id */
             cell_profile_id: number;
+            /** Pose */
+            pose?: number | "as_authored" | null;
             /** Angle Deg */
             angle_deg?: number | null;
             /** Picks */
             picks?: components["schemas"]["GraspPick"][];
             /** Grip Height Mm */
             grip_height_mm?: number | null;
+            /** Centre Mm */
+            centre_mm?: [
+                number,
+                number
+            ] | null;
+            /** Span Mm */
+            span_mm?: [
+                number,
+                number
+            ] | null;
         };
         /** CheckGraspResponse */
         CheckGraspResponse: {
@@ -1343,6 +1357,11 @@ export interface components {
                 number,
                 number
             ];
+            /** Span Mm */
+            span_mm?: [
+                number,
+                number
+            ] | null;
             /** Width Mm */
             width_mm: number;
             /** Depth Mm */
@@ -1544,7 +1563,9 @@ export interface components {
              *     }
              */
             task: components["schemas"]["Task"];
-            grasp: components["schemas"]["GraspChoice"];
+            grasp?: components["schemas"]["GraspChoice"] | null;
+            /** Poses */
+            poses?: components["schemas"]["PoseGrasp"][];
             /** Families */
             families?: components["schemas"]["FamilyChoice"][];
             /**
@@ -1704,6 +1725,8 @@ export interface components {
             capture_radius_mm: number | null;
             /** Task Metric */
             task_metric: number | null;
+            /** Poses */
+            poses?: components["schemas"]["PoseScore"][] | null;
         };
         /**
          * DesignValidation
@@ -1909,6 +1932,8 @@ export interface components {
             task_metric: number | null;
             /** Print Selected */
             print_selected: boolean;
+            /** Poses */
+            poses?: components["schemas"]["PoseScore"][] | null;
         };
         /**
          * Finger
@@ -1946,6 +1971,8 @@ export interface components {
              * @default 293
              */
             tcp_mm: number;
+            /** Pad Top Mm */
+            pad_top_mm?: number | null;
         };
         /**
          * FingerMount
@@ -2041,10 +2068,22 @@ export interface components {
             finger: components["schemas"]["Finger"];
             /** Right */
             right: components["schemas"]["Piece"][];
+            /**
+             * Pose
+             * @default p0
+             */
+            pose: string;
+            /** Pose Label */
+            pose_label?: string | null;
         };
         /** FingerPreviewRequest */
         FingerPreviewRequest: {
             part: components["schemas"]["Part"];
+            /**
+             * Others
+             * @default []
+             */
+            others: components["schemas"]["Part"][];
             /** Cell Profile Id */
             cell_profile_id: number;
             /**
@@ -2087,6 +2126,11 @@ export interface components {
                 number,
                 number
             ];
+            /** Span Mm */
+            span_mm?: [
+                number,
+                number
+            ] | null;
             /** Width Mm */
             width_mm: number;
             /** Depth Mm */
@@ -2139,6 +2183,11 @@ export interface components {
                 number,
                 number
             ];
+            /** Span Mm */
+            span_mm?: [
+                number,
+                number
+            ] | null;
             /**
              * Source
              * @default auto
@@ -2207,6 +2256,11 @@ export interface components {
         /** GridRequest */
         GridRequest: {
             part: components["schemas"]["Part"];
+            /**
+             * Parts
+             * @default []
+             */
+            parts: components["schemas"]["Part"][];
             /**
              * @default {
              *       "preset": "typical",
@@ -2362,6 +2416,10 @@ export interface components {
             label: string;
             /** Points */
             points: components["schemas"]["MapPoint"][];
+            /** Pose */
+            pose?: string | null;
+            /** Pose Label */
+            pose_label?: string | null;
         };
         /**
          * InHandView
@@ -2564,6 +2622,34 @@ export interface components {
             blockers: components["schemas"]["Blocker"][];
             /** Grip Force N */
             grip_force_n?: number | null;
+            /**
+             * Poses
+             * @default []
+             */
+            poses: components["schemas"]["JobPose"][];
+        };
+        /**
+         * JobPose
+         * @description One resting pose a job covers, as the job snapshots it: its likelihood and weight, its grasp, and the part as the
+         *     gripper meets it in that pose.
+         */
+        JobPose: {
+            /** Key */
+            key: string;
+            /** Label */
+            label?: string | null;
+            /** Choice */
+            choice?: number | "as_authored" | null;
+            /** Probability */
+            probability?: number | null;
+            /**
+             * Weight
+             * @default 1
+             */
+            weight: number;
+            resting?: components["schemas"]["RestingPose"] | null;
+            grasp: components["schemas"]["GraspChoice"];
+            part: components["schemas"]["Part"];
         };
         /** JobSpec */
         JobSpec: {
@@ -2579,7 +2665,9 @@ export interface components {
              *     }
              */
             task: components["schemas"]["Task"];
-            grasp: components["schemas"]["GraspChoice"];
+            grasp?: components["schemas"]["GraspChoice"] | null;
+            /** Poses */
+            poses?: components["schemas"]["PoseGrasp"][];
             /** Families */
             families?: components["schemas"]["FamilyChoice"][];
             /**
@@ -2729,6 +2817,8 @@ export interface components {
             cpus: number | null;
             /** Demo Data */
             demo_data: boolean;
+            /** Pose Cutoff */
+            pose_cutoff: number;
         };
         /**
          * MismatchPoint
@@ -2984,6 +3074,13 @@ export interface components {
                 number,
                 number
             ];
+            /** Grip Width Mm */
+            grip_width_mm?: number | null;
+            /** Grip Span Mm */
+            grip_span_mm?: [
+                number,
+                number
+            ] | null;
         };
         /**
          * PartCad
@@ -3218,6 +3315,11 @@ export interface components {
             blockers: components["schemas"]["Blocker"][];
             /** Grip Force N */
             grip_force_n?: number | null;
+            /**
+             * Poses
+             * @default []
+             */
+            poses: components["schemas"]["JobPose"][];
             /** Failed Step */
             failed_step: number | null;
         };
@@ -3239,6 +3341,11 @@ export interface components {
             rounds: number;
             /** Total Grasps */
             total_grasps: number;
+            /**
+             * Poses
+             * @default 1
+             */
+            poses: number;
         };
         /** PlannedTrial */
         PlannedTrial: {
@@ -3265,6 +3372,15 @@ export interface components {
             predicted?: boolean | null;
             /** Predicted In Tolerance */
             predicted_in_tolerance?: boolean | null;
+        };
+        /**
+         * PoseGrasp
+         * @description One resting pose the job covers (step 2) and the grasp for it (step 5).
+         */
+        PoseGrasp: {
+            /** Pose */
+            pose: number | "as_authored";
+            grasp: components["schemas"]["GraspChoice"];
         };
         /** PoseResponse */
         PoseResponse: {
@@ -3305,6 +3421,24 @@ export interface components {
             index: number;
             /** Chosen */
             chosen: boolean;
+            /** Likely */
+            likely: boolean;
+        };
+        /**
+         * PoseScore
+         * @description One design's score in one pose, at the view's error model and task.
+         */
+        PoseScore: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string | null;
+            /** Weight */
+            weight: number;
+            /** Success */
+            success: number;
+            /** Capture Radius Mm */
+            capture_radius_mm: number | null;
         };
         /**
          * PrintSelection
@@ -3358,6 +3492,8 @@ export interface components {
         ProposeGraspsRequest: {
             /** Cell Profile Id */
             cell_profile_id: number;
+            /** Pose */
+            pose?: number | "as_authored" | null;
         };
         /** RenameJobRequest */
         RenameJobRequest: {
@@ -4943,6 +5079,7 @@ export interface operations {
         parameters: {
             query?: {
                 design?: string;
+                pose?: string | null;
             };
             header?: never;
             path: {

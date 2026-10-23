@@ -73,14 +73,11 @@ export function FinalTest({ jobId, results }: { jobId: string; results: Results 
   return (
     <Card
       title="Final test"
-      subtitle={`The top designs of each search and the baselines, re-tested on the dense grid at σ ${mm(results.header.error.sigma_mm)}.${
+      subtitle={`Re-tested on the dense grid at σ ${mm(results.header.error.sigma_mm)}.${
         metricLabel ? ` Task: the share of grasps ${metricLabel}.` : ""
       }`}
     >
       <Table label="Final test" columns={columns} rows={rows} rowKey={(r) => r.label} />
-      <p className={styles.note}>
-        Tick the designs worth printing. Stock and the imprint are always tested on the robot as the baselines.
-      </p>
       {save.error && <p className={styles.error}>{save.error.message}</p>}
     </Card>
   );

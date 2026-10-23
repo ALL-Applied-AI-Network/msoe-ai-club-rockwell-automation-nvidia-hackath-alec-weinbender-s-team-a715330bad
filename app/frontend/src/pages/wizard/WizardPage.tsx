@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, unwrapAs, type Schemas } from "../../backend/client";
-import { useMeta, usePart } from "../../backend/queries";
+import { useMeta } from "../../backend/queries";
 import { Banner } from "../../components/Banner";
 import { Button, LinkButton } from "../../components/Button";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -23,18 +23,17 @@ import { SummaryRail } from "./SummaryRail";
 import type { Meta } from "./summary";
 import styles from "./Wizard.module.css";
 
-
-// What each step is for, under its title. The steps' own components hold the rest.
-const STEPS = [
-  { Component: PartStep, description: "Name the experiment and choose the part: one from the library, or a new CAD file." },
-  { Component: PoseStep, description: "How the part sits on the table before the pick." },
-  { Component: TaskStep, description: "What happens after the pick, and so what counts as a success." },
-  { Component: CellStep, description: "The saved robot, gripper and cell the fingers are designed for." },
+// A line under the title only where the title alone doesn't say what the step decides. The steps hold the rest.
+const STEPS: { Component: ComponentType; description?: string }[] = [
+  { Component: PartStep },
+  { Component: PoseStep },
+  { Component: TaskStep },
+  { Component: CellStep },
   { Component: GraspStep, description: "Which way the jaws close on the part." },
   { Component: FamiliesStep, description: "Which finger shapes are searched, and over which ranges." },
-  { Component: ErrorStep, description: "How far off the camera can be, and the offsets each design is tested at." },
-  { Component: ReviewStep, description: "Check everything, then start the search." },
-] as const;
+  { Component: ErrorStep, description: "How far off the camera can be." },
+  { Component: ReviewStep },
+];
 
 /** #/new/:step: the new-experiment wizard (docs/notes/frontend-plan.md, section 5). `?from=<job id>` starts from a copy
  *  of that experiment's inputs, at the step in the address; `?part=<id>` starts a new draft with that part, at step 2. */
@@ -92,7 +91,6 @@ function Wizard() {
 
 function WizardStep({ index }: { index: number }) {
   const { draft, gates, plan } = useDraft();
-  const part = usePart(draft.part_id);
   const navigate = useNavigate();
   const location = useLocation();
   const runError = (location.state as { runError?: string } | null)?.runError; // Run was refused for this step
@@ -108,10 +106,10 @@ function WizardStep({ index }: { index: number }) {
   const past = (n: number) => copied || index >= n; // index is 0-based, so index >= n means step n is behind
   const filled: Record<number, boolean> = {
     1: Boolean(draft.part_id),
-    2: Boolean(part.data?.pose),
+    2: (draft.poses?.length ?? 0) > 0,
     3: past(3) && Boolean(draft.task),
     4: draft.cell_profile_id != null,
-    5: Boolean(draft.grasp),
+    5: (draft.poses?.length ?? 0) > 0 && draft.poses!.every((p) => p.grasp),
     6: past(6),
     7: past(7) && Boolean(draft.error),
   };

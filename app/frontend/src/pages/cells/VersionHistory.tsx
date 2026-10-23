@@ -3,7 +3,7 @@ import type { Schemas } from "../../backend/client";
 import { Badge } from "../../components/Badge";
 import { dateTime } from "../../format";
 import { changes } from "./profileFields";
-import styles from "./Settings.module.css";
+import styles from "./Cells.module.css";
 
 type Saved = Schemas["CellProfileResponse"];
 
@@ -19,7 +19,7 @@ export function VersionHistory({ versions, viewing }: { versions: Saved[]; viewi
         return (
           <li key={v.id} className={styles.version}>
             <div className={styles.versionHead}>
-              {v.id === viewing ? <span>Version {v.version}</span> : <Link to={`/settings/cells/${v.id}`}>Version {v.version}</Link>}
+              {v.id === viewing ? <span>Version {v.version}</span> : <Link to={`/cells/${v.id}`}>Version {v.version}</Link>}
               {v.id === viewing && <Badge tone="active" label="Open" />}
               {v.id === latestId && <Badge tone="ok" label="Latest" />}
               <span className={styles.versionDate}>{dateTime(v.created)}</span>

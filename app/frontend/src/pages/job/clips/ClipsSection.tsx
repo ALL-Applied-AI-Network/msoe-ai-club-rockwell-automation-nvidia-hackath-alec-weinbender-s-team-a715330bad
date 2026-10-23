@@ -10,6 +10,7 @@ import { VideoPair, type PairVideo } from "../../../components/VideoPair";
 import { VideoPlayer } from "../../../components/VideoPlayer";
 import { dateTime, offset } from "../../../format";
 import { designLabel } from "../../../labels";
+import { scoredPoses } from "../describe";
 import type { ClipPick, Results } from "../types";
 import {
   CLIP_STATUS,
@@ -46,6 +47,8 @@ export function ClipsSection({
 }) {
   const { header } = results;
   const mock = header.sim_backend === "mock";
+  const poses = scoredPoses(results);
+  const onePose = poses ? `Filmed ${poses[0].label ?? "in the likeliest pose"} only` : undefined; // clips are the primary's
   const finalDone = results.final_table.length > 0 && results.held_maps.length > 0;
   const section = useRef<HTMLElement>(null);
   const [custom, setCustom] = useState<ClipPick | null>(null);
@@ -77,13 +80,15 @@ export function ClipsSection({
 
   if (mock || !finalDone) {
     return (
-      <Card title="Watch it in Isaac Sim" subtitle="Real footage of the grasp, filmed in the digital twin">
+      <Card title="Watch it in Isaac Sim" subtitle={onePose}>
         <p className={styles.note}>
           {mock
-            ? "Needs the Isaac sim: this experiment ran on the mock sim, which checks geometry only and films nothing. Run it on the Isaac sim to film its fingers."
-            : "Available after the final test: the clips film the final designs at points of the final grid."}
+            ? "Needs the Isaac sim. This experiment ran on the mock sim, which films nothing."
+            : "Available after the final test."}
         </p>
-        <TaskExample kind={header.task.kind} />
+        <div className={styles.example}>
+          <TaskExample kind={header.task.kind} />
+        </div>
       </Card>
     );
   }
@@ -99,7 +104,7 @@ export function ClipsSection({
 
   return (
     <section ref={section} className={styles.anchor}>
-      <Card title="Watch it in Isaac Sim" subtitle="Real footage of the grasp, filmed in the digital twin with real contact">
+      <Card title="Watch it in Isaac Sim" subtitle={onePose}>
         <div className={styles.picker}>
           <h3 className={styles.heading}>Choose a grasp</h3>
           <div className={styles.options} role="radiogroup" aria-label="Grasp to film">
@@ -121,7 +126,7 @@ export function ClipsSection({
             ))}
           </div>
           <p className={styles.note}>
-            Or click any point on the held maps above. {designLabel(lead)} and stock are filmed at the same grasp.
+            Or click a point on the held maps. {designLabel(lead)} and stock are filmed at the same grasp.
           </p>
         </div>
 
@@ -142,7 +147,7 @@ export function ClipsSection({
             )}
             {!notReady && pending.length > 0 && (
               <span className={styles.note}>
-                About 12 s a clip. Clips wait behind a running job's batches, so record once it has finished.
+                About 12 s a clip. Clips wait behind a running job, so record once it has finished.
               </span>
             )}
           </div>
@@ -290,7 +295,7 @@ function TaskExample({ kind }: { kind: "drop" | "place" | "insert" }) {
       src={`/task-examples/${kind}.mp4`}
       poster={`/task-examples/${kind}.jpg`}
       label={`An example of the pick and ${kind} task in Isaac Sim, with the robot's stock fingers and a 10 mm cube.`}
-      caption="Example in Isaac Sim: the robot's stock fingers and a 10 mm cube, not this experiment. Your part and fingers will differ."
+      caption="Example only: the stock fingers and a 10 mm cube, not this experiment."
     />
   );
 }

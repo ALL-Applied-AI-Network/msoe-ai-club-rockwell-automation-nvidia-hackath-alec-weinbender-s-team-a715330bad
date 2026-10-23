@@ -1,5 +1,6 @@
 import { Card } from "../../../components/Card";
 import { Stat } from "../../../components/Stat";
+import { Table, type Column } from "../../../components/Table";
 import type { Schemas } from "../../../backend/client";
 import { mm, percent, points } from "../../../format";
 import { designLabel } from "../../../labels";
@@ -7,8 +8,10 @@ import type { Results } from "../types";
 import styles from "../JobPage.module.css";
 
 type Score = Schemas["DesignScore"];
+type PoseScore = Schemas["PoseScore"];
 
-/** The one-glance answer: the best design against the stock fingers and the imprint, at the target camera error. */
+/** The headline: the best design against the stock fingers and the imprint at the target camera error, with how far
+ *  off centre each still catches the part. */
 export function Summary({ results }: { results: Results }) {
   const summary = results.summary!;
   const { best, stock, imprint, task_metric_label: metricLabel } = summary;
@@ -27,14 +30,9 @@ export function Summary({ results }: { results: Results }) {
 
   return (
     <Card
-      title="Summary"
-      subtitle={`At the target camera error, σ ${mm(sigma)}: the share of grasps each finger holds, and how far off centre it still catches the part.`}
+      title={`Share of grasps held at σ ${mm(sigma)}`}
+      aside={<span className={styles.note}>{summary.designs_evaluated} designs evaluated</span>}
     >
-      <p className={styles.lead}>
-        {designLabel(best.label)} holds {percent(best.success)} of grasps
-        {stock ? `, against ${percent(stock.success)} for the stock fingers` : ""}
-        {imprint ? ` and ${percent(imprint.success)} for the imprint` : ""}.
-      </p>
       <div className={styles.summary}>
         <Stat size="lg" tone="acc" label={`Best design, ${designLabel(best.label)}`} value={percent(best.success)} detail={detail(best)} />
         {stock && (
@@ -73,8 +71,36 @@ export function Summary({ results }: { results: Results }) {
             }
           />
         )}
-        <Stat size="lg" label="Designs evaluated" value={String(summary.designs_evaluated)} detail="across every search" />
       </div>
+      {best.poses && best.poses.length > 1 && <PoseTable best={best} stock={stock} imprint={imprint} />}
     </Card>
   );
+}
+
+/** Each pose's share of the score and each design's success in it: the headline numbers are these, weighted. */
+function PoseTable({ best, stock, imprint }: { best: Score; stock: Score | null; imprint: Score | null }) {
+  const cell = (score: Score | null, key: string) => {
+    const pose = score?.poses?.find((p) => p.key === key);
+    if (!pose) return "Not tested";
+    return (
+      <>
+        {percent(pose.success)}
+        <span className={styles.note}>
+          {pose.capture_radius_mm == null ? " no capture radius" : ` capture radius ${mm(pose.capture_radius_mm)}`}
+        </span>
+      </>
+    );
+  };
+  const columns: Column<PoseScore>[] = [
+    { key: "pose", header: "Resting pose", render: (p) => capitalise(p.label ?? "unnamed pose") },
+    { key: "share", header: "Share of the score", align: "right", render: (p) => percent(p.weight) },
+    { key: "best", header: designLabel(best.label), render: (p) => cell(best, p.key) },
+    ...(stock ? [{ key: "stock", header: "Stock fingers", render: (p: PoseScore) => cell(stock, p.key) }] : []),
+    ...(imprint ? [{ key: "imprint", header: "Imprint", render: (p: PoseScore) => cell(imprint, p.key) }] : []),
+  ];
+  return <Table label="Success in each resting pose" columns={columns} rows={best.poses!} rowKey={(p) => p.key} />;
+}
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

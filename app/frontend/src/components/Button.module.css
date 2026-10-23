@@ -6,7 +6,7 @@
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   font: inherit;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
@@ -47,13 +47,13 @@
 }
 
 .secondary {
-  background: var(--surface-2);
+  background: transparent;
   color: var(--ink);
   border-color: var(--line-strong);
 }
 
 .secondary:not(:disabled):hover {
-  background: var(--surface-3);
+  background: var(--surface-2);
   border-color: var(--faint);
 }
 

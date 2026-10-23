@@ -47,6 +47,8 @@ export function JobValidationPage() {
       <PhysicalBadge status={detail.card.physical_badge} />
     </div>
   );
+  // Test plans, predictions and logged trials cover the primary pose only, for now
+  const primary = detail.plan.poses.length > 1 ? detail.plan.poses[0].label : null;
   const title = `${detail.name} (${detail.experiment_id})`;
   const back = (
     <LinkButton variant="secondary" to="/validation">
@@ -66,8 +68,7 @@ export function JobValidationPage() {
             </LinkButton>
           }
         >
-          The final test labels the designs (D1, D2, and so on) that get printed and tested. This experiment is{" "}
-          {detail.card.status}.
+          This experiment is {detail.card.status}.
         </EmptyState>
       </Page>
     );
@@ -84,16 +85,13 @@ export function JobValidationPage() {
   const task = detail.spec.task.kind;
 
   return (
-    <Page
-      title={title}
-      description="Print the best designs, test them on the robot against the stock fingers and the imprint, and see how far the sim's predictions hold."
-      actions={back}
-    >
+    <Page title={title} description="Physical validation" actions={back}>
       {header}
       {loading && <Skeleton height={320} />}
       {failed?.error && (
         <ErrorState title="Couldn't load the validation data" message={failed.error.message} onRetry={() => failed.refetch()} />
       )}
+      {primary && <p className={styles.note}>Validated {primary} only: the other resting poses aren't tested on the robot yet.</p>}
       {!loading && !failed && selection.data && (
         <div className={styles.stages}>
           <PrintSelectionStage jobId={id} finalTable={finalTable} selection={selection.data} />

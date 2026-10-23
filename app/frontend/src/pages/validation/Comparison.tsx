@@ -104,8 +104,7 @@ export function Comparison({
   if (!logged) {
     return (
       <EmptyState title="No trials logged yet">
-        Once outcomes are uploaded, this shows each design's measured success against the sim's prediction, and where
-        on the grid they disagree.
+        Upload outcomes to compare each design with the sim.
       </EmptyState>
     );
   }
@@ -182,7 +181,7 @@ function MismatchMap({ mismatches, experimentId }: { mismatches: Mismatch[]; exp
       <div className={styles.mapHeader}>
         <div>
           <h3 className={styles.panelTitle}>Where the sim and the robot disagree</h3>
-          <p className={styles.note}>Every tested offset, seen from above, marked by how the sim's outcome compares with the robot's.</p>
+          <p className={styles.note}>Every tested offset, from above, marked by whether the sim and the robot agree.</p>
         </div>
         <div className={styles.mapControls}>
           {designs.length > 1 && (

@@ -32,13 +32,12 @@ export function Progress({ job, results }: { job: JobDetail; results: Results | 
     <>
       {waiting && (
         <Banner tone="warn" title="Waiting for the GPU connection">
-          The connection to the sim dropped, usually the VPN. The job waits for it and carries on by itself once it's
-          back; nothing needs restarting. {session?.message}
+          The connection to the sim dropped, usually the VPN. The job continues by itself once it's back.{" "}
+          {session?.message}
         </Banner>
       )}
       <Card
         title="Progress"
-        subtitle="It runs in the background on this computer: you can close the page and come back."
         aside={<span className={styles.note}>{card.status === "finalizing" ? "Final test" : `Round ${of(card.round, card.n_rounds)}`}</span>}
       >
         <div className={styles.stats}>
@@ -53,12 +52,9 @@ export function Progress({ job, results }: { job: JobDetail; results: Results | 
           label="Designs evaluated"
           tone={waiting ? "warn" : "acc"}
         />
-        {card.status === "queued" && <p className={styles.note}>The worker is starting.</p>}
+        {card.status === "queued" && <p className={styles.note}>Starting the worker</p>}
         {card.status === "finalizing" && (
-          <p className={styles.note}>
-            Final test: the top designs and the baselines, re-tested on the dense grid. The results appear here when it
-            finishes.
-          </p>
+          <p className={styles.note}>Re-testing the top designs and the baselines on the dense grid.</p>
         )}
         {compute.data?.managed && !session && (
           <p className={styles.warn}>
@@ -81,12 +77,12 @@ export function SearchCard({ searches, provisional = false }: { searches: Search
       title="Search progress"
       subtitle={
         provisional
-          ? "So far, from the 81-point search grid. The final test re-checks the top designs on 321 points and can change their order."
-          : "Best success so far against designs evaluated, on the search grid."
+          ? "Provisional, on the 81-point search grid. The final test re-checks the top designs on 321 points and can change their order."
+          : undefined
       }
     >
       {withData.length === 0 ? (
-        <p className={styles.note}>No designs evaluated yet: the first round is running.</p>
+        <p className={styles.note}>The first round is running.</p>
       ) : (
         <SearchProgressChart
           searches={withData.map((s) => ({
@@ -101,7 +97,7 @@ export function SearchCard({ searches, provisional = false }: { searches: Search
                 `${family(s.family)}: best ${s.best == null ? "none yet" : percent(s.best)} after ${s.designs_evaluated} of ${s.budget} designs.`,
             )
             .join(" ")}
-          note="Round 0 tries the starting designs; after the marked line, the Bayesian search picks each batch from what it has learnt."
+          note="Before the marked line: the starting designs. After it: Bayesian search."
         />
       )}
     </Card>

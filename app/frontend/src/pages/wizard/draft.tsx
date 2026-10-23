@@ -7,8 +7,12 @@ import { api, unwrapAs, type Schemas } from "../../backend/client";
 // Run, so it lives here, and in localStorage so a reload doesn't lose a half-filled wizard.
 
 export type Spec = Schemas["JobSpec"];
-/** The spec so far, plus the experiment it was duplicated from (sent with Run; the plan ignores it). */
-export type Draft = Partial<Spec> & { duplicated_from?: string | null };
+export type PoseChoice = Schemas["PoseGrasp"]["pose"];
+/** A resting pose ticked in step 2, and the grasp chosen for it in step 5 (none yet until then). */
+export type DraftPose = { pose: PoseChoice; grasp?: Schemas["GraspChoice"] };
+/** The spec so far, plus the experiment it was duplicated from (sent with Run; the plan ignores it). Poses are listed
+ *  most likely first; the spec's legacy single `grasp` is never used. */
+export type Draft = Omit<Partial<Spec>, "grasp" | "poses"> & { poses?: DraftPose[]; duplicated_from?: string | null };
 export type Plan = Schemas["JobPlan"];
 
 /** Whether a step lets the user go on: steps report it, the step list and the Next button read it. */
@@ -18,6 +22,8 @@ type DraftContext = {
   draft: Draft;
   /** Merges fields into the draft. */
   update: (patch: Draft) => void;
+  /** Sets (or clears) one pose's grasp, against the latest draft: every pose's grasp chooser can set its own at once. */
+  setPoseGrasp: (pose: PoseChoice, grasp: Schemas["GraspChoice"] | undefined) => void;
   /** Starts again, from `next` (a duplicated spec, a part from the library) or empty. */
   reset: (next?: Draft) => void;
   /** The draft as a full job spec, once every required field is set; null before. */
@@ -33,14 +39,19 @@ const STORAGE_KEY = "auto-grasp:wizard-draft";
 const Context = createContext<DraftContext | null>(null);
 
 export function DraftProvider({ children, initial }: { children: ReactNode; initial?: Draft }) {
-  const [draft, setDraft] = useState<Draft>(() => initial ?? load() ?? {});
+  const [draft, setDraft] = useState<Draft>(() => normalise(initial ?? load() ?? {}));
   const [gates, setGates] = useState<Partial<Record<number, Gate>>>({});
 
   useEffect(() => save(draft), [draft]);
 
   const update = useCallback((patch: Draft) => setDraft((current) => ({ ...current, ...patch })), []);
+  const setPoseGrasp = useCallback(
+    (pose: PoseChoice, grasp: Schemas["GraspChoice"] | undefined) =>
+      setDraft((current) => ({ ...current, poses: current.poses?.map((p) => (p.pose === pose ? { ...p, grasp } : p)) })),
+    [],
+  );
   const reset = useCallback((next: Draft = {}) => {
-    setDraft(next);
+    setDraft(normalise(next));
     setGates({});
   }, []);
   const setGate = useCallback(
@@ -64,6 +75,7 @@ export function DraftProvider({ children, initial }: { children: ReactNode; init
   const value: DraftContext = {
     draft,
     update,
+    setPoseGrasp,
     reset,
     spec,
     plan: { data: planQuery.data, isFetching: planQuery.isFetching, error: planQuery.error },
@@ -98,9 +110,17 @@ export function clearStoredDraft() {
 }
 
 function complete(draft: Draft): Spec | null {
-  const { part_id, cell_profile_id, task, grasp, error, seed } = draft;
-  if (!part_id || cell_profile_id == null || !task || !grasp || !error || seed == null) return null;
-  return { ...draft, part_id, cell_profile_id, task, grasp, error, seed };
+  const { part_id, cell_profile_id, task, poses, error, seed } = draft;
+  if (!part_id || cell_profile_id == null || !task || !error || seed == null) return null;
+  if (!poses?.length || poses.some((p) => !p.grasp)) return null;
+  return { ...draft, part_id, cell_profile_id, task, error, seed, poses: poses.map((p) => ({ pose: p.pose, grasp: p.grasp! })) };
+}
+
+/** A draft as the wizard holds it: a single legacy `grasp` (a stored draft from before poses, or a copied experiment
+ *  whose pose can't be found any more) is dropped, so steps 2 and 5 ask again. */
+function normalise(draft: Draft & { grasp?: unknown }): Draft {
+  const { grasp: _legacy, ...rest } = draft;
+  return rest;
 }
 
 function load(): Draft | null {

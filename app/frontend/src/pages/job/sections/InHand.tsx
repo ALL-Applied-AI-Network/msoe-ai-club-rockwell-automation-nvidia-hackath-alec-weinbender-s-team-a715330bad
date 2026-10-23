@@ -15,7 +15,7 @@ export function InHand({ results }: { results: Results }) {
   return (
     <Card
       title="How the part sits in the hand"
-      subtitle={`${designLabel(view.label)}'s held grasps: how far the part ended up from where the place or insert expects it, weighted by how likely each grasp is.`}
+      subtitle={`${designLabel(view.label)}'s held grasps: where the part sits against where the task expects it, weighted by likelihood.`}
     >
       <div className={styles.stats}>
         <Stat label="Held grasps" value={String(view.n_held)} />

@@ -40,9 +40,8 @@ export function Physical({ jobId, results }: { jobId: string; results: Results }
   return (
     <Card title="Physical validation" aside={<PhysicalBadge status={physical.badge} />}>
       {physical.designs.length === 0 ? (
-        <EmptyState title="No physical trials yet: choose designs to print" action={link}>
-          Print the best designs, test them on the robot against the stock fingers and the imprint, and the measured
-          success shows here beside the prediction.
+        <EmptyState title="No physical trials yet" action={link}>
+          Measured success shows here beside the prediction.
         </EmptyState>
       ) : (
         <>

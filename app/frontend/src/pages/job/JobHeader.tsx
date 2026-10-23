@@ -12,7 +12,7 @@ import { KeyValues } from "../../components/KeyValues";
 import { Tabs } from "../../components/Tabs";
 import { CAVEATS } from "../../caveats";
 import { dateTime } from "../../format";
-import { errorText, simPath, taskText } from "./describe";
+import { errorText, posesText, simPath, taskText } from "./describe";
 import { useRefresh } from "./queries";
 import type { Results } from "./types";
 import styles from "./JobPage.module.css";
@@ -54,7 +54,7 @@ export function JobHeader({ job, results }: { job: JobDetail; results: Results |
         {renaming === null ? (
           <h1 className={styles.title}>
             {card.name}
-            <span className={styles.id}>({card.experiment_id})</span>
+            <code className={styles.id}>{card.experiment_id}</code>
             <Button variant="ghost" size="sm" onClick={() => setRenaming(card.name)}>
               Rename
             </Button>
@@ -74,14 +74,13 @@ export function JobHeader({ job, results }: { job: JobDetail; results: Results |
                 onChange={setRenaming}
                 autoFocus
                 error={rename.error?.message}
-                hint="The ID never changes: printed fingers and logged trials refer to it."
               />
             </div>
             <Button type="submit" disabled={!renaming.trim() || rename.isPending}>
-              Save the name
+              Save
             </Button>
             <Button variant="secondary" onClick={() => setRenaming(null)}>
-              Keep the old name
+              Cancel
             </Button>
           </form>
         )}
@@ -117,13 +116,14 @@ export function JobHeader({ job, results }: { job: JobDetail; results: Results |
             title={path.exploratory ? CAVEATS.gpuCopies : `Sim path: ${path.detail}`}
           />
         )}
-        <PhysicalBadge status={card.physical_badge} />
+        {card.physical_badge !== "none" && <PhysicalBadge status={card.physical_badge} />}
       </div>
 
       <KeyValues
         inline
         items={[
           { label: "Part", value: card.part_name ?? "Unknown part" },
+          ...(job.plan.poses.length > 1 ? [{ label: "Resting poses", value: posesText(job.plan.poses) }] : []),
           ...(header
             ? [
                 { label: "Task", value: taskText(header.task, meta.data) },
@@ -167,7 +167,7 @@ export function JobHeader({ job, results }: { job: JobDetail; results: Results |
         onConfirm={() => cancel.mutate()}
         onClose={() => setConfirming(false)}
       >
-        It stops after the round it's on now finishes. Everything done so far is kept, and Resume continues from there.
+        It stops after the current round. Everything done so far is kept, and Resume continues from there.
       </ConfirmDialog>
     </header>
   );

@@ -49,7 +49,7 @@ export function PrintedFingersStage({
           ? { tone: "ok", label: "All printed" }
           : { tone: done ? "active" : "neutral", label: `${done} of ${toPrint.length} printed` }
       }
-      description="Record each finger once it's printed. Engrave the ID the app gives it on the finger: logged trials refer to it."
+      description="Engrave each finger's ID on it: logged trials refer to it."
     >
       {missing.length > 0 && (
         <p className={styles.note}>Still to print: {missing.map(designLabel).join(", ")}.</p>

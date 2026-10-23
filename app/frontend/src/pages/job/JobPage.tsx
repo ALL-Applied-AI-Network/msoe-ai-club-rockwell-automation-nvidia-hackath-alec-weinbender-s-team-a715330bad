@@ -5,7 +5,6 @@ import type { Schemas } from "../../backend/client";
 import { Banner } from "../../components/Banner";
 import { canResume, isActive } from "../../components/Badges";
 import { Button, LinkButton } from "../../components/Button";
-import { Card } from "../../components/Card";
 import { Page } from "../../components/Page";
 import { EmptyState, ErrorState, Skeleton } from "../../components/States";
 import { mm } from "../../format";
@@ -145,13 +144,9 @@ export function JobPage() {
       {base && !done && (
         <div className={styles.sections}>
           {canResume(status) && <SearchCard searches={base.run.searches} />}
-          <Card title="Results">
-            <EmptyState title="Available after the final test">
-              The summary, the curves, the held maps, the best finger and its downloads appear here when the final test
-              re-checks the top designs.
-              {status === "failed" || status === "cancelled" || status === "interrupted" ? " Resume the experiment to get there." : ""}
-            </EmptyState>
-          </Card>
+          <EmptyState title="Results appear after the final test">
+            {canResume(status) ? "Resume the experiment to get there." : undefined}
+          </EmptyState>
           <RunDetails jobId={id} results={base} />
         </div>
       )}

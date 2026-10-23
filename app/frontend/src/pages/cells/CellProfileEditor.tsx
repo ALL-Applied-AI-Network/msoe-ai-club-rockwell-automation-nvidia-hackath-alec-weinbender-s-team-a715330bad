@@ -16,7 +16,7 @@ import { count, dateTime } from "../../format";
 import { PlaceholderMark } from "./PlaceholderMark";
 import { LABELS, placeholders, saveError, type Group, type ProfileKey } from "./profileFields";
 import { VersionHistory } from "./VersionHistory";
-import styles from "./Settings.module.css";
+import styles from "./Cells.module.css";
 
 type Saved = Schemas["CellProfileResponse"];
 type Profile = Schemas["CellProfile"];
@@ -36,7 +36,7 @@ class SaveFailed extends Error {
   }
 }
 
-/** #/settings/cells/:id: one cell profile version, edited as a whole and saved as the profile's next version. The id is
+/** #/cells/:id: one cell profile version, edited as a whole and saved as the profile's next version. The id is
  *  a version's, so after a save the page moves to the new version's address. Fields still in `to_confirm` are marked
  *  as placeholders until someone marks them measured. */
 export function CellProfileEditor() {
@@ -81,7 +81,7 @@ export function CellProfileEditor() {
     onSuccess: (next) => {
       void queryClient.invalidateQueries({ queryKey: ["cell-profiles"] });
       leaving.current = true;
-      navigate(`/settings/cells/${next.id}`, { replace: true });
+      navigate(`/cells/${next.id}`, { replace: true });
     },
   });
   useEffect(() => {
@@ -98,8 +98,8 @@ export function CellProfileEditor() {
   if (saved.isError || !draft) {
     return (
       <ErrorState
-        title="Couldn't load this cell profile"
-        message={saved.error?.message ?? "Unknown profile."}
+        title="Couldn't load this cell"
+        message={saved.error?.message ?? "Unknown cell."}
         onRetry={() => saved.refetch()}
       />
     );
@@ -123,8 +123,8 @@ export function CellProfileEditor() {
     <div className={styles.section}>
       <div className={styles.editorHead}>
         <div>
-          <Link to="/settings/cells" className={styles.note}>
-            All cell profiles
+          <Link to="/cells" className={styles.note}>
+            All cells
           </Link>
           <h2 className={styles.editorTitle}>{saved.data.name}</h2>
           <p className={styles.subtle}>
@@ -143,7 +143,7 @@ export function CellProfileEditor() {
           tone="info"
           title={`You're looking at version ${saved.data.version} of ${latest.version}.`}
           action={
-            <LinkButton size="sm" to={`/settings/cells/${latest.id}`}>
+            <LinkButton size="sm" to={`/cells/${latest.id}`}>
               Open version {latest.version}
             </LinkButton>
           }
@@ -570,7 +570,6 @@ function AdvancedSim({ sim, onChange, error, forceOpen }: { sim: Sim; onChange: 
   return (
     <Card
       title="Advanced sim settings"
-      subtitle="The sim server is started with its own settings; a job warns where they differ from these."
       aside={
         <Button variant="ghost" size="sm" onClick={() => setOpen(!shownOpen)} aria-expanded={shownOpen}>
           {shownOpen ? "Hide" : "Show"}
@@ -623,7 +622,7 @@ function AdvancedSim({ sim, onChange, error, forceOpen }: { sim: Sim; onChange: 
                 step={1}
                 value={shown(sim.envs)}
                 onChange={(v) => onChange({ envs: required(v) })}
-                hint="Parallel environments set a job's batch size: 64 environments gives about 8 designs per round. The sim server is started with its own flags, though, and a job warns when they differ."
+                hint="64 environments is about 8 designs per round"
               />
             </div>
           </div>

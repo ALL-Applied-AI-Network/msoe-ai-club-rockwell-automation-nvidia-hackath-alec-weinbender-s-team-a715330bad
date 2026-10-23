@@ -4,7 +4,6 @@ import { useMeta } from "../../../backend/queries";
 import { NumberInput } from "../../../components/Field";
 import { RadioCards } from "../../../components/RadioCards";
 import { Select } from "../../../components/Select";
-import { Table } from "../../../components/Table";
 import { VideoPlayer } from "../../../components/VideoPlayer";
 import { quantity } from "../../../format";
 import { useDraft, useStepGate } from "../draft";
@@ -78,7 +77,11 @@ export function TaskStep() {
             value={task.kind}
             onChange={chooseKind}
             onHighlight={setHighlighted}
-            options={kinds.map((k) => ({ value: k.name, label: k.label, description: TASKS[k.name].success }))}
+            options={kinds.map((k) => ({
+              value: k.name,
+              label: k.label,
+              description: `${TASKS[k.name].success}. Tends to favour ${lowerFirst(TASKS[k.name].favours)}.`,
+            }))}
           />
         </div>
         <VideoPlayer
@@ -88,24 +91,12 @@ export function TaskStep() {
           label={`${shownLabel}, in Isaac Sim. ${TASKS[shown].video}`}
           caption={
             <>
-              Example in Isaac Sim: the robot's stock fingers and a 10 mm cube. Your part and fingers will differ. The sim
-              scores the grasp, the lift, any transport move and how the part sits in the hand, not the drop, place or
-              insert themselves: a place or insert counts when the part sits in the hand within the tolerances.
+              Stock fingers and a 10 mm cube. The sim scores the grasp, the lift, any transport move and how the part sits
+              in the hand, not the drop, place or insert itself.
             </>
           }
         />
       </div>
-
-      <Table
-        label="What each task counts as a success"
-        rowKey={(row) => row.name}
-        rows={kinds}
-        columns={[
-          { key: "task", header: "Task", render: (k) => k.label },
-          { key: "success", header: "Counts as success", render: (k) => TASKS[k.name].success },
-          { key: "favours", header: "Tends to favour", render: (k) => TASKS[k.name].favours },
-        ]}
-      />
 
       <div className={styles.fields}>
         {needsOffset && (
@@ -117,7 +108,7 @@ export function TaskStep() {
             value={task.offset_tolerance_mm}
             onChange={(value) => setTask({ offset_tolerance_mm: value })}
             error={offsetOk ? undefined : "Needs a tolerance above 0 mm"}
-            hint="How far the part may sit off centre in the hand and still count."
+            hint="How far off centre in the hand still counts."
           />
         )}
         {needsTilt && (
@@ -129,7 +120,7 @@ export function TaskStep() {
             value={task.tilt_tolerance_deg}
             onChange={(value) => setTask({ tilt_tolerance_deg: value })}
             error={tiltOk ? undefined : "Needs a tolerance above 0°"}
-            hint="How far the part may tilt in the hand and still go in."
+            hint="How far the part may tilt in the hand."
           />
         )}
         <Select
@@ -143,14 +134,15 @@ export function TaskStep() {
               label: `${t.label}: ${quantity(t.distance_mm, "mm")} in ${quantity(t.move_s, "s")}`,
             })),
           ]}
-          hint="Optional. A quick move after the lift, to test how secure the grip is."
+          hint="A quick move after the lift, to test the grip."
         />
       </div>
 
-      <p className={styles.note}>
-        The task changes which finger wins, not how the search runs, and it can be changed afterwards on the results page
-        without simulating again.
-      </p>
+      <p className={styles.note}>You can change the task later on the results page without simulating again.</p>
     </>
   );
+}
+
+function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
 }

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, unwrapAs, type Schemas } from "../../../backend/client";
 import { meshUrl, usePart } from "../../../backend/queries";
 import { Badge } from "../../../components/Badge";
@@ -9,9 +9,11 @@ import { Checkbox, NumberInput } from "../../../components/Field";
 import { KeyValues } from "../../../components/KeyValues";
 import { PartViewer, type GraspArrow, type PartPick } from "../../../components/PartViewer";
 import { RadioCards } from "../../../components/RadioCards";
+import { Segmented } from "../../../components/Segmented";
 import { ErrorState, Skeleton } from "../../../components/States";
-import { degrees, mm, quantity } from "../../../format";
-import { useDraft, useStepGate } from "../draft";
+import { degrees, mm, percent, quantity } from "../../../format";
+import { useDraft, useStepGate, type DraftPose, type Gate, type PoseChoice } from "../draft";
+import { capitalise, findPose, usePoses, weightOf } from "../poses";
 import { useDebounced } from "./useDebounced";
 import styles from "./designSteps.module.css";
 
@@ -23,91 +25,160 @@ type Pick = Schemas["GraspPick"];
 
 const STEP = 5;
 
-/** Step 5: which way the jaws close on the part (frontend-plan.md, step 5). The app proposes the best directions for the
- *  pose and the cell's stroke; the first is chosen unless the user picks another, or picks two faces on the part. */
+/** Step 5: which way the jaws close on the part, for each pose ticked in step 2 (frontend-plan.md, step 5). Every pose's
+ *  chooser stays mounted, so each proposes and checks its own grasp; the tabs show one at a time. */
 export function GraspStep() {
-  const { draft, update } = useDraft();
+  const { draft } = useDraft();
   const part = usePart(draft.part_id);
+  const poses = usePoses(draft.part_id);
+  const ticked = draft.poses ?? [];
+  const [active, setActive] = useState<string | null>(null);
+  const [gates, setGates] = useState<Record<string, Gate>>({});
+  const onGate = useCallback(
+    (key: string, gate: Gate) =>
+      setGates((current) => (current[key]?.ok === gate.ok && current[key]?.reason === gate.reason ? current : { ...current, [key]: gate })),
+    [],
+  );
+
+  const labelOf = (d: DraftPose) => capitalise(findPose(poses.data, d.pose)?.label ?? "pose");
+  const failing = ticked.find((d) => !gates[String(d.pose)]?.ok);
+  const gate: Gate =
+    ticked.length === 0
+      ? { ok: false, reason: "Tick a resting pose in step 2 first" }
+      : failing
+        ? { ok: false, reason: (ticked.length > 1 ? `${labelOf(failing)}: ` : "") + (gates[String(failing.pose)]?.reason ?? "Choose a closing direction") }
+        : { ok: true };
+  useStepGate(STEP, gate);
+
+  if (!draft.part_id || draft.cell_profile_id == null) {
+    return <Banner tone="warn">Choose the part (step 1) and the cell (step 4) first.</Banner>;
+  }
+  if (part.isPending || poses.isPending) return <Skeleton height={360} />;
+  if (part.isError) return <ErrorState title="Couldn't load the part" message={part.error.message} onRetry={() => void part.refetch()} />;
+  if (ticked.length === 0) {
+    return (
+      <Banner tone="warn" action={<LinkButton to="/new/pose">Choose the resting poses</LinkButton>}>
+        The grasp depends on how the part sits on the table: tick its resting poses in step 2 first.
+      </Banner>
+    );
+  }
+
+  const shown = ticked.find((d) => String(d.pose) === active) ?? ticked[0];
+  const missing = ticked.filter((d) => !gates[String(d.pose)]?.ok);
+
+  return (
+    <div className={styles.stack}>
+      {ticked.length > 1 && (
+        <div className={styles.row}>
+          <Segmented
+            label="Resting pose"
+            value={String(shown.pose)}
+            onChange={setActive}
+            options={ticked.map((d) => ({
+              value: String(d.pose),
+              label: `${labelOf(d)}, ${percent(weightOf(d.pose, ticked, poses.data ?? []))}`,
+            }))}
+          />
+          {missing.length > 0 && <span className={styles.note}>Needs a grasp: {missing.map((d) => labelOf(d).toLowerCase()).join(", ")}.</span>}
+        </div>
+      )}
+      {ticked.map((d) => (
+        <PoseGrasp
+          key={String(d.pose)}
+          partId={part.data.id}
+          partName={part.data.name}
+          pose={d.pose}
+          poseLabel={findPose(poses.data, d.pose)?.label ?? "pose"}
+          grasp={d.grasp}
+          active={d.pose === shown.pose}
+          onGate={onGate}
+        />
+      ))}
+    </div>
+  );
+}
+
+type PoseGraspProps = {
+  partId: string;
+  partName: string;
+  pose: PoseChoice;
+  poseLabel: string;
+  grasp: Choice | undefined;
+  active: boolean; // the shown tab; the others keep running but draw nothing
+  onGate: (key: string, gate: Gate) => void;
+};
+
+/** One pose's grasp: the proposals for the part in that pose, or two faces picked on it. */
+function PoseGrasp({ partId, partName, pose, poseLabel, grasp, active, onGate }: PoseGraspProps) {
+  const { draft, setPoseGrasp } = useDraft();
   const profileId = draft.cell_profile_id;
-  const pose = part.data?.pose;
-  const ready = Boolean(draft.part_id) && profileId != null && Boolean(pose);
+  const ready = profileId != null;
+  const update = useCallback((next: Choice) => setPoseGrasp(pose, next), [setPoseGrasp, pose]);
 
   const proposals = useQuery({
-    queryKey: ["grasps", draft.part_id, profileId, pose?.label, pose?.rotation],
+    queryKey: ["grasps", partId, profileId, pose],
     queryFn: () =>
       unwrapAs<Proposals>(
         api.POST("/api/parts/{part_id}/grasps", {
-          params: { path: { part_id: draft.part_id! } },
-          body: { cell_profile_id: profileId! },
+          params: { path: { part_id: partId } },
+          body: { cell_profile_id: profileId!, pose },
         }),
       ),
     enabled: ready,
   });
 
-  const [manual, setManual] = useState(draft.grasp?.source === "manual");
-  const [angle, setAngle] = useState<number | null>(draft.grasp?.source === "manual" ? draft.grasp.angle_deg : null);
-  const [picks, setPicks] = useState<Pick[]>(draft.grasp?.picks ?? []);
-  const [fixHeight, setFixHeight] = useState(draft.grasp?.grip_height_mm != null);
-  const [height, setHeight] = useState<number | null>(draft.grasp?.grip_height_mm ?? null);
+  const [manual, setManual] = useState(grasp?.source === "manual");
+  const [angle, setAngle] = useState<number | null>(grasp?.source === "manual" ? grasp.angle_deg : null);
+  const [picks, setPicks] = useState<Pick[]>(grasp?.picks ?? []);
+  const [fixHeight, setFixHeight] = useState(grasp?.grip_height_mm != null);
+  const [height, setHeight] = useState<number | null>(grasp?.grip_height_mm ?? null);
   const gripHeight = fixHeight ? height : null;
 
   const candidates = proposals.data?.candidates ?? [];
-  const chosen = manual ? -1 : candidates.findIndex((c) => draft.grasp?.source === "auto" && sameDirection(c, draft.grasp));
+  const chosen = manual ? -1 : candidates.findIndex((c) => grasp?.source === "auto" && sameDirection(c, grasp));
 
   // An automatic choice follows the proposals: the first by default, or again the first when the pose changed under it.
   useEffect(() => {
     if (manual || candidates.length === 0 || chosen >= 0) return;
-    update({ grasp: autoChoice(candidates[0], gripHeight) });
+    update(autoChoice(candidates[0], gripHeight));
   }, [manual, candidates, chosen, gripHeight, update]);
 
   // The grip height lock applies to an automatic choice directly; a manual one goes through the check below.
   useEffect(() => {
-    if (manual || !draft.grasp || draft.grasp.source !== "auto" || draft.grasp.grip_height_mm === gripHeight) return;
-    update({ grasp: { ...draft.grasp, grip_height_mm: gripHeight } });
-  }, [manual, draft.grasp, gripHeight, update]);
+    if (manual || !grasp || grasp.source !== "auto" || grasp.grip_height_mm === gripHeight) return;
+    update({ ...grasp, grip_height_mm: gripHeight });
+  }, [manual, grasp, gripHeight, update]);
 
   const request = useDebounced(
     manual && profileId != null && (picks.length > 0 || angle != null)
-      ? { cell_profile_id: profileId, angle_deg: picks.length > 0 ? null : angle, picks, grip_height_mm: gripHeight }
+      ? { cell_profile_id: profileId, pose, angle_deg: picks.length > 0 ? null : angle, picks, grip_height_mm: gripHeight }
       : null,
     250,
   );
   const check = useQuery({
-    queryKey: ["grasp-check", draft.part_id, request],
+    queryKey: ["grasp-check", partId, request],
     queryFn: () =>
-      unwrapAs<Check>(
-        api.POST("/api/parts/{part_id}/grasps/check", { params: { path: { part_id: draft.part_id! } }, body: request! }),
-      ),
+      unwrapAs<Check>(api.POST("/api/parts/{part_id}/grasps/check", { params: { path: { part_id: partId } }, body: request! })),
     enabled: request !== null && ready,
   });
 
   // A manual choice that isn't blocked goes into the spec as the check returned it.
   useEffect(() => {
     if (!manual || !check.data || check.data.verdict === "blocked") return;
-    if (JSON.stringify(check.data.choice) !== JSON.stringify(draft.grasp)) update({ grasp: check.data.choice });
-  }, [manual, check.data, draft.grasp, update]);
+    if (JSON.stringify(check.data.choice) !== JSON.stringify(grasp)) update(check.data.choice);
+  }, [manual, check.data, grasp, update]);
 
   const nothingFits = proposals.data?.nothing_fits;
-  const gate = gateFor({ ready, nothingFits: nothingFits?.reason, manual, picked: picks.length > 0 || angle != null, check: check.data, grasp: draft.grasp });
-  useStepGate(STEP, gate);
+  const gate = gateFor({ ready, nothingFits: nothingFits?.reason, manual, picked: picks.length > 0 || angle != null, check: check.data, grasp });
+  const { ok, reason } = gate;
+  useEffect(() => onGate(String(pose), { ok, reason }), [onGate, pose, ok, reason]);
 
   const arrows: GraspArrow[] = useMemo(() => {
     if (manual) return check.data ? [{ angle_deg: check.data.angle_deg, centre_mm: check.data.centre_mm, tone: "active" }] : [];
     return candidates.map((c, i) => ({ angle_deg: c.angle_deg, centre_mm: c.centre_mm, tone: i === chosen ? "acc" : "faint" }));
   }, [manual, check.data, candidates, chosen]);
 
-  if (!draft.part_id || profileId == null) {
-    return <Banner tone="warn">Choose the part (step 1) and the cell profile (step 4) first.</Banner>;
-  }
-  if (part.isPending) return <Skeleton height={360} />;
-  if (part.isError) return <ErrorState title="Couldn't load the part" message={part.error.message} onRetry={() => void part.refetch()} />;
-  if (!pose) {
-    return (
-      <Banner tone="warn" action={<LinkButton to="/new/pose">Choose a resting pose</LinkButton>}>
-        The grasp depends on how the part sits on the table: choose its resting pose in step 2 first.
-      </Banner>
-    );
-  }
+  if (!active) return null;
 
   const onPick = (p: PartPick) => {
     setManual(true);
@@ -119,16 +190,16 @@ export function GraspStep() {
     <div className={styles.split}>
       <div className={styles.column}>
         <PartViewer
-          url={meshUrl(part.data.id)}
-          label={`${part.data.name}, ${pose.label}, with the proposed closing directions drawn over it`}
+          url={meshUrl(partId, pose)}
+          label={`${partName}, ${poseLabel}, with the proposed closing directions drawn over it`}
           height={380}
           arrows={arrows}
           markers={manual ? picks : []}
           onPick={onPick}
         />
         <p className={styles.note}>
-          Arrows show the jaws closing on the part: green is the chosen direction, grey the other proposals
-          {manual ? ", blue your own choice" : ""}. Click two opposite faces to choose a direction yourself.
+          Green is the chosen direction, grey the other proposals{manual ? ", blue your own" : ""}. Click two opposite
+          faces to choose your own.
         </p>
       </div>
 
@@ -166,13 +237,13 @@ export function GraspStep() {
                 return;
               }
               setManual(false);
-              update({ grasp: autoChoice(candidates[Number(value)], gripHeight) });
+              update(autoChoice(candidates[Number(value)], gripHeight));
             }}
             options={[
               ...candidates.map((c, i) => ({
                 value: String(i),
                 label: `Close along ${degrees(c.angle_deg, Number.isInteger(c.angle_deg) ? 0 : 1)}`,
-                description: c.note ?? `The jaws close across ${mm(c.width_mm)} of the part.`,
+                description: c.note ?? describeCandidate(c),
                 aside:
                   i === 0 ? <Badge tone="ok" label="Proposed" /> : c.verdict === "warn" ? <Badge tone="warn" label="Warnings" /> : undefined,
               })),
@@ -191,7 +262,7 @@ export function GraspStep() {
                 setPicks([]);
                 setAngle(value);
               }}
-              hint="From the part's +x axis, as the 3D view shows it. Picking faces sets it for you."
+              hint="From the part's +x axis."
             />
             <div className={styles.row}>
               <span className={styles.note}>
@@ -219,7 +290,7 @@ export function GraspStep() {
             label="Fix the grip height"
             checked={fixHeight}
             onChange={setFixHeight}
-            hint="Left unticked, the search chooses the height the fingers hold the part at."
+            hint="Otherwise the search chooses it."
           />
           {fixHeight && (
             <NumberInput label="Grip height" unit="mm" value={height} onChange={setHeight} min={0} hint="Above the table." />
@@ -282,8 +353,8 @@ function gateFor({
   picked: boolean;
   check?: Check;
   grasp?: Choice;
-}): { ok: boolean; reason?: string } {
-  if (!ready) return { ok: false, reason: "Choose the part, its pose and the cell profile first" };
+}): Gate {
+  if (!ready) return { ok: false, reason: "Choose the cell first" };
   if (nothingFits) return { ok: false, reason: `Nothing fits these jaws: ${nothingFits}` };
   if (manual && !picked) return { ok: false, reason: "Pick two faces on the part, or type an angle" };
   if (manual && check?.verdict === "blocked") return { ok: false, reason: check.blocked_reasons.join(" ") };
@@ -292,17 +363,27 @@ function gateFor({
 }
 
 function autoChoice(candidate: Candidate, gripHeight: number | null): Choice {
-  return { angle_deg: candidate.angle_deg, centre_mm: candidate.centre_mm, source: "auto", grip_height_mm: gripHeight, picks: [] };
+  return {
+    angle_deg: candidate.angle_deg,
+    centre_mm: candidate.centre_mm,
+    span_mm: candidate.span_mm ?? null,
+    source: "auto",
+    grip_height_mm: gripHeight,
+    picks: [],
+  };
 }
 
-function sameDirection(candidate: Candidate, grasp: Choice | undefined): boolean {
+/** A section grasp (a screw's shank beside its head) says how wide the pads can be without reaching the wider part. */
+function describeCandidate(candidate: Candidate): string {
+  if (!candidate.span_mm) return `The jaws close across ${mm(candidate.width_mm)} of the part.`;
+  const [near, far] = candidate.span_mm;
+  return `Grips a ${mm(candidate.width_mm)} section; pads up to ${mm(2 * Math.min(-near, far))} wide.`;
+}
+
+function sameDirection(candidate: Candidate, grasp: Choice | null | undefined): boolean {
   if (!grasp) return false;
   return (
     Math.abs(candidate.angle_deg - grasp.angle_deg) < 0.01 &&
     Math.hypot(candidate.centre_mm[0] - grasp.centre_mm[0], candidate.centre_mm[1] - grasp.centre_mm[1]) < 0.01
   );
-}
-
-function capitalise(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

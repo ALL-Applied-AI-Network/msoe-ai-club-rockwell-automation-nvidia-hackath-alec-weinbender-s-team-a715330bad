@@ -8,7 +8,7 @@ import { KeyValues } from "../../../components/KeyValues";
 import { Table, type Column } from "../../../components/Table";
 import { duration, of, percent } from "../../../format";
 import { DownloadButton } from "../../../components/DownloadButton";
-import { errorText, methodText, simPath, stopText, taskText } from "../describe";
+import { errorText, methodText, posesText, scoredPoses, simPath, stopText, taskText } from "../describe";
 import type { Results } from "../types";
 import styles from "../JobPage.module.css";
 
@@ -21,6 +21,7 @@ export function RunDetails({ jobId, results }: { jobId: string; results: Results
   const [open, setOpen] = useState(false);
   const run = results.run;
   const path = simPath(run.sim);
+  const poses = scoredPoses(results);
   const family = (name: string) => meta.data?.families.find((f) => f.name === name)?.label ?? name;
   const grid = (name: string) => {
     const g = run.grids[name] as { radii_mm?: number[]; n_directions?: number; yaws_deg?: number[] } | undefined;
@@ -45,7 +46,6 @@ export function RunDetails({ jobId, results }: { jobId: string; results: Results
   return (
     <Card
       title="Run details"
-      subtitle="How the run went, and what it ran with, to reproduce it."
       aside={
         <Button variant="ghost" size="sm" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           {open ? "Hide" : "Show"}
@@ -70,6 +70,7 @@ export function RunDetails({ jobId, results }: { jobId: string; results: Results
               { label: "Run time", value: run.runtime_s == null ? "Not finished" : duration(run.runtime_s) },
               { label: "Camera error", value: errorText(run.error) },
               { label: "Task", value: taskText(run.task, meta.data) },
+              ...(poses ? [{ label: "Resting poses", value: posesText(poses) }] : []),
               { label: "Search grid", value: grid("search") },
               { label: "Final grid", value: grid("final") },
               { label: "Sim", value: path ? `${path.label}: ${path.detail}` : String(run.sim.backend ?? "mock") },

@@ -9,12 +9,12 @@ import { Page } from "../../components/Page";
 import { Segmented } from "../../components/Segmented";
 import { Select } from "../../components/Select";
 import { EmptyState, ErrorState, Skeleton } from "../../components/States";
-import { JobCard } from "./JobCard";
+import { JobRow } from "./JobRow";
 import styles from "./ExperimentsPage.module.css";
 
 type Job = Schemas["JobCard"];
 
-// Up to this many running jobs, each card follows its own SSE stream. Past it, the page polls the list instead.
+// Up to this many running jobs, each row follows its own SSE stream. Past it, the page polls the list instead.
 const MAX_STREAMS = 6;
 
 const STATUS_FILTERS = {
@@ -64,7 +64,6 @@ export function ExperimentsPage() {
   return (
     <Page
       title="Experiments"
-      description="Every finger search you've run. Running ones update live, and keep running when you close the page."
       actions={
         <LinkButton variant="primary" to="/new/part">
           <Icon name="plus" />
@@ -114,13 +113,7 @@ export function ExperimentsPage() {
         </div>
       )}
 
-      {jobs.isPending && (
-        <div className={styles.grid}>
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} height={260} />
-          ))}
-        </div>
-      )}
+      {jobs.isPending && <Skeleton height={240} />}
       {jobs.isError && (
         <ErrorState title="Couldn't load the experiments" message={jobs.error.message} onRetry={() => jobs.refetch()} />
       )}
@@ -133,7 +126,7 @@ export function ExperimentsPage() {
             </LinkButton>
           }
         >
-          Upload a part, choose a task, and the app searches for fingers that pick it up even when the camera is off.
+          Choose a part and a task to search for fingers that still hold it when the camera is off.
         </EmptyState>
       )}
       {jobs.isSuccess && all.length > 0 && shown.length === 0 && (
@@ -147,9 +140,16 @@ export function ExperimentsPage() {
         />
       )}
       {shown.length > 0 && (
-        <div className={styles.grid}>
+        <div className={styles.list}>
+          <div className={styles.head} aria-hidden="true">
+            <span>Experiment</span>
+            <span>Part and task</span>
+            <span>Status</span>
+            <span>Best design</span>
+            <span>When</span>
+          </div>
           {shown.map((job) => (
-            <JobCard key={job.id} job={job} taskLabel={taskLabel(job.task_kind)} compute={compute.data} live={live} />
+            <JobRow key={job.id} job={job} taskLabel={taskLabel(job.task_kind)} compute={compute.data} live={live} />
           ))}
         </div>
       )}

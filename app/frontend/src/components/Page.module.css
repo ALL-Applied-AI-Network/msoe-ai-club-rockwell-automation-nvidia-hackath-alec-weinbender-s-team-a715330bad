@@ -9,7 +9,7 @@
 .bar {
   display: flex;
   align-items: center;
-  gap: var(--space-5);
+  gap: var(--space-6);
   max-width: var(--content-width);
   height: var(--topbar-height);
   margin: 0 auto;
@@ -20,31 +20,34 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2);
   color: var(--ink);
   font-size: var(--text-lg);
   font-weight: var(--weight-bold);
-  letter-spacing: -0.02em;
+  letter-spacing: 0.01em;
 }
 
 .brand:hover {
   text-decoration: none;
 }
 
+/* The gripper drawn in green on its own, no tile behind it */
 .mark {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-sm);
-  background: var(--acc);
-  color: var(--acc-ink);
+  color: var(--acc);
+}
+
+.mark svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.6;
 }
 
 .nav {
   display: flex;
   align-self: stretch;
-  gap: var(--space-1);
+  gap: var(--space-5);
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -53,9 +56,8 @@
 .link {
   display: flex;
   align-items: center;
-  padding: 0 10px;
   border-bottom: 2px solid transparent;
-  color: var(--faint);
+  color: var(--mute);
   font-weight: var(--weight-medium);
   white-space: nowrap;
   transition: color var(--transition);
@@ -71,41 +73,34 @@
   border-bottom-color: var(--acc);
 }
 
-.status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-  min-width: 0;
-}
-
 .content {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
   max-width: var(--content-width);
   margin: 0 auto;
-  padding: var(--space-6) var(--space-5) var(--space-6);
+  padding: var(--space-5) var(--space-5) calc(var(--statusbar-height) + var(--space-6));
 }
 
 .heading {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-3) var(--space-4);
+  min-height: var(--control-height);
 }
 
 .title {
-  font-size: var(--text-2xl);
-  font-weight: var(--weight-bold);
-  letter-spacing: -0.02em;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
   line-height: 1.2;
 }
 
 .description {
   margin-top: var(--space-1);
-  color: var(--faint);
+  max-width: 72ch;
+  color: var(--mute);
 }
 
 .actions {
@@ -113,7 +108,7 @@
   gap: var(--space-2);
 }
 
-/* Narrow screens: the brand and status on the first row, the navigation on its own row under them. */
+/* Narrow screens: the brand on the first row, the navigation on its own row under it. */
 @media (max-width: 860px) {
   .bar {
     flex-wrap: wrap;
@@ -123,13 +118,11 @@
   }
 
   .nav {
-    order: 3;
     width: 100%;
     height: 40px;
-    margin: 0 calc(-1 * var(--space-2));
   }
 
   .content {
-    padding: var(--space-5) var(--space-4);
+    padding: var(--space-4) var(--space-4) calc(var(--statusbar-height) + var(--space-5));
   }
 }

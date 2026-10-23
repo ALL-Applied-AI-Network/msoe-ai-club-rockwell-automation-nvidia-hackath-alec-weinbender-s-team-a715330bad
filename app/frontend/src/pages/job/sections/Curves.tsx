@@ -44,9 +44,9 @@ export function Curves({ results }: { results: Results }) {
   return (
     <Card
       title="Success against camera error"
-      subtitle={`How each finger holds up as the camera's position error grows. The target, σ ${mm(target)}, is marked${
-        curves.target_range_mm ? `, with the range it was designed for shaded` : ""
-      }. ${searched.length > 1 ? "The leading design is the heavy line." : ""}`}
+      subtitle={`Target σ ${mm(target)} marked${curves.target_range_mm ? ", design range shaded" : ""}.${
+        searched.length > 1 ? " The leading design is the heavy line." : ""
+      }`}
     >
       <SuccessCurveChart
         series={series}
@@ -60,11 +60,7 @@ export function Curves({ results }: { results: Results }) {
         }${stockAt != null ? ` and the stock fingers ${percent(stockAt)}` : ""}.${
           measured.length ? ` ${measured.length} points measured on the robot are shown with their 95% intervals.` : ""
         }`}
-        note={
-          measured.length
-            ? "Triangles are success measured on the robot, with the 95% interval of the trials behind them."
-            : "Measured points from the robot appear here once physical trials are logged."
-        }
+        note={measured.length ? "Triangles: measured on the robot, with the 95% interval of the trials." : undefined}
       />
     </Card>
   );

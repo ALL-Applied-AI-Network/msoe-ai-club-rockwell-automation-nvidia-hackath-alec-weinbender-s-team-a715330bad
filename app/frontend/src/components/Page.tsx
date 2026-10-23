@@ -3,10 +3,9 @@ import { Link, NavLink } from "react-router";
 import { useMeta } from "../backend/queries";
 import { CAVEATS } from "../caveats";
 import { Banner } from "./Banner";
-import { SimBadge } from "./Badges";
-import { GpuChip } from "./GpuChip";
 import { Icon } from "./Icon";
 import { ErrorState } from "./States";
+import { StatusBar } from "./StatusBar";
 import styles from "./Page.module.css";
 
 // The experiments list is home, so the logo and Experiments both go there. New experiment is its main button, not a nav
@@ -15,7 +14,7 @@ const NAV = [
   { to: "/", label: "Experiments", end: true },
   { to: "/parts", label: "Parts" },
   { to: "/validation", label: "Validation" },
-  { to: "/settings", label: "Settings" },
+  { to: "/cells", label: "Cells" },
 ];
 
 type PageProps = {
@@ -25,8 +24,8 @@ type PageProps = {
   children: ReactNode;
 };
 
-/** The page shell every page sits in: the top bar (navigation, the sim badge, the GPU chip), the demo-data notice, the
- *  page's title and the content width. When the API doesn't answer, it says so instead of showing an empty page. */
+/** The page shell every page sits in: the top bar (navigation), the demo-data notice, the page's title, the content
+ *  width and the status bar (the GPU and the sim). When the API doesn't answer, it says so instead of an empty page. */
 export function Page({ title, description, actions, children }: PageProps) {
   const meta = useMeta();
   return (
@@ -51,10 +50,6 @@ export function Page({ title, description, actions, children }: PageProps) {
               </NavLink>
             ))}
           </nav>
-          <div className={styles.status}>
-            {meta.data && <SimBadge backend={meta.data.sim.badge} />}
-            <GpuChip />
-          </div>
         </div>
       </header>
       {meta.data?.demo_data && (
@@ -65,8 +60,8 @@ export function Page({ title, description, actions, children }: PageProps) {
       <main className={styles.content}>
         {meta.isError ? (
           <ErrorState
-            title="Can't reach the app's backend"
-            message="Start it from the repo root with: uv run --package backend uvicorn api.main:app --port 8000. Then try again. SETUP.md, Day to day, has the rest."
+            title="Can't reach the backend"
+            message="Start it from the repo root: uv run --package backend uvicorn api.main:app --port 8000"
             onRetry={() => meta.refetch()}
           />
         ) : (
@@ -84,6 +79,7 @@ export function Page({ title, description, actions, children }: PageProps) {
           </>
         )}
       </main>
+      <StatusBar />
     </>
   );
 }

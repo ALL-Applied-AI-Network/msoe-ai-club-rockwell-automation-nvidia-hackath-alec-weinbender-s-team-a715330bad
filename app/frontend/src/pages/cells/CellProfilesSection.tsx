@@ -7,16 +7,17 @@ import { Button, LinkButton } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { Icon } from "../../components/Icon";
 import { KeyValues } from "../../components/KeyValues";
+import { Page } from "../../components/Page";
 import { EmptyState, ErrorState, Skeleton } from "../../components/States";
 import { CAVEATS } from "../../caveats";
 import { count, dateTime, mm } from "../../format";
 import { NewProfileModal } from "./NewProfileModal";
 import { placeholders } from "./profileFields";
-import styles from "./Settings.module.css";
+import styles from "./Cells.module.css";
 
 type Saved = Schemas["CellProfileResponse"];
 
-/** #/settings/cells: every cell profile, at its latest version. A job records the exact version it ran with, so editing
+/** #/cells: every cell, at its profile's latest version. A job records the exact version it ran with, so editing
  *  one here never changes a finished job. */
 export function CellProfilesSection() {
   const profiles = useQuery({
@@ -27,16 +28,15 @@ export function CellProfilesSection() {
   const [copyFrom, setCopyFrom] = useState<Saved | null | undefined>(undefined); // undefined: the dialog is closed
 
   return (
-    <div className={styles.section}>
-      <div className={styles.toolbar}>
-        <p className={styles.lead}>
-          A cell profile describes one robot, gripper and cell. Saving an edit makes a new version; old versions never change.
-        </p>
+    <Page
+      title="Cells"
+      actions={
         <Button onClick={() => setCopyFrom(profiles.data?.[0] ?? null)} disabled={!profiles.data}>
           <Icon name="plus" />
-          New profile
+          New cell
         </Button>
-      </div>
+      }
+    >
 
       {profiles.isPending && (
         <div className={styles.grid}>
@@ -45,10 +45,10 @@ export function CellProfilesSection() {
         </div>
       )}
       {profiles.isError && (
-        <ErrorState title="Couldn't load the cell profiles" message={profiles.error.message} onRetry={() => profiles.refetch()} />
+        <ErrorState title="Couldn't load the cells" message={profiles.error.message} onRetry={() => profiles.refetch()} />
       )}
       {profiles.data?.length === 0 && (
-        <EmptyState title="No cell profiles yet">The API makes the default UWM CSI cell profile when it starts.</EmptyState>
+        <EmptyState title="No cells yet">Restart the API to create the default one.</EmptyState>
       )}
       {profiles.data && profiles.data.length > 0 && (
         <div className={styles.grid}>
@@ -66,7 +66,7 @@ export function CellProfilesSection() {
           onClose={() => setCopyFrom(undefined)}
         />
       )}
-    </div>
+    </Page>
   );
 }
 
@@ -75,21 +75,26 @@ function ProfileCard({ saved, onCopy }: { saved: Saved; onCopy: () => void }) {
   const toConfirm = placeholders(profile);
   return (
     <Card
-      title={<Link to={`/settings/cells/${saved.id}`}>{saved.name}</Link>}
-      subtitle={`Version ${saved.version}, saved ${dateTime(saved.created)}`}
+      title={<Link to={`/cells/${saved.id}`}>{saved.name}</Link>}
+      subtitle={`Version ${saved.version}, ${dateTime(saved.created)}`}
       aside={
-        mismatches.length ? (
-          <Badge tone="warn" label="Differs from the twin" title={`${CAVEATS.twinMismatch} ${mismatches.join("; ")}`} />
-        ) : (
-          <Badge tone="ok" label="Matches the twin" title="The sim models this cell's gripper." />
-        )
+        <>
+          {toConfirm.size > 0 && (
+            <Badge tone="warn" label={count(toConfirm.size, "placeholder", "placeholders")} title={CAVEATS.placeholderCell} />
+          )}
+          {mismatches.length ? (
+            <Badge tone="warn" label="Differs from the twin" title={`${CAVEATS.twinMismatch} ${mismatches.join("; ")}`} />
+          ) : (
+            <Badge tone="ok" label="Matches the twin" title="The sim models this cell's gripper." />
+          )}
+        </>
       }
       footer={
         <div className={styles.actions}>
           <Button variant="ghost" size="sm" onClick={onCopy}>
-            New profile from this one
+            Duplicate
           </Button>
-          <LinkButton variant="secondary" size="sm" to={`/settings/cells/${saved.id}`}>
+          <LinkButton variant="secondary" size="sm" to={`/cells/${saved.id}`}>
             Edit
           </LinkButton>
         </div>
@@ -98,18 +103,11 @@ function ProfileCard({ saved, onCopy }: { saved: Saved; onCopy: () => void }) {
       <KeyValues
         items={[
           { label: "Robot", value: profile.robot_model },
-          { label: "Gripper", value: profile.gripper_model, placeholder: toConfirm.has("gripper_model") },
-          { label: "Stroke per jaw", value: mm(profile.stroke_per_jaw_mm), placeholder: toConfirm.has("stroke_per_jaw_mm") },
+          { label: "Gripper", value: profile.gripper_model },
+          { label: "Stroke per jaw", value: mm(profile.stroke_per_jaw_mm) },
           { label: "Stock fingers", value: profile.stock_fingers },
         ]}
       />
-      <div className={styles.badges}>
-        {toConfirm.size > 0 ? (
-          <Badge tone="warn" label={`${count(toConfirm.size, "placeholder field", "placeholder fields")}`} title={CAVEATS.placeholderCell} />
-        ) : (
-          <Badge tone="ok" label="Every field measured" />
-        )}
-      </div>
       {mismatches.length > 0 && (
         <div>
           <p className={styles.note}>{CAVEATS.twinMismatch}</p>

@@ -1,9 +1,12 @@
-import "@fontsource-variable/inter";
+import "@fontsource/barlow/400.css";
+import "@fontsource/barlow/500.css";
+import "@fontsource/barlow/600.css";
+import "@fontsource/barlow/700.css";
 import "@fontsource-variable/jetbrains-mono";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createHashRouter, RouterProvider } from "react-router";
+import { createHashRouter, Navigate, RouterProvider, useParams } from "react-router";
 import { ExperimentsPage } from "./pages/experiments/ExperimentsPage";
 import { GpuPage } from "./pages/gpu/GpuPage";
 import { NotBuiltPage } from "./pages/NotBuiltPage";
@@ -28,10 +31,17 @@ const router = createHashRouter([
     path: "/validation",
     lazy: async () => ({ Component: (await import("./pages/validation/ValidationPage")).ValidationPage }),
   },
-  { path: "/settings/*", lazy: async () => ({ Component: (await import("./pages/settings/SettingsPage")).SettingsPage }) },
+  { path: "/cells/*", lazy: async () => ({ Component: (await import("./pages/cells/CellsPage")).CellsPage }) },
+  { path: "/settings/*", element: <SettingsRedirect /> },
   { path: "*", element: <NotBuiltPage title="Page not found" plan="There's no page at this address." /> },
 ]);
 const queryClient = new QueryClient();
+
+/** The cells used to live under Settings: an old #/settings/cells/:id link opens the same cell at #/cells/:id. */
+function SettingsRedirect() {
+  const rest = useParams()["*"] ?? "";
+  return <Navigate to={rest.startsWith("cells/") ? `/${rest}` : "/cells"} replace />;
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

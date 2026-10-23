@@ -8,7 +8,7 @@ type Backend = Schemas["BackendInfo"];
 const CHECKLISTS = [
   {
     name: "gb10",
-    title: "MSOE GB10: free, always on, shared with other teams",
+    title: "MSOE GB10",
     steps: [
       { text: "Connect the MSOE VPN (GlobalProtect) whenever you use it.", setup: "MSOE VPN" },
       { text: "Add your SSH key to the team account, once.", setup: "Your SSH key on the GB10" },
@@ -20,7 +20,7 @@ const CHECKLISTS = [
   },
   {
     name: "brev",
-    title: "Brev: the paid backup, stopped when idle",
+    title: "Brev",
     steps: [
       { text: "Join the team's Brev account from the invite.", setup: "Brev account" },
       { text: "On Windows, install WSL and Ubuntu: the Brev CLI only runs there.", setup: "WSL and Ubuntu" },
@@ -40,9 +40,7 @@ export function SetupHelp({ backends, open }: { backends: Backend[]; open: boole
     <details className={styles.help} open={open}>
       <summary className={styles.helpSummary}>Setting up a GPU</summary>
       <div className={styles.helpBody}>
-        <p className={styles.note}>
-          Each person does this once, on their own laptop. The sections named below are in SETUP.md at the repo's root.
-        </p>
+        <p className={styles.note}>Once per laptop. The sections named are in SETUP.md.</p>
         {CHECKLISTS.map((list) => (
           <div key={list.name} className={styles.checklist}>
             <div className={styles.checklistHead}>
@@ -50,7 +48,7 @@ export function SetupHelp({ backends, open }: { backends: Backend[]; open: boole
               {enabled.has(list.name) ? (
                 <Badge tone="ok" label="Enabled" />
               ) : (
-                <Badge tone="neutral" label="Not enabled here" />
+                <Badge tone="neutral" label="Not enabled" />
               )}
             </div>
             <ol className={styles.checklistSteps}>

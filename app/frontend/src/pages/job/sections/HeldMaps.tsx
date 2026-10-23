@@ -17,9 +17,14 @@ const CATEGORIES: DotCategory[] = [
  *  error tolerance made visible. Dots fade with their weight under the camera-error model. With Isaac results, a click
  *  picks that grasp to film. */
 export function HeldMaps({ results, onPick }: { results: Results; onPick?: (pick: ClipPick) => void }) {
-  const maps = results.held_maps;
-  const yaws = [...new Set(maps.flatMap((m) => m.points.map((p) => p.yaw_deg)))].sort((a, b) => a - b);
+  const all = results.held_maps;
+  const yaws = [...new Set(all.flatMap((m) => m.points.map((p) => p.yaw_deg)))].sort((a, b) => a - b);
   const [yaw, setYaw] = useState(yaws.includes(0) ? 0 : (yaws[0] ?? 0));
+  // A job with several resting poses has maps per pose (null for one pose); the first is the primary.
+  const poses = [...new Map(all.filter((m) => m.pose).map((m) => [m.pose!, m.pose_label ?? m.pose!])).entries()];
+  const [pose, setPose] = useState<string | null>(poses[0]?.[0] ?? null);
+  const maps = pose ? all.filter((m) => m.pose === pose) : all;
+  const primary = !pose || pose === poses[0]?.[0]; // clips film the primary pose only
   const sigma = results.header.error.sigma_mm;
   const rings = [
     { radius: sigma, label: "1σ" },
@@ -29,16 +34,26 @@ export function HeldMaps({ results, onPick }: { results: Results; onPick?: (pick
   return (
     <Card
       title="Held maps"
-      subtitle="Each dot is one offset of the final test's grid, seen from above: where the part was, against where the camera said it was."
+      subtitle="Each dot is one offset of the final grid, seen from above."
       aside={
-        yaws.length > 1 && (
-          <Segmented
-            label="Yaw layer"
-            value={String(yaw)}
-            onChange={(value) => setYaw(Number(value))}
-            options={yaws.map((y) => ({ value: String(y), label: `Yaw ${degrees(y)}` }))}
-          />
-        )
+        <div className={styles.row}>
+          {poses.length > 1 && (
+            <Segmented
+              label="Resting pose"
+              value={pose ?? ""}
+              onChange={setPose}
+              options={poses.map(([key, label]) => ({ value: key, label: label.charAt(0).toUpperCase() + label.slice(1) }))}
+            />
+          )}
+          {yaws.length > 1 && (
+            <Segmented
+              label="Yaw layer"
+              value={String(yaw)}
+              onChange={(value) => setYaw(Number(value))}
+              options={yaws.map((y) => ({ value: String(y), label: `Yaw ${degrees(y)}` }))}
+            />
+          )}
+        </div>
       }
     >
       <div className={styles.pair}>
@@ -59,7 +74,7 @@ export function HeldMaps({ results, onPick }: { results: Results; onPick?: (pick
             ],
           }));
           return (
-            <div key={map.label}>
+            <div key={`${map.label}-${map.pose ?? ""}`}>
               <div className={styles.mapTitle}>
                 {designLabel(map.label)}: held {held} of {points.length}
               </div>
@@ -69,7 +84,7 @@ export function HeldMaps({ results, onPick }: { results: Results; onPick?: (pick
                 rings={rings}
                 summary={`${designLabel(map.label)} held ${held} of ${points.length} offsets at yaw ${degrees(yaw)}.`}
                 onDotClick={
-                  onPick
+                  onPick && primary
                     ? (dot) => {
                         const p = points[Number(dot.key)];
                         onPick({ design: map.label, offset: { dx: p.dx, dy: p.dy, yaw_deg: p.yaw_deg } });
@@ -83,7 +98,7 @@ export function HeldMaps({ results, onPick }: { results: Results; onPick?: (pick
       </div>
       <p className={styles.note}>
         {CAVEATS.captureEdge} The circles are 1σ and 2σ of the target camera error, σ {mm(sigma)}.
-        {onPick ? " Click a dot to film that grasp in Isaac Sim, below." : ""}
+        {onPick && primary ? " Click a dot to film that grasp in Isaac Sim." : ""}
       </p>
     </Card>
   );

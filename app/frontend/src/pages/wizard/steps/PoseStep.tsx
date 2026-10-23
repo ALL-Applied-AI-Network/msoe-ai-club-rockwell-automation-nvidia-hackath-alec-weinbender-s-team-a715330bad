@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api, unwrapAs, type Schemas } from "../../../backend/client";
 import { meshUrl, usePart } from "../../../backend/queries";
@@ -6,88 +6,104 @@ import { Banner } from "../../../components/Banner";
 import { PartViewer } from "../../../components/PartViewer";
 import { ErrorState, Skeleton } from "../../../components/States";
 import { dims, percent } from "../../../format";
-import { useDraft, useStepGate } from "../draft";
+import { useDraft, useStepGate, type DraftPose, type PoseChoice } from "../draft";
+import { capitalise, choiceOf, findPose, sortByLikelihood, usePoses, weightOf, type Pose } from "../poses";
 import styles from "../Wizard.module.css";
 
-type Pose = Schemas["PoseResponse"];
 type Part = Schemas["PartResponse"];
 
-/** Step 2: how the part rests on the table. The likeliest stable poses as 3D thumbnails, plus "as in the CAD file";
- *  one click chooses. For a box or a cylinder the answer is obvious, so the likeliest is chosen already. */
+/** Step 2: how the part comes to rest on the table. Every likely pose is ticked to start with; the job scores one finger
+ *  in each ticked pose, weighted by how likely it is. "As in the CAD file" has no likelihood, so it stands alone. */
 export function PoseStep() {
   const { draft, update } = useDraft();
   const part = usePart(draft.part_id);
   const id = draft.part_id;
   const queryClient = useQueryClient();
-  const poses = useQuery({
-    queryKey: ["parts", id, "poses"],
-    queryFn: () => unwrapAs<Pose[]>(api.GET("/api/parts/{part_id}/poses", { params: { path: { part_id: id! } } })),
-    enabled: Boolean(id),
-  });
-  const choose = useMutation({
-    mutationFn: (pose: number | "as_authored") =>
+  const poses = usePoses(id);
+  const ticked = draft.poses ?? [];
+
+  // The part's own pose follows the primary: the library, the part page and the summary thumbnail show it.
+  const setPartPose = useMutation({
+    mutationFn: (pose: PoseChoice) =>
       unwrapAs<Part>(api.PATCH("/api/parts/{part_id}", { params: { path: { part_id: id! } }, body: { pose } })),
     onSuccess: (saved) => {
       queryClient.setQueryData(["parts", saved.id], saved);
       void queryClient.invalidateQueries({ queryKey: ["parts"] });
-      update({ grasp: undefined }); // the grasp was found for the old pose
+      // The chosen-pose mesh keeps its URL when the pose changes, so its cached copy (and thumbnail) would still show
+      // the old pose
+      void queryClient.resetQueries({ queryKey: ["mesh", meshUrl(saved.id)] });
     },
   });
 
-  const chosen = poses.data?.find((p) => p.chosen);
+  const choose = (next: DraftPose[], list: Pose[]) => {
+    const sorted = sortByLikelihood(next, list);
+    update({ poses: sorted });
+    const primary = sorted[0] && findPose(list, sorted[0].pose);
+    if (primary && !primary.chosen) setPartPose.mutate(sorted[0].pose);
+  };
+
+  // A new draft starts with every likely pose ticked (the likeliest if none is), once.
+  const preselected = useRef(false);
+  useEffect(() => {
+    if (preselected.current || !poses.data || draft.poses) return;
+    preselected.current = true;
+    const likely = poses.data.filter((p) => p.likely);
+    const start = likely.length > 0 ? likely : poses.data.slice(0, 1);
+    choose(start.map((p) => ({ pose: choiceOf(p) })), poses.data);
+  });
+
   useStepGate(
     2,
-    !id ? { ok: false, reason: "Choose a part first" } : chosen && part.data?.pose ? { ok: true } : { ok: false, reason: "Choose how the part rests" },
+    !id ? { ok: false, reason: "Choose a part first" } : ticked.length > 0 ? { ok: true } : { ok: false, reason: "Tick at least one pose" },
   );
-
-  // A box or a cylinder: preselect the likeliest pose, once, so Next accepts it.
-  const preselected = useRef(false);
-  const shape = part.data?.measured.suggested.shape;
-  useEffect(() => {
-    if (preselected.current || !poses.data || chosen || !shape || shape === "mesh") return;
-    preselected.current = true;
-    const likeliest = poses.data.find((p) => p.source === "stable");
-    if (likeliest) choose.mutate(likeliest.index);
-  }, [poses.data, chosen, shape, choose]);
 
   if (!id) return <p className={styles.note}>Choose a part in step 1 first.</p>;
   if (poses.isPending) return <Skeleton height={220} />;
   if (poses.isError) return <ErrorState title="Couldn't work out the poses" message={poses.error.message} onRetry={() => poses.refetch()} />;
 
+  const list = poses.data;
+  const toggle = (pose: Pose) => {
+    const choice = choiceOf(pose);
+    const on = ticked.some((d) => d.pose === choice);
+    if (on) return choose(ticked.filter((d) => d.pose !== choice), list);
+    if (choice === "as_authored") return choose([{ pose: choice }], list);
+    choose([...ticked.filter((d) => d.pose !== "as_authored"), { pose: choice }], list); // grasps of the others are kept
+  };
+  const coverage = ticked.reduce((sum, d) => sum + (findPose(list, d.pose)?.probability ?? 0), 0);
+
   return (
     <>
-      <div className={styles.poseGrid} role="radiogroup" aria-label="Resting pose">
-        {poses.data.map((pose) => (
-          <button
-            key={pose.index}
-            type="button"
-            role="radio"
-            aria-checked={pose.chosen}
-            className={styles.choice}
-            disabled={choose.isPending}
-            onClick={() => !pose.chosen && choose.mutate(pose.source === "as_authored" ? "as_authored" : pose.index)}
-          >
-            <PartViewer
-              url={meshUrl(id, pose.source === "as_authored" ? "as_authored" : pose.index)}
-              label={`${part.data?.name ?? "The part"}, ${pose.label}`}
-              mode="thumbnail"
-            />
-            <span className={styles.choiceLabel}>{capitalise(pose.label)}</span>
-            <span className={styles.choiceNote}>
-              {pose.probability != null ? `${percent(pose.probability)} likely` : "Exactly as the file has it"}, {dims(pose.extent_mm)}
-            </span>
-          </button>
-        ))}
+      <div className={styles.poseGrid} role="group" aria-label="Resting poses">
+        {list.map((pose) => {
+          const choice = choiceOf(pose);
+          const on = ticked.some((d) => d.pose === choice);
+          return (
+            <button
+              key={pose.index}
+              type="button"
+              role="checkbox"
+              aria-checked={on}
+              className={styles.choice}
+              onClick={() => toggle(pose)}
+            >
+              <PartViewer url={meshUrl(id, choice)} label={`${part.data?.name ?? "The part"}, ${pose.label}`} mode="thumbnail" />
+              <span className={styles.choiceLabel}>{capitalise(pose.label)}</span>
+              <span className={styles.choiceNote}>
+                {pose.probability != null && `${percent(pose.probability)} likely, `}
+                {dims(pose.extent_mm)}
+              </span>
+              {on && ticked.length > 1 && <span className={styles.choiceNote}>{percent(weightOf(choice, ticked, list))} of the score</span>}
+            </button>
+          );
+        })}
       </div>
-      {choose.error && <Banner tone="bad">{choose.error.message}</Banner>}
-      <p className={styles.note}>
-        In a real cell, parts usually arrive in a tray or fixture, so you already know the pose. One pose per experiment:
-        if parts arrive both ways, run two.
-      </p>
+      {setPartPose.error && <Banner tone="bad">{setPartPose.error.message}</Banner>}
+      {coverage > 0 && (
+        <p className={styles.note}>
+          The ticked poses cover {percent(coverage)} of how the part comes to rest. One finger is scored in each, for its own
+          grasp.
+        </p>
+      )}
     </>
   );
-}
-
-function capitalise(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

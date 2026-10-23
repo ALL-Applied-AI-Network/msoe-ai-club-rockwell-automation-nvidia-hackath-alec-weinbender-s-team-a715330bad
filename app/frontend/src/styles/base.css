@@ -10,8 +10,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: var(--text-md) / 1.5 var(--font);
-  font-feature-settings: "cv11", "ss01"; /* Inter's straight-sided 1 and open digits read better in tables */
+  font: var(--text-md) / 1.45 var(--font);
+  font-variant-numeric: tabular-nums; /* measurements line up in every list, not only tables */
   -webkit-font-smoothing: antialiased;
 }
 

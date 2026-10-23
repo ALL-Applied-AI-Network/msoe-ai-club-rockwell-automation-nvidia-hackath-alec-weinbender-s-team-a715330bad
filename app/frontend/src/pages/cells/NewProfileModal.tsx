@@ -36,14 +36,14 @@ export function NewProfileModal({ open, profiles, initial, onClose }: NewProfile
     onSuccess: (saved) => {
       void queryClient.invalidateQueries({ queryKey: ["cell-profiles"] });
       onClose();
-      navigate(`/settings/cells/${saved.id}`);
+      navigate(`/cells/${saved.id}`);
     },
   });
 
   return (
     <Modal
       open={open}
-      title="New cell profile"
+      title="New cell"
       onClose={onClose}
       footer={
         <>
@@ -62,7 +62,7 @@ export function NewProfileModal({ open, profiles, initial, onClose }: NewProfile
         value={from}
         onChange={(event) => setFrom(event.target.value)}
         options={profiles.map((p) => ({ value: String(p.id), label: `${p.name}, version ${p.version}` }))}
-        hint="The new profile starts as a copy, placeholder marks included. Edit it to describe the new cell."
+        hint="Starts as a copy, placeholder marks included."
       />
       {create.error && <Banner tone="bad">{create.error.message}</Banner>}
     </Modal>
