@@ -9,6 +9,7 @@ from api.models.error_model import ErrorModel
 from api.models.family import FamilyChoice
 from api.models.grasp import GraspChoice
 from api.models.job_spec import JobSpec
+from api.models.results import grasp_pose_text
 from api.models.task import Task
 from api.services import cell_profiles, jobs, optimizer, parts, results
 
@@ -163,3 +164,50 @@ def test_a_failed_blocking_check_blocks_the_download(db, config, cad, cube_spec,
         results.design_file(db, job.id, "D1", "step", cad=cad, outputs_dir=config.outputs_dir)
     assert [c.name for c in raised.value.checks] == ["finger length"] and "50 mm" in raised.value.checks[0].detail
     assert [c.name for c in results.design_export(db, job.id, "IMP", cad=cad, outputs_dir=config.outputs_dir).blocked] == ["finger length"]
+
+
+def test_a_job_over_one_pose_has_no_per_pose_scores(finished_job):
+    view = results.results(finished_job.db, finished_job.job_id)
+
+    assert view.summary.best.poses is None and all(row.poses is None for row in view.final_table)
+    assert [(m.label, m.pose) for m in view.held_maps] == [("D1", None), ("STOCK", None)]
+
+
+def test_a_job_over_two_poses_scores_each_design_in_each(two_pose_job):
+    db, job_id = two_pose_job.db, two_pose_job.job_id
+
+    view = results.results(db, job_id)
+    rescored = results.results(db, job_id, error=ErrorModel(sigma_mm=1))
+
+    best = view.summary.best
+    assert [(p.key, p.label) for p in best.poses] == [("p0", "on its side"), ("p1", "standing")]
+    assert best.success == pytest.approx(sum(p.weight * p.success for p in best.poses))
+    assert best.capture_radius_mm == min(p.capture_radius_mm for p in best.poses)
+    assert all(len(row.poses) == 2 for row in view.final_table)
+    assert [(m.label, m.pose, m.pose_label) for m in view.held_maps] == [
+        ("D1", "p0", "on its side"),
+        ("D1", "p1", "standing"),
+        ("STOCK", "p0", "on its side"),
+        ("STOCK", "p1", "standing"),
+    ]
+    d1 = next(curve for curve in view.curves.designs if curve.label == "D1")
+    assert d1.success["3"] == pytest.approx(best.success)  # the job's own 3 mm
+    _, trial = results.final_trial(db, job_id, "D1")
+    assert view.in_hand.n_held == sum(trial.held) + sum(trial.pose_outcomes[0].held)
+    assert any("2 resting poses" in caveat for caveat in view.failures.caveats)
+    assert len(rescored.summary.best.poses) == 2 and rescored.summary.best.success != best.success
+
+
+def test_the_finger_preview_and_grasp_pose_come_per_pose(two_pose_job):
+    db, job_id = two_pose_job.db, two_pose_job.job_id
+
+    primary, standing = results.finger_preview(db, job_id, "D1"), results.finger_preview(db, job_id, "D1", "p1")
+    pose = results.grasp_pose(db, job_id, "D2")  # worked out now: only D1's is stored
+
+    assert (primary.pose, standing.pose, standing.pose_label) == ("p0", "p1", "standing")
+    assert standing.finger.pieces == primary.finger.pieces and standing.part.extent_mm == pytest.approx((10, 10, 20))
+    assert standing.finger.tip_height_mm > primary.finger.tip_height_mm
+    with pytest.raises(results.DesignNotFoundError, match="has no resting pose 'p9'; its poses are p0, p1"):
+        results.finger_preview(db, job_id, "D1", "p9")
+    assert [(p["resting_pose"], p["grasp_angle_deg"]) for p in pose["poses"]] == [("on its side", 90), ("standing", 0)]
+    assert "pose 2:\n  resting_pose: standing\n" in grasp_pose_text(pose)

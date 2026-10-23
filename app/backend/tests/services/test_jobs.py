@@ -4,7 +4,7 @@ import pytest
 
 from api.db.tables import TrialRow
 from api.models.grasp import GraspChoice
-from api.models.job_spec import JobSpec
+from api.models.job_spec import JobSpec, PoseGrasp
 from api.services import jobs, parts
 
 
@@ -226,3 +226,57 @@ def _trial(job_id: str, number: int, duration: float) -> TrialRow:
         held_after_transport=None,
         duration=duration,
     )
+
+
+@pytest.fixture
+def bar(db, config, cad, shapes, step_file):
+    """A 10 x 10 x 20 mm PLA bar's PartRecord, with no chosen pose: on its side (pose 0, 87%) or standing (pose 1, 13%)."""
+    record = parts.create_part(db, config, cad, "bar.step", step_file(shapes["bar"], "bar.step"), None)
+    return parts.update_part(db, record.id, {"material": "pla"})
+
+
+def test_a_spec_with_one_grasp_plans_its_parts_chosen_pose(db, config, profile_id, cube):
+    record = cube()
+
+    legacy = jobs.plan_spec(db, config, spec_for(record.id, profile_id))
+    poses = [PoseGrasp(pose=0, grasp=GraspChoice(angle_deg=0))]
+    alone = jobs.plan_spec(db, config, spec_for(record.id, profile_id, grasp=None, poses=poses))
+
+    (pose,) = legacy.plan.poses
+    assert (pose.key, pose.label, pose.choice, pose.weight, pose.part) == ("p0", "standing", None, 1.0, legacy.part)
+    assert legacy.plan.model_dump(exclude={"poses"}) == alone.plan.model_dump(exclude={"poses"}) and alone.plan.poses[0].choice == 0
+
+
+def test_several_poses_are_ordered_by_likelihood_and_weighted(db, config, profile_id, bar):
+    poses = [PoseGrasp(pose=1, grasp=GraspChoice(angle_deg=0)), PoseGrasp(pose=0, grasp=GraspChoice(angle_deg=90))]
+
+    planned = jobs.plan_spec(db, config, spec_for(bar.id, profile_id, grasp=None, poses=poses))
+
+    plan = planned.plan
+    assert plan.blockers == [] and parts.get_part(db, bar.id).pose is None  # the record's chosen pose isn't needed
+    assert [(p.key, p.label, p.choice, p.grasp.angle_deg) for p in plan.poses] == [("p0", "on its side", 0, 90), ("p1", "standing", 1, 0)]
+    assert sum(p.weight for p in plan.poses) == pytest.approx(1) and plan.poses[0].weight == pytest.approx(0.8718, abs=1e-3)
+    assert planned.part == plan.part == plan.poses[0].part and plan.poses[1].part.extent_mm == pytest.approx((10, 10, 20))
+    assert plan.totals.poses == 2 and plan.grid.yaws_deg != [0]
+
+
+def test_each_poses_grasp_is_checked_in_that_pose(db, config, profile_id, bar):
+    def blockers(*poses: PoseGrasp) -> list[tuple[int, str]]:
+        plan = jobs.plan_spec(db, config, spec_for(bar.id, profile_id, grasp=None, poses=list(poses))).plan
+        return [(b.step, b.reason) for b in plan.blockers]
+
+    high = GraspChoice(angle_deg=0, grip_height_mm=15)  # above the bar on its side, not standing
+
+    assert blockers(PoseGrasp(pose=1, grasp=high)) == []
+    assert [step for step, _ in blockers(PoseGrasp(pose=0, grasp=high), PoseGrasp(pose=1, grasp=high))] == [5]
+    assert blockers(PoseGrasp(pose=0, grasp=high), PoseGrasp(pose=1, grasp=high))[0][1].startswith("grasp (on its side): ")
+    assert blockers(PoseGrasp(pose=7, grasp=high)) == [(2, 'resting pose: pose must be an index from 0 to 2, or "as_authored"')]
+
+
+def test_duplicating_a_spec_with_one_grasp_gives_it_its_pose(db, config, profile_id, cube, spawned):
+    job = jobs.create_job(db, config, spec_for(cube().id, profile_id))
+
+    spec = jobs.duplicate_job(db, job.id)
+
+    assert spec.grasp is None and spec.poses == [PoseGrasp(pose=0, grasp=job.spec.grasp)]
+    assert jobs.plan_spec(db, config, spec).plan.blockers == []

@@ -80,7 +80,13 @@ class OffsetGrid(BaseModel):
     def for_part(cls, part: Part, error: ErrorModel) -> "OffsetGrid":
         """The search grid for a part: yaw is tested (at 0 and YAW_SPREAD sigma either side) unless the part is round from
         above (an upright cylinder) or the error model has no yaw. Boxes, lying cylinders and meshes get three layers."""
-        if part.round_from_above or error.sigma_deg <= 0:
+        return cls.for_parts([part], error)
+
+    @classmethod
+    def for_parts(cls, parts: list[Part], error: ErrorModel) -> "OffsetGrid":
+        """One search grid for the same part in several resting poses (a job's): yaw is tested unless every pose is round
+        from above, so all poses' results line up point for point."""
+        if all(part.round_from_above for part in parts) or error.sigma_deg <= 0:
             return cls()
         spread = YAW_SPREAD * error.sigma_deg
         return cls(yaws_deg=[-spread, 0.0, spread])

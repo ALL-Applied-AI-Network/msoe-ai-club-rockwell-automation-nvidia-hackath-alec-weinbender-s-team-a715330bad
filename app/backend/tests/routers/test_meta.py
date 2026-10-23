@@ -95,3 +95,7 @@ def test_meta_says_when_the_app_runs_on_demo_data(client, config):
     assert client.get("/api/meta").json()["demo_data"] is False
     config.demo_data = True
     assert client.get("/api/meta").json()["demo_data"] is True
+
+
+def test_meta_gives_the_likely_pose_cutoff(meta):
+    assert meta["pose_cutoff"] == 0.1

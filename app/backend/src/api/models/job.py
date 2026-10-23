@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, computed_field
 from api.models.design import DesignKind
 from api.models.export_check import ExportCheck
 from api.models.family import FamilyParams
+from api.models.job_pose import JobPose
 from api.models.job_spec import JobSpec, SimBackend
 from api.models.outcome import InHand, Outcomes
 from api.models.part import Part
@@ -39,7 +40,7 @@ class Job(BaseModel):
     cell_profile_id: int
     sim_backend: SimBackend
     spec: JobSpec
-    part: Part  # as the gripper meets it (resting pose and grasp axis applied), snapshotted at creation
+    part: Part  # as the gripper meets it (resting pose and grasp axis applied) in the primary pose, snapshotted at creation
     plan: JobPlan
     n_done: int = 0  # designs evaluated
     n_total: int = 0  # the plan's designs: every search's budget, the baselines and the final test
@@ -61,11 +62,19 @@ class Job(BaseModel):
     def experiment_id(self) -> str:
         return experiment_id(self.experiment_number)
 
+    @property
+    def poses(self) -> list[JobPose]:
+        """The resting poses the job covers, primary first (api/models/job_pose.py). A job from before jobs covered
+        poses has one: its spec's grasp on its part."""
+        return self.plan.poses or [JobPose(key="p0", grasp=self.spec.grasp, part=self.part)]
+
 
 class Trial(BaseModel):
     """One design, tried at every point of a grid: the search grid while optimizing, the dense final grid at the end.
     success_rate and capture_radius_mm are for the job's own error model and task; the raw outcomes re-score to any
-    other."""
+    other. held, in_hand and held_after_transport are the primary pose's; pose_outcomes holds every other pose's, in the
+    job's pose order (None for a job covering one pose). success_rate is weighted over the poses, capture_radius_mm the
+    smallest, and n_grasps counts every pose's."""
 
     model_config = ConfigDict(from_attributes=True)  # read straight from api.db.tables rows
 
@@ -82,9 +91,15 @@ class Trial(BaseModel):
     held: list[bool]
     in_hand: list[InHand | None]
     held_after_transport: list[bool] | None = None
+    pose_outcomes: list[Outcomes] | None = None
 
     def outcomes(self) -> Outcomes:
+        """The primary pose's outcomes."""
         return Outcomes(held=self.held, in_hand=self.in_hand, held_after_transport=self.held_after_transport)
+
+    def outcomes_by_pose(self) -> list[Outcomes]:
+        """Every pose's outcomes, in the job's pose order."""
+        return [self.outcomes(), *(self.pose_outcomes or [])]
 
 
 class JobResult(BaseModel):

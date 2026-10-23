@@ -4,7 +4,9 @@ import cadquery as cq
 import numpy as np
 import pytest
 
+from api.clients.sim import MockSim, SimSettings
 from api.models.cell_profile import Gripper
+from api.models.finger import SQUEEZE_MM, build_finger, problems
 from api.models.grasp import (
     LAST_RESORT,
     ROUND_NOTE,
@@ -18,6 +20,7 @@ from api.models.grasp import (
 )
 from api.models.part_record import PartRecord
 from api.models.resting_pose import resting_poses
+from api.models.search_space import SearchSpace
 
 GRIPPER = Gripper()  # the UWM CSI cell: reaches around 83 mm, stock tips open 16 mm
 MU = 0.5  # PLA against the pad
@@ -144,7 +147,7 @@ def test_a_lying_cap_gripped_by_its_ends_is_a_cylinder_along_the_jaws(posed, rea
 def test_the_cube_is_a_box_and_the_l_bracket_a_mesh_in_the_grasp_frame(posed, read):
     cube = posed_part(posed("cube", "standing")[0], GraspChoice(angle_deg=90), (0.6, 0.5))
     record, mesh, com = posed("l_bracket", "lying flat")
-    candidate = propose_grasps(mesh, com, MU, GRIPPER).candidates[0]
+    candidate = next(c for c in propose_grasps(mesh, com, MU, GRIPPER).candidates if c.span_mm is None)  # the whole part
 
     bracket = posed_part(
         record, GraspChoice(angle_deg=candidate.angle_deg, centre_mm=candidate.centre_mm), (0.6, 0.5), read("l_bracket")[1]
@@ -273,12 +276,26 @@ def test_with_an_angle_the_picks_only_place_the_grip(posed):
 
 
 def test_a_pick_the_jaws_dont_reach_first_is_a_warning(posed):
+    # A 30 x 10 x 10 block with a 1 mm recess in its +y side: too shallow to be a section, so the jaws grip the whole part
+    recessed = cq.Workplane("XY").box(30, 10, 10).cut(cq.Workplane("XY").box(10, 2, 12).translate((0, 5, 0)))
+    _, mesh, com = posed(recessed)
+
+    candidate = check_grasp(mesh, com, MU, GRIPPER, picks=[GraspPick(point=(0, 4, 4), normal=(0, 1, 0))])
+
+    assert candidate.angle_deg == 90 and candidate.span_mm is None and candidate.verdict == "warn"
+    assert "the jaws first touch the part 1.0 mm further out than the picked point" in candidate.warnings
+
+
+def test_a_pick_on_a_narrower_arm_grips_that_arm(posed):
     _, mesh, com = posed("l_bracket")  # as authored: an L lying flat, x -15..15, y -10..10; its inner face is at x = -9
 
     candidate = check_grasp(mesh, com, MU, GRIPPER, picks=[GraspPick(point=(-9, 3, 6), normal=(1, 0, 0))])
 
-    assert candidate.angle_deg == 0 and candidate.verdict == "warn"
-    assert "the jaws first touch the part 6.0 mm further out than the picked point" in candidate.warnings
+    assert candidate.angle_deg == 0 and candidate.width_mm == pytest.approx(6, abs=0.01)  # the arm, not the bracket's 30 mm
+    assert not any("further out" in w for w in candidate.warnings)  # the jaws touch the arm's faces, the picked one too
+    assert any("from the centre of mass" in w for w in candidate.warnings)  # held by the arm, away from the corner's mass
+    near, far = candidate.span_mm
+    assert candidate.centre_mm[1] + near >= -4 - 1e-6 and candidate.centre_mm[1] + far <= 10 + 1e-6  # within the arm
 
 
 def test_an_off_centre_grip_is_a_warning(posed):
@@ -315,3 +332,69 @@ def test_the_table_mesh_rests_on_the_table_with_its_footprint_centred(posed):
     assert lo[2] == pytest.approx(0) and (lo[:2] + hi[:2]) == pytest.approx((0, 0), abs=1e-9)
     assert hi - lo == pytest.approx((20, 12, 30))
     assert 0 < com[2] < 30
+
+
+def screw() -> cq.Workplane:
+    """An M6 x 30 countersunk screw, simplified: a 6 mm shank under a 12 mm head with a 90 degree countersink."""
+    return cq.Workplane("XY").circle(3).extrude(26.7).faces(">Z").workplane().circle(3).workplane(offset=3.3).circle(6).loft()
+
+
+@pytest.fixture(scope="module")
+def lying_screw(posed, read):
+    """(record, table-frame mesh, centre of mass, CAD-frame mesh, proposals) for the screw lying on its side."""
+    shape = screw()
+    record, mesh, com = posed(shape, "lying on its side")
+    return record, mesh, com, read(shape)[1], propose_grasps(mesh, com, 0.4, GRIPPER)
+
+
+def test_a_lying_screw_is_gripped_across_its_shank_clear_of_its_head(lying_screw):
+    _, mesh, com, _, proposals = lying_screw
+
+    shank, ends = proposals.candidates[:2]
+
+    assert (shank.angle_deg, shank.verdict, shank.stock_fits) == (90, "ok", True)
+    assert shank.width_mm == pytest.approx(6, abs=0.05) and shank.com_offset_mm == pytest.approx(0, abs=1e-6)
+    near, far = shank.span_mm
+    centre, u, v = np.array(shank.centre_mm), np.array([0.0, 1.0]), np.array([-1.0, 0.0])  # 90 degrees: u is +y, v is -x
+    flat = mesh.vertices[:, :2] - centre
+    head = flat[np.abs(flat @ u) > 3.2]  # wider than the shank: the head and its countersink
+    assert len(head) and np.all((head @ v < near) | (head @ v > far))
+    # gripping it end to end, head to tip, is still offered, after the shank
+    assert ends.span_mm is None and ends.width_mm == pytest.approx(30.6, abs=0.5) and not ends.stock_fits
+
+
+def test_a_section_grasp_is_rechecked_on_the_same_section_and_posed_with_its_width(lying_screw):
+    record, mesh, com, cad_mesh, proposals = lying_screw
+    shank = proposals.candidates[0]
+
+    again = check_grasp(mesh, com, 0.4, GRIPPER, angle_deg=shank.angle_deg, centre_mm=shank.centre_mm, span_mm=shank.span_mm)
+    part = posed_part(
+        record, GraspChoice(angle_deg=shank.angle_deg, centre_mm=shank.centre_mm, span_mm=shank.span_mm), (0.6, 0.5), cad_mesh
+    )
+
+    assert (again.width_mm, again.span_mm, again.verdict) == (shank.width_mm, shank.span_mm, "ok")
+    assert again.centre_mm == pytest.approx(shank.centre_mm, abs=1e-3)
+    assert part.shape == "mesh" and part.grip_width_mm == pytest.approx(6, abs=0.05) and part.grip_span_mm == shank.span_mm
+    assert part.extent_mm[0] == pytest.approx(12, abs=0.1)  # the sim still gets the whole screw, head and all
+
+
+def test_fingers_for_a_section_are_sized_to_it_and_kept_off_the_head(lying_screw):
+    record, _, _, cad_mesh, proposals = lying_screw
+    shank = proposals.candidates[0]
+    part = posed_part(
+        record, GraspChoice(angle_deg=shank.angle_deg, centre_mm=shank.centre_mm, span_mm=shank.span_mm), (0.6, 0.5), cad_mesh
+    )
+    space = SearchSpace(part, gripper=GRIPPER)
+    near, far = shank.span_mm
+
+    centre = space.centre()
+    finger = build_finger(part, centre, GRIPPER)
+    too_wide = centre.model_copy(update={"params": centre.params.model_copy(update={"pad_width_mm": 2 * min(-near, far) + 4})})
+
+    assert space.bounds()["pad_width_mm"][1] <= 2 * min(-near, far) + 1e-9
+    assert problems(part, finger, GRIPPER) == []
+    # closed on the 6 mm shank: the pad face sits slack_mm off it with the jaws open
+    assert finger.jaw_close_mm == pytest.approx(GRIPPER.stroke_mm - centre.params.slack_mm - SQUEEZE_MM, abs=0.05)
+    assert "the pads would reach the wider part beside the grip" in problems(part, build_finger(part, too_wide, GRIPPER), GRIPPER)
+    held = MockSim().run_batch(part, [finger, None], [{"dx": 0.0, "dy": 0.0, "yaw_deg": 0.0}], SimSettings())
+    assert [outcome.held for outcome in held] == [[True], [True]]

@@ -18,9 +18,14 @@ search still running, in one sim request. Batch size q = clamp(round(10 waves x 
 capped to leave at least 4 learning rounds after round 0. A BO search stops when its best hasn't gained MIN_GAIN over its
 last 3d designs (and at least one batch), or its budget is spent. The final test re-runs the top FINALISTS of every
 search (the locked design of a single evaluation), the stock and imprint baselines on the dense grid.
+
+A job covering several resting poses (api/models/job_pose.py) searches in the primary pose's space (its ranges and
+limits) and simulates every design in every pose: each round is one sim request per pose, so the totals and the time
+estimate scale with the number of poses.
 """
 
 import math
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel
@@ -28,7 +33,8 @@ from pydantic import BaseModel
 from api.models.cell_profile import CellProfile, Gripper
 from api.models.error_model import PRESETS
 from api.models.family import FamilyChoice, FamilyName, ParamRange
-from api.models.finger import build_finger, problems
+from api.models.finger import build_finger, problems, regrip
+from api.models.job_pose import JobPose
 from api.models.job_spec import JobSpec, SimBackend
 from api.models.offset_grid import OffsetGrid
 from api.models.part import Part
@@ -77,10 +83,10 @@ class SearchConfig(BaseModel):
             return 1
         return 1 + math.ceil((self.budget - self.n_initial) / self.batch_size)
 
-    def space(self, part: Part, gripper: Gripper | None = None) -> SearchSpace:
+    def space(self, part: Part, gripper: Gripper | None = None, others: Sequence[Part] = ()) -> SearchSpace:
         """The search space this search runs in: from_unit() for the optimizer's points, locked_design() for a single
-        evaluation. Pass the job's cell profile's gripper."""
-        return SearchSpace(part, self.choice, gripper, self.clearance_mm)
+        evaluation. Pass the job's cell profile's gripper, and its other resting poses' parts (others)."""
+        return SearchSpace(part, self.choice, gripper, self.clearance_mm, others)
 
     def stop_reason(self, scores: list[float]) -> Literal["budget", "patience"] | None:
         """Why this search is over, given its designs' scores in the order they were evaluated, or None while it should
@@ -106,8 +112,9 @@ class PlanTotals(BaseModel):
     search_grasps: int
     final_designs: int
     final_grasps: int
-    rounds: int  # sim requests while searching (the longest search's), plus one for the final test
+    rounds: int  # rounds while searching (the longest search's), plus one for the final test; a sim request per pose each
     total_grasps: int
+    poses: int = 1  # resting poses every design is simulated in: the grasps above count each pose
 
 
 class TimeEstimate(BaseModel):
@@ -125,7 +132,7 @@ class Blocker(BaseModel):
 
 
 class JobPlan(BaseModel):
-    part: Part  # as the gripper meets it
+    part: Part  # as the gripper meets it, in the primary pose
     families: list[FamilySummary]
     searches: list[SearchConfig]
     baselines: list[str]  # "stock", "imprint"
@@ -141,6 +148,9 @@ class JobPlan(BaseModel):
     # Per-jaw force sent with every batch: the lesser of the profile's grip force and the part's max grip force, where
     # either is known (None: the twin's jaw drive). Fixed when the job is created, so later edits don't change a run.
     grip_force_n: float | None = None
+    # The resting poses the job covers, primary (the likeliest) first, each with its grasp, weight and posed part. Empty
+    # for a job planned before jobs covered poses: it has one, its spec's grasp on `part` (api/models/job.py: Job.poses).
+    poses: list[JobPose] = []
 
 
 def plan_job(
@@ -151,23 +161,27 @@ def plan_job(
     sim_backend: SimBackend,
     estimate: TimeEstimate,
     clearance_mm: float | None = None,
+    poses: list[JobPose] | None = None,
 ) -> JobPlan:
     """The plan for this part, spec and cell. `estimate` carries the throughput (seconds is filled in here); clearance_mm
-    is the part record's clearance on the table, if set. Collects every problem in warnings / blocked rather than
-    raising: a blocked plan still has its totals, so the review screen can show both."""
+    is the part record's clearance on the table, if set. poses: the resting poses the job covers, primary first (its
+    part is `part`); None for one, on `part` with the spec's grasp. Collects every problem in warnings / blocked rather
+    than raising: a blocked plan still has its totals, so the review screen can show both."""
     gripper = profile.gripper
-    grid = OffsetGrid.for_part(part, spec.error)
+    poses = poses or [JobPose(key="p0", grasp=spec.grasp, part=part)]
+    grid = OffsetGrid.for_parts([pose.part for pose in poses], spec.error)
     final_grid = grid.refined()
-    warnings, blocked = _cell_warnings(part, spec, profile, sim_backend), []
+    warnings, blocked = _cell_warnings(part, spec, profile, sim_backend, poses), []
     families, spaces = [], []
     for choice in spec.families:
-        choice = choice.with_grip_height(spec.grasp.grip_height_mm)
-        space = SearchSpace(part, choice, gripper, clearance_mm)
+        choice = choice.with_grip_height(poses[0].grasp.grip_height_mm)
+        space = SearchSpace(part, choice, gripper, clearance_mm, [pose.part for pose in poses[1:]])
         params = space.describe()
         notes = [f"{space.family.label}: {p.note}" for p in params if p.note]
         families.append(FamilySummary(family=choice.family, label=space.family.label, params=params, free=space.names, warnings=notes))
         warnings += notes
         blocked += _unbuildable(part, space, gripper, clearance_mm)
+        warnings += _other_poses(part, space, gripper, clearance_mm, poses[1:])
         spaces.append((choice, space))
     warnings += grid.warnings(spec.error)
 
@@ -178,15 +192,17 @@ def plan_job(
 
     search_designs = sum(s.budget for s in searches) + len(BASELINES)
     final_designs = sum(min(FINALISTS, s.budget) for s in searches) + len(BASELINES)
+    k = len(poses)
     totals = PlanTotals(
         search_offsets=grid.size,
         final_offsets=final_grid.size,
         search_designs=search_designs,
-        search_grasps=search_designs * grid.size,
+        search_grasps=search_designs * grid.size * k,
         final_designs=final_designs,
-        final_grasps=final_designs * final_grid.size,
+        final_grasps=final_designs * final_grid.size * k,
         rounds=max((s.rounds for s in searches), default=1) + 1,
-        total_grasps=search_designs * grid.size + final_designs * final_grid.size,
+        total_grasps=(search_designs * grid.size + final_designs * final_grid.size) * k,
+        poses=k,
     )
     rate = estimate.grasps_per_s
     estimate = estimate.model_copy(update={"seconds": totals.total_grasps / rate if rate else None})
@@ -202,6 +218,7 @@ def plan_job(
         warnings=warnings,
         blocked=blocked,
         sim_backend=sim_backend,
+        poses=poses,
     )
 
 
@@ -247,8 +264,29 @@ def _unbuildable(part: Part, space: SearchSpace, gripper: Gripper, clearance_mm:
     return [f"{label}: no buildable design for this part: {p}" for p in problems(part, finger, gripper, clearance_mm=clearance_mm)]
 
 
-def _cell_warnings(part: Part, spec: JobSpec, profile: CellProfile, sim_backend: SimBackend) -> list[str]:
-    """Warnings that don't depend on the family: the cell, the error preset, the stock baseline, the part's model."""
+def _other_poses(part: Part, space: SearchSpace, gripper: Gripper, clearance_mm: float | None, others: list[JobPose]) -> list[str]:
+    """What problems() says about a family's middle design gripping each other pose: warnings, not blockers, since a
+    design that can't grip a pose only scores 0 there."""
+    if not others:
+        return []
+    label = space.family.label
+    try:
+        design = space.centre()
+        built = build_finger(part, design, gripper)
+    except Exception:  # CadQuery and pydantic raise their own types; _unbuildable() already blocks the family
+        return []
+    out = []
+    for pose in others:
+        finger = regrip(part, pose.part, design, gripper, tip_height_mm=pose.grasp.grip_height_mm, built=built)
+        found = problems(pose.part, finger, gripper, clearance_mm=clearance_mm)
+        where = f"{label}, {pose.label or pose.key}"
+        out += [f"{where}: the middle design can't grip this pose ({p}); a design that can't scores 0 in it" for p in found]
+    return out
+
+
+def _cell_warnings(part: Part, spec: JobSpec, profile: CellProfile, sim_backend: SimBackend, poses: list[JobPose]) -> list[str]:
+    """Warnings that don't depend on the family: the cell, the error preset, the stock baseline, the part's model, and
+    the poses the job covers."""
     out = [f"cell profile vs the sim: {m}" for m in profile.twin_mismatches()]
     if sim_backend == "mock":
         out.append("mock sim: geometry only, so its success rates are not predictions")
@@ -258,9 +296,24 @@ def _cell_warnings(part: Part, spec: JobSpec, profile: CellProfile, sim_backend:
             f"the '{preset.label}' error preset ({preset.sigma_mm:g} mm, {preset.sigma_deg:g} deg) is a placeholder until "
             "measured on the cell"
         )
-    width, gap = part.extent_mm[0], profile.gripper.stock_tip_gap_mm
-    if width >= gap:
-        out.append(f"the stock fingers open to {gap:g} mm at the tips and the part is {width:.1f} mm wide: the stock baseline will score 0")
-    if part.shape == "mesh":
-        out.append(f"the part is simulated as {len(part.pieces)} convex pieces, an approximation of its shape")
+    gap = profile.gripper.stock_tip_gap_mm
+    for pose in poses:
+        width = pose.part.grip_width
+        if width >= gap:
+            where = f"{pose.label or pose.key}: " if len(poses) > 1 else ""
+            out.append(
+                f"{where}the stock fingers open to {gap:g} mm at the tips and the part is {width:.1f} mm wide: the stock baseline will "
+                "score 0"
+            )
+    mesh = next((pose.part for pose in poses if pose.part.shape == "mesh"), None)
+    if mesh is not None:
+        out.append(f"the part is simulated as {len(mesh.pieces)} convex pieces, an approximation of its shape")
+    if len(poses) > 1:
+        names = ", ".join(f"{pose.label or pose.key} ({pose.weight:.0%})" for pose in poses)
+        out.append(f"every design is simulated in {len(poses)} resting poses ({names}), so the run takes about {len(poses)} times as long")
+        covered = sum(pose.probability or 0.0 for pose in poses)
+        out.append(
+            f"the poses' likelihoods (trimesh's estimate, not measured) cover {covered:.0%} of how the part comes to rest; the "
+            "score assumes the cell recognises each part's pose and uses its grasp"
+        )
     return out

@@ -9,6 +9,9 @@ The worker (record_clip) asks the sim server to film the grasp: the same finger,
 the job simulated, with the cameras on (SimClient.record). It saves one mp4 per view as <outputs>/<job>/clips/<id>_<view>.mp4
 and compares the recording's outcome with the job's stored one at that offset. Near a design's capture edge the two can
 differ, since a grasp there isn't repeatable (CONTEXT.md, risk 5).
+
+A job covering several resting poses is filmed in its primary pose (job.part, the plan's first pose) only, and compared
+with that pose's stored outcomes; filming the other poses is deferred.
 """
 
 import logging

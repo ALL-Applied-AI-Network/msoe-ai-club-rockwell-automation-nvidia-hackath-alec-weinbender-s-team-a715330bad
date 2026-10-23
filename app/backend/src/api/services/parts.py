@@ -9,6 +9,7 @@ runs outside database sessions, so a slow file never holds one open.
 
 import logging
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -130,7 +131,7 @@ def update_part(db: DatabaseClient, part_id: str, changes: dict[str, Any]) -> Pa
     record = get_part(db, part_id)
     values = dict(changes)
     if "pose" in values and values["pose"] is not None:
-        values["pose"] = _chosen_pose(record, values["pose"])
+        values["pose"] = resolve_pose(record, values["pose"])
     try:
         updated = PartRecord.model_validate({**record.model_dump(), **values})
     except ValidationError as e:
@@ -149,23 +150,41 @@ def update_part(db: DatabaseClient, part_id: str, changes: dict[str, Any]) -> Pa
 
 def resting_poses(db: DatabaseClient, part_id: str) -> list[RestingPose]:
     """The top 4 distinct stable poses, most likely first, then "as in the CAD file". The same part always gives the
-    same list, so PATCH's pose index refers to it."""
-    record = get_part(db, part_id)
-    return stable_poses(load_mesh(record), record.measured.centre_of_mass_mm)
+    same list, so a pose index (PATCH's, a job spec's) refers to it."""
+    return resting_poses_of(get_part(db, part_id))
+
+
+def resolve_pose(record: PartRecord, choice: PoseChoice) -> RestingPose:
+    """The resting pose a choice means: an index into resting_poses(), or "as_authored"."""
+    return resolve_poses(record, [choice])[0]
+
+
+def resolve_poses(record: PartRecord, choices: list[PoseChoice]) -> list[RestingPose]:
+    """The resting poses these choices mean, from one list of stable poses. Raises PartInputError for an index out of
+    range."""
+    poses = resting_poses_of(record) if any(choice != "as_authored" for choice in choices) else []
+    out = []
+    for choice in choices:
+        if choice == "as_authored":
+            out.append(RestingPose(rotation=IDENTITY, label=AS_AUTHORED, source="as_authored", extent_mm=record.measured.extent_mm))
+        elif not isinstance(choice, int) or isinstance(choice, bool) or not 0 <= choice < len(poses):
+            raise PartInputError(f'pose must be an index from 0 to {len(poses) - 1}, or "as_authored"')
+        else:
+            out.append(poses[choice])
+    return out
 
 
 def mesh_stl(db: DatabaseClient, part_id: str, pose: PoseChoice | None = None) -> bytes:
     """The part as a binary STL in the table frame of `pose` (default: the chosen pose, or as authored while none is)."""
     record = get_part(db, part_id)
-    mesh = load_mesh(record)
-    chosen = _chosen_pose(record, pose, mesh) if pose is not None else record.pose
-    table, _ = grasp.table_mesh(record, mesh, chosen)
+    chosen = resolve_pose(record, pose) if pose is not None else record.pose
+    table, _ = grasp.table_mesh(record, load_mesh(record), chosen)
     return trimesh.Trimesh(table.vertices, table.triangles, process=False).export(file_type="stl")
 
 
-def propose_grasps(db: DatabaseClient, part_id: str, profile: CellProfile) -> GraspProposals:
-    """Auto grasp proposals for the part in its chosen pose, on this cell's gripper."""
-    record, mesh, com = _posed(db, part_id)
+def propose_grasps(db: DatabaseClient, part_id: str, profile: CellProfile, pose: PoseChoice | RestingPose | None = None) -> GraspProposals:
+    """Auto grasp proposals for the part in this resting pose (default: its chosen one), on this cell's gripper."""
+    record, mesh, com = _posed(db, part_id, pose)
     return grasp.propose_grasps(mesh, com, record.friction(profile.pad_friction)[0], profile.gripper)
 
 
@@ -177,9 +196,13 @@ def check_grasp(
     angle_deg: float | None = None,
     picks: list[GraspPick] = (),
     grip_height_mm: float | None = None,
+    pose: PoseChoice | RestingPose | None = None,
+    centre_mm: tuple[float, float] | None = None,
+    span_mm: tuple[float, float] | None = None,
 ) -> GraspCandidate:
-    """A manual grasp (an angle, or one or two face picks in the table frame), checked like a proposal."""
-    record, mesh, com = _posed(db, part_id)
+    """A manual grasp (an angle, or one or two face picks in the table frame of `pose`, by default the chosen one), or a
+    section grasp chosen before (its angle, centre_mm and span_mm), checked like a proposal."""
+    record, mesh, com = _posed(db, part_id, pose)
     try:
         return grasp.check_grasp(
             mesh,
@@ -189,23 +212,34 @@ def check_grasp(
             angle_deg=angle_deg,
             picks=picks,
             grip_height_mm=grip_height_mm,
+            centre_mm=centre_mm,
+            span_mm=span_mm,
         )
     except ValueError as e:
         raise PartInputError(str(e)) from e
 
 
-def _posed(db: DatabaseClient, part_id: str) -> tuple[PartRecord, PartMesh, tuple[float, float, float]]:
+def _posed(
+    db: DatabaseClient, part_id: str, pose: PoseChoice | RestingPose | None = None
+) -> tuple[PartRecord, PartMesh, tuple[float, float, float]]:
+    """The part's table-frame mesh and centre of mass in this pose: a choice, a pose already resolved, or (None) the
+    record's chosen pose, which must be set."""
     record = get_part(db, part_id)
-    if record.pose is None:
+    if pose is None and record.pose is None:
         raise PoseNotChosenError("choose a resting pose first")
-    mesh, com = grasp.table_mesh(record, load_mesh(record))
+    resting = record.pose if pose is None else pose if isinstance(pose, RestingPose) else resolve_pose(record, pose)
+    mesh, com = grasp.table_mesh(record, load_mesh(record), resting)
     return record, mesh, com
 
 
-def _chosen_pose(record: PartRecord, choice: PoseChoice, mesh: PartMesh | None = None) -> RestingPose:
-    if choice == "as_authored":
-        return RestingPose(rotation=IDENTITY, label=AS_AUTHORED, source="as_authored", extent_mm=record.measured.extent_mm)
-    poses = stable_poses(mesh if mesh is not None else load_mesh(record), record.measured.centre_of_mass_mm)
-    if not isinstance(choice, int) or isinstance(choice, bool) or not 0 <= choice < len(poses):
-        raise PartInputError(f'pose must be an index from 0 to {len(poses) - 1}, or "as_authored"')
-    return poses[choice]
+def resting_poses_of(record: PartRecord) -> list[RestingPose]:
+    """resting_poses() for a record already read."""
+    return list(_stable_poses(record.file_path, tuple(record.measured.centre_of_mass_mm)))
+
+
+@lru_cache(maxsize=32)
+def _stable_poses(file_path: str, centre_of_mass: tuple[float, float, float]) -> tuple[RestingPose, ...]:
+    """Cached by file: trimesh's compute_stable_poses is the slow part of planning a job over several poses, and a
+    part's file never changes (uploading it again makes a new part)."""
+    with np.load(Path(file_path).parent / MESH_FILE) as data:
+        return tuple(stable_poses(PartMesh(data["vertices"], data["triangles"]), centre_of_mass))

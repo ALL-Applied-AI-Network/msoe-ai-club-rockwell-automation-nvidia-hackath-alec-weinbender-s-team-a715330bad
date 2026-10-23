@@ -23,7 +23,7 @@ import numpy as np
 from pydantic import BaseModel
 
 from api.config import SimConfig
-from api.models.finger import Finger, Polygon, overlaps, sections, stock_finger
+from api.models.finger import Finger, Polygon, overlaps, sections, stock_finger, stock_grasp_pose
 from api.models.job_spec import SimBackend
 from api.models.outcome import InHand, Outcomes
 from api.models.part import Part
@@ -106,7 +106,9 @@ class MockSim:
 
     A grasp holds if, with the jaws open, neither fingertip comes down on the part (a mesh part's own outline, through
     finger.overlaps()), a lead-in didn't have to shove a tall part sideways, a part that isn't round from above isn't
-    turned past MAX_SQUARING_DEG, and the gripped part ends on the pads.
+    turned past MAX_SQUARING_DEG, and the gripped part ends on the pads. For a section grip (Part.grip_span_mm) the pads
+    must end on the section: the landing check already sees the whole part's outline (a screw's head too), and the
+    width and overlap rules use the section's.
 
     In-hand pose of a held part (dx, dy, dz, tilt, yaw; see api/models/outcome.py), from the pad face's cross-section
     (a Finger carries geometry, not its design's params):
@@ -193,7 +195,7 @@ class _PadFace:
 
 
 def _held(part: Part, tips: list[Polygon], faces: list[Polygon], face: _PadFace, offset: dict) -> bool:
-    x, y, height = part.extent_mm
+    x, (near, far), height = part.grip_width, part.grip_span, part.extent_mm[2]
     lo, hi = float(face.ys[0]), float(face.ys[-1])
     if any(overlaps(p, part, offset) for p in tips):
         return False  # a fingertip comes down on the part
@@ -203,7 +205,7 @@ def _held(part: Part, tips: list[Polygon], faces: list[Polygon], face: _PadFace,
         return False  # turned too far for the pads to square it up
     if part.round_from_above:
         return lo + 0.5 <= offset["dy"] <= hi - 0.5  # the contact line lands on the pad
-    return min(hi, offset["dy"] + y / 2) - max(lo, offset["dy"] - y / 2) >= 2.0
+    return min(hi, offset["dy"] + far) - max(lo, offset["dy"] + near) >= 2.0
 
 
 def _in_hand(part: Part, face: _PadFace, offset: dict) -> InHand:
@@ -409,7 +411,10 @@ def _part_payload(part: Part) -> dict:
 
 def _design_payload(i: int, finger: Finger | None, part: Part) -> dict:
     if finger is None:
-        return {"id": "stock"}
+        if part.grip_width_mm is None:
+            return {"id": "stock"}
+        # The server's stock rule closes on the whole part's width: a section grip (a screw's shank) closes further.
+        return {"id": "stock", "jaw_close_mm": stock_grasp_pose(part)["jaw_close_mm"]}
     return {
         "id": f"d{i}",
         "pieces": [piece.model_dump() for piece in finger.pieces],

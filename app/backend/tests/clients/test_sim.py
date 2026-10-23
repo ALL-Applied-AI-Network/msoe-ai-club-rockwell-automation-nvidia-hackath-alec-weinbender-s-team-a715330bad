@@ -245,6 +245,18 @@ def test_http_client_sends_the_v2_batch_contract(sim_server):
     assert (payload["grip_force_n"], payload["transport"]) == (40.0, "normal")
 
 
+def test_the_stock_fingers_close_on_a_section_grip_not_the_whole_part(sim_server):
+    url, received = sim_server
+    # A 12 mm box gripped by a 6 mm section of it: the server's stock rule would close on the 12 mm
+    part = Part(shape="box", width_mm=12, depth_mm=30, height_mm=12, grip_width_mm=6, grip_span_mm=(-12.0, 9.0))
+
+    HttpSim(url, timeout_s=5).run_batch(part, [None], [CENTRED], SimSettings())
+
+    [(_, payload)] = received
+    assert payload["designs"] == [{"id": "stock", "jaw_close_mm": pytest.approx(0.7)}]  # 6 / 2 - 2 mm hook tip - 0.3 mm squeeze
+    assert "grip_width_mm" not in payload["part"]  # the sim gets the whole part
+
+
 @pytest.mark.parametrize(
     ("part", "fields"),
     [(CUBE, {"box_mm": [10, 10, 10]}), (I_BEAM, {"pieces": [piece.model_dump(mode="json") for piece in I_BEAM.pieces]})],

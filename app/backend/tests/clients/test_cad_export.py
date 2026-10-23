@@ -2,7 +2,7 @@ import cadquery as cq
 import pytest
 import trimesh
 
-from api.clients.cad import CadQueryCad, FingerExport
+from api.clients.cad import CadQueryCad, FingerExport, _pose_item
 from api.models import finger_cad
 from api.models.cell_profile import Gripper
 from api.models.design import Design
@@ -107,3 +107,15 @@ def test_a_blocking_failure_is_reported_and_the_files_are_still_written(cad, tmp
 
     assert [c.name for c in export.blocked] == ["finger length"]
     assert export.files["step"].exists()
+
+
+def test_the_print_sheet_lists_each_resting_poses_grasp():
+    poses = [
+        {"resting_pose": "on its side", "weight": 0.87, "grasp_angle_deg": 90.0, "tip_height_mm": 2.9},
+        {"resting_pose": "standing", "weight": 0.13, "grasp_angle_deg": 0.0, "tip_height_mm": 12.9},
+    ]
+
+    assert _pose_item("poses", poses) == (
+        "pose 1 (on its side, weight 0.87): grasp angle 90.0 deg, tip height 2.9 mm; "
+        "pose 2 (standing, weight 0.13): grasp angle 0.0 deg, tip height 12.9 mm"
+    )

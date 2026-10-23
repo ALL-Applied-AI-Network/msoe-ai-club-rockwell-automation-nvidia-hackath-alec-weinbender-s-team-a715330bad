@@ -8,7 +8,8 @@ from api.models.offset_grid import GridPreview, OffsetGrid
 from api.models.part import Part
 
 
-def grid_preview(part: Part, error: ErrorModel, final: bool = False) -> GridPreview:
-    """The search grid a job on this part would use (final=True: the dense grid of the final test), under this error."""
-    grid = OffsetGrid.for_part(part, error)
+def grid_preview(part: Part, error: ErrorModel, final: bool = False, parts: list[Part] = ()) -> GridPreview:
+    """The search grid a job on this part would use (final=True: the dense grid of the final test), under this error.
+    parts: the part in every resting pose the job covers, when it covers several (they share one grid)."""
+    grid = OffsetGrid.for_parts(list(parts) or [part], error)
     return (grid.refined() if final else grid).preview(error)

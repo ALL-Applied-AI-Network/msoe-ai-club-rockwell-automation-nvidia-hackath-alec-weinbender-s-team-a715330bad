@@ -183,10 +183,11 @@ def rescore(job_id: str, body: RescoreRequest, db: DbDep) -> ResultsView:
 
 
 @router.get("/{job_id}/finger")
-async def get_finger(job_id: str, db: DbDep, design: str = "D1") -> FingerPreview:
-    """Both fingers of a final design (D1 by default) and the part, for the 3D preview."""
+async def get_finger(job_id: str, db: DbDep, design: str = "D1", pose: str | None = None) -> FingerPreview:
+    """Both fingers of a final design (D1 by default) and the part, for the 3D preview: in the primary resting pose, or
+    the job's pose with this key ("p1", ...; the plan's poses)."""
     with _http_errors():
-        return await run_in_threadpool(results.finger_preview, db, job_id, design)
+        return await run_in_threadpool(results.finger_preview, db, job_id, design, pose)
 
 
 @router.get("/{job_id}/designs/{label}/cad", response_class=FileResponse)

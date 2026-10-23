@@ -108,6 +108,7 @@ def test_poses_are_indexed_and_the_chosen_one_is_marked(client, upload):
     chosen = client.patch(url, json={"pose": 1}).json()
     after = client.get(f"{url}/poses").json()
     authored = client.patch(url, json={"pose": "as_authored"}).json()
+    after_authored = client.get(f"{url}/poses").json()
 
     assert [(p["index"], p["label"], p["chosen"]) for p in before] == [
         (0, "lying on its side", False),
@@ -117,6 +118,7 @@ def test_poses_are_indexed_and_the_chosen_one_is_marked(client, upload):
     assert chosen["pose"]["label"] == "standing on an end" and chosen["pose"]["extent_mm"] == pytest.approx([17, 17, 140], abs=0.05)
     assert [p["chosen"] for p in after] == [False, True, False]
     assert authored["pose"]["source"] == "as_authored"
+    assert [p["chosen"] for p in after_authored] == [False, False, True]  # though its stored extent is rounded differently
 
 
 def test_the_mesh_is_a_binary_stl_in_the_table_frame(client, upload):
@@ -167,7 +169,14 @@ def test_a_manual_grasp_is_checked_and_comes_with_its_choice(client, upload, pro
     by_pick = client.post(f"{url}/grasps/check", json={"cell_profile_id": profile_id, "picks": [pick], "grip_height_mm": 2}).json()
 
     assert (by_angle["angle_deg"], by_angle["verdict"]) == (90, "ok")
-    assert by_angle["choice"] == {"angle_deg": 90, "centre_mm": [0, 0], "source": "manual", "grip_height_mm": None, "picks": []}
+    assert by_angle["choice"] == {
+        "angle_deg": 90,
+        "centre_mm": [0, 0],
+        "span_mm": None,
+        "source": "manual",
+        "grip_height_mm": None,
+        "picks": [],
+    }
     assert by_pick["verdict"] == "ok" and by_pick["choice"]["picks"] == [pick] and by_pick["choice"]["grip_height_mm"] == 2
 
 
@@ -188,3 +197,17 @@ def test_a_manual_grasp_that_sets_no_direction_is_422(client, upload, profile_id
     response = client.post(f"{url}/grasps/check", json={"cell_profile_id": profile_id, **body})
 
     assert response.status_code == 422, response.text
+
+
+def test_likely_poses_are_marked_and_grasps_take_a_pose(client, upload, profile_id):
+    url = f"/api/parts/{upload('bar')['id']}"
+
+    poses = client.get(f"{url}/poses").json()
+    standing = client.post(f"{url}/grasps", json={"cell_profile_id": profile_id, "pose": 1})
+    checked = client.post(f"{url}/grasps/check", json={"cell_profile_id": profile_id, "pose": 1, "angle_deg": 90})
+
+    assert [(p["label"], p["likely"]) for p in poses] == [("on its side", True), ("standing", True), ("as in the CAD file", False)]
+    assert standing.status_code == 200 and [c["angle_deg"] for c in standing.json()["candidates"]] == [0, 90]
+    assert checked.status_code == 200 and checked.json()["verdict"] == "ok" and checked.json()["width_mm"] == pytest.approx(10)
+    assert client.post(f"{url}/grasps", json={"cell_profile_id": profile_id}).status_code == 409  # no chosen pose, none given
+    assert client.post(f"{url}/grasps", json={"cell_profile_id": profile_id, "pose": 9}).status_code == 422

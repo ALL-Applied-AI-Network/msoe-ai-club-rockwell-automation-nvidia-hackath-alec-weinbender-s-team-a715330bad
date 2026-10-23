@@ -14,6 +14,10 @@ A finger is that upper blade, a bridge, and a contact pad. The pad's inner face 
 a V groove, or the imprint's pocket), runs straight down to the fingertips, and can have a 45 degree lead-in chamfer along
 its bottom inner edge.
 
+A design's parameters are relative to the part it's built for (the pad face sits slack_mm off it, the pad reaches 3 mm
+above its top), so a finger is built once, for the job's primary resting pose. In any other pose the same physical
+finger only grips differently: regrip() works out where the jaws close and how high the fingertips go there.
+
 CadQuery builds it, so the CAD is the ground truth. Physics engines collide convex shapes fast and reliably, so the finger
 is built as convex solids (one per straight segment of the profile, plus the bridge and the blade, the way the twin
 builds its own fingers): the sim server receives exactly those solids, tessellated, as `pieces`, and finger_cad.py fuses
@@ -23,7 +27,9 @@ collision shape.
 Seen from above, the part is a circle (round from above: a cylinder standing on an end), a rectangle (a box, or a lying
 cylinder: one lying along the jaws, axis "x", is gripped by its end faces and looks like a box from above), or, for a
 mesh, the union of its convex pieces' footprints. A mesh is seated by the box rule (its bounding box), which is exact for
-parts whose gripped sides are flat and parallel and an approximation otherwise.
+parts whose gripped sides are flat and parallel and an approximation otherwise. A section grip (Part.grip_width_mm and
+grip_span_mm: a screw's shank beside its head) is seated by the box rule on the section, and the pads must stay within
+its span.
 """
 
 import math
@@ -53,6 +59,9 @@ SEAT_GAP_MM = 0.5  # gripping, each pad face stays this far from the part's cent
 TOP_CLEARANCE_MM = 3.0  # the pad reaches this far above the part's top, so the bridge clears it
 IMPRINT_CLEARANCE_MM = 0.2
 STOCK_TIP_MM = 2.5  # the stock fingertips' height above the table when gripping: the twin's cube rule, as the sim runs it
+MIN_TIP_MM = 1.0  # fingertips above the table
+MIN_CONTACT_MM = 2.0  # pad face left on the part, between the grip height and the top of the lead-in
+BRIDGE_CLEARANCE_MM = 0.5  # in another pose, the part's top stays at least this far below the bridge
 
 Polygon = list[tuple[float, float]]
 Profile = list[tuple[float, float]]  # (y, recess) breakpoints across the pad: how far the face is set back at each y
@@ -72,6 +81,9 @@ class Finger(BaseModel):
     closed_gap_mm: float | None = None
     jaw_open_mm: float = STROKE_MM  # per jaw: the gripper's stroke, where the jaws are before closing
     tcp_mm: float = DEFAULT_GRIPPER.tcp_mm
+    # The pad's top above the fingertips, where the bridge starts: fixed by the part it was built for. None for a Finger
+    # built elsewhere.
+    pad_top_mm: float | None = None
 
     @property
     def grasp_pose(self) -> dict:
@@ -103,6 +115,44 @@ def build_finger(part: Part, design: Design, gripper: Gripper | None = None) -> 
     return _finger(part, _layout(part, design, g), g)
 
 
+def regrip(
+    built_for: Part,
+    part: Part,
+    design: Design,
+    gripper: Gripper | None = None,
+    *,
+    tip_height_mm: float | None = None,
+    built: Finger | None = None,
+) -> Finger:
+    """The finger built for `built_for` (its pieces unchanged) gripping `part`, the same part in another resting pose:
+    the jaws close to where this pose seats against the pad face, and the fingertips go to the pose's own grip height
+    (tip_height_mm, when its grasp locks one), else to the design's, raised just enough that a taller pose keeps the
+    clearance under the bridge it was built with, and lowered to leave MIN_CONTACT_MM of pad (above any lead-in) on a
+    shorter one, down to MIN_TIP_MM: lower than that, the pose is too short for this finger. The
+    stock fingers are the robot's own: stock_finger(part). `built`: the finger already built for `built_for`, so its
+    pieces aren't built again. For the pose it was built for, without a lock, this is build_finger()."""
+    g = gripper or DEFAULT_GRIPPER
+    if design.kind == "stock":
+        return stock_finger(part, g)
+    layout = _layout(built_for, design, g)
+    finger = built if built is not None else _finger(built_for, layout, g)
+    if tip_height_mm is None and (part is built_for or part == built_for):
+        return finger
+    height, built_height = part.extent_mm[2], built_for.extent_mm[2]
+    if tip_height_mm is None:
+        lo = max(MIN_TIP_MM, height - (built_height - layout.tip))
+        tip = max(MIN_TIP_MM, min(max(layout.tip, lo), height - MIN_CONTACT_MM - layout.lead))  # pad above the lead-in
+    else:
+        tip = tip_height_mm
+    return finger.model_copy(
+        update={
+            "tip_height_mm": tip,
+            "jaw_close_mm": seat_distance(part, layout.profile) - layout.face - SQUEEZE_MM,
+            "contact_mm": max(0.0, height - tip - layout.lead),
+        }
+    )
+
+
 def finger_solids(part: Part, design: Design, gripper: Gripper | None = None) -> list[cq.Solid]:
     """The finger's convex solids, exactly as simulated (one per pad strip, the bridge, the kept blade). The printable
     solid (api/models/finger_cad.py) fuses these and adds the mount features."""
@@ -117,7 +167,7 @@ def stock_finger(part: Part, gripper: Gripper | None = None) -> Finger:
     g = gripper or DEFAULT_GRIPPER
     face = [(-g.blade_mm[1] / 2, 0.0), (g.blade_mm[1] / 2, 0.0)]
     lead = max(0.0, g.stock_tip_gap_mm / 2 - g.stroke_mm)
-    jaw_close = max(0.0, part.extent_mm[0] / 2 - SQUEEZE_MM)
+    jaw_close = max(0.0, part.grip_width / 2 - SQUEEZE_MM)
     return _finger(part, _Layout(face, 0.0, tip=STOCK_TIP_MM, lead=lead, jaw_close=jaw_close), g)
 
 
@@ -128,7 +178,7 @@ def stock_grasp_pose(part: Part, gripper: Gripper | None = None) -> dict:
     finger's, whose flat face stands where the tips grip."""
     g = gripper or DEFAULT_GRIPPER
     inner_tip = max(0.0, g.stock_tip_gap_mm / 2 - g.stroke_mm)
-    jaw = min(g.stroke_mm, max(0.0, part.extent_mm[0] / 2 - inner_tip - SQUEEZE_MM))
+    jaw = min(g.stroke_mm, max(0.0, part.grip_width / 2 - inner_tip - SQUEEZE_MM))
     return {
         "approach": "top-down, centred on the part, jaws closing along its width (the stock fingers' own grasp)",
         "tip_height_mm": STOCK_TIP_MM,
@@ -152,12 +202,16 @@ def v_profile(width: float, angle_deg: float, depth: float) -> Profile:
 
 def seat_distance(part: Part, profile: Profile) -> float:
     """How far in front of the pad face the part's centre sits once both fingers grip it. A part that isn't round from
-    above (a box, a lying cylinder, a mesh by its bounding box) rests on the deepest part of the face; a round part
-    settles where the profile first touches it."""
-    x = part.extent_mm[0]
+    above (a box, a lying cylinder, a mesh by its bounding box) has a flat side: it rests on the most forward point of
+    the face across its own width (the whole notch of an imprint shaped to it; a groove's shoulders, for one built for
+    another pose; a section grip is seated across its span); a round part settles where the profile first touches it."""
+    x = part.grip_width
     ys, recess = np.array([y for y, _ in profile]), np.array([e for _, e in profile])
     if not part.round_from_above:
-        return x / 2 - float(recess.max())
+        span = part.grip_span
+        lo, hi = max(span[0], ys[0]), min(span[1], ys[-1])
+        window = np.concatenate([[lo, hi], ys[(ys >= lo) & (ys <= hi)]])
+        return x / 2 - float(np.interp(window, ys, recess).min())
     r = x / 2
     lo, hi = max(-r, ys[0]), min(r, ys[-1])
     samples = np.concatenate([np.linspace(lo, hi, 401), ys[(ys >= lo) & (ys <= hi)]])
@@ -178,8 +232,13 @@ def problems(part: Part, finger: Finger, gripper: Gripper | None = None, *, clea
         out.append(f"the jaws can't reach the gripping position ({finger.jaw_close_mm:.2f} mm; travel is 0..{g.stroke_mm:g})")
     if finger.contact_mm < 1:
         out.append("less than 1 mm of pad touches the part")
-    if height - finger.tip_height_mm + TOP_CLEARANCE_MM + BRIDGE_MM > blade_length - g.mount_kept_mm:
+    # The pad's top is where the finger was built to reach: above this part's top (plus the clearance), unless it was
+    # built for another pose, and then the part may reach the bridge.
+    pad_top = finger.pad_top_mm if finger.pad_top_mm is not None else height - finger.tip_height_mm + TOP_CLEARANCE_MM
+    if pad_top + BRIDGE_MM > blade_length - g.mount_kept_mm:
         out.append("the part is too tall: the pad would have to reach into the mount")
+    if height - finger.tip_height_mm > pad_top - BRIDGE_CLEARANCE_MM:
+        out.append("the part's top would reach the bridge above the pad")
     points = [pt for piece in finger.pieces for pt in piece.points]
     if min(px for px, _, _ in points) + finger.jaw_close_mm <= 0:
         out.append("the fingers would touch each other before gripping the part")
@@ -191,6 +250,11 @@ def problems(part: Part, finger: Finger, gripper: Gripper | None = None, *, clea
     heights = (1e-6, part_top / 2, part_top)
     if part_top > 0 and any(overlaps(p, part, centred) for z in heights for p in sections(finger, z, g.stroke_mm)):
         out.append("with the jaws open, a finger would land on the centred part")
+    if part.grip_span_mm is not None and part_top > 0:
+        pads = [py for z in (1e-6, part_top) for piece in finger.pieces for _, py in section(piece, z)]
+        lo, hi = part.grip_span_mm
+        if pads and (min(pads) < lo - 1e-6 or max(pads) > hi + 1e-6):
+            out.append("the pads would reach the wider part beside the grip")
     if clearance_mm is not None and part_top > 0:
         pads = [polygon for z in (1e-6, part_top) for piece in finger.pieces if (polygon := section(piece, z))]
         if pads:
@@ -274,7 +338,7 @@ def _layout(part: Part, design: Design, g: Gripper) -> _Layout:
         return _imprint(part, g)
     p = design.params
     profile = v_profile(p.pad_width_mm, p.groove_angle_deg, p.groove_depth_mm)
-    face = p.slack_mm + part.extent_mm[0] / 2 - g.stroke_mm  # where the pad face sits with the jaws closed
+    face = p.slack_mm + part.grip_width / 2 - g.stroke_mm  # where the pad face sits with the jaws closed
     jaw_close = seat_distance(part, profile) - face - SQUEEZE_MM
     return _Layout(profile, face, p.tip_height_mm, p.lead_in_mm, jaw_close)
 
@@ -284,11 +348,16 @@ def _imprint(part: Part, g: Gripper) -> _Layout:
     without touching each other: low fingertips, no lead-in, no slack, as a designer copying the part's shape would draw
     it. A box (or a lying cylinder: a curved cradle isn't modelled) gets a rectangular notch, or a plain flat face where
     a notch as long as the part wouldn't fit beside the gripper. A mesh gets the notch of its bounding box: an
-    approximation of a true imprint (planned as its own family), exact only for box-like parts."""
+    approximation of a true imprint (planned as its own family), exact only for box-like parts. A section grip gets a flat
+    face as long as its span allows: a pocket would need shoulders beside it, where the wider part is."""
     x, y, _ = part.extent_mm
     free_y = g.free_space_mm[1]
     jaw_seat = 2 * SQUEEZE_MM
     notch = y / 2 + IMPRINT_CLEARANCE_MM
+    if part.grip_span_mm is not None:
+        lo, hi = part.grip_span_mm
+        profile = [(max(lo + IMPRINT_CLEARANCE_MM, 1 - free_y), 0.0), (min(hi - IMPRINT_CLEARANCE_MM, free_y - 1), 0.0)]
+        return _Layout(profile, part.grip_width / 2 - jaw_seat, tip=1.0, lead=0.0, jaw_close=jaw_seat - SQUEEZE_MM)
     if part.round_from_above:
         profile = _pocket_profile(x / 2 + IMPRINT_CLEARANCE_MM, SEAT_GAP_MM, shoulder=WALL_MM)
     elif notch + WALL_MM + 0.3 <= free_y:
@@ -322,7 +391,13 @@ def _finger(part: Part, layout: _Layout, g: Gripper) -> Finger:
         closed_gap_mm=2 * layout.face,
         jaw_open_mm=g.stroke_mm,
         tcp_mm=g.tcp_mm,
+        pad_top_mm=_pad_top(part, layout),
     )
+
+
+def _pad_top(part: Part, layout: _Layout) -> float:
+    """The pad reaches from the fingertips to TOP_CLEARANCE_MM above the part it's built for."""
+    return part.extent_mm[2] - layout.tip + TOP_CLEARANCE_MM
 
 
 def _solids(part: Part, layout: _Layout, g: Gripper) -> list[cq.Solid]:
@@ -331,7 +406,7 @@ def _solids(part: Part, layout: _Layout, g: Gripper) -> list[cq.Solid]:
     profile, face, lead = layout.profile, layout.face, layout.lead
     blade_x, blade_y, blade_z = g.blade_mm
     back = face + max(e for _, e in profile) + lead + WALL_MM
-    pad_top = part.extent_mm[2] - layout.tip + TOP_CLEARANCE_MM
+    pad_top = _pad_top(part, layout)
     solids = [_strip(face, back, a, b, pad_top, lead) for a, b in pairwise(profile)]
     half = max(blade_y / 2, -profile[0][0], profile[-1][0])
     blade_bottom = pad_top + BRIDGE_MM

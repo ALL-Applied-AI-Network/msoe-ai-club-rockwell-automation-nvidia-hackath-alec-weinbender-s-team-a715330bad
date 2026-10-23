@@ -47,15 +47,16 @@ def preview_fingers(
     grip_height_mm: float | None = None,
     vary: str | None = None,
     designs: list[Design] | None = None,
+    others: list[Part] | None = None,
 ) -> FingerPreview:
     """With `vary`: two designs, every free parameter at the middle of the cube except `vary`, at its low and high end.
     With `designs`: those. With neither: the middle design (or the locked one). A grip height locked in step 5 locks the
     tip height here too, as plan_job does. Raises CellProfileNotFoundError for an unknown profile and PreviewError for a
-    request that can't be previewed."""
+    request that can't be previewed. others: the job's other resting poses' parts, which bound the slack too."""
     if vary is not None and designs is not None:
         raise PreviewError("give vary or designs, not both")
     gripper = get_profile(db, cell_profile_id).profile.gripper
-    space = SearchSpace(part, choice.with_grip_height(grip_height_mm), gripper, clearance_mm)
+    space = SearchSpace(part, choice.with_grip_height(grip_height_mm), gripper, clearance_mm, others or [])
     if vary is not None:
         labelled = list(zip(("min", "max"), _ends(space, vary), strict=True))
     elif designs is not None:

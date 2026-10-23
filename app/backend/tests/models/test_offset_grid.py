@@ -177,3 +177,11 @@ def test_results_must_match_the_grid():
 def test_rejects_an_invalid_grid(bad):
     with pytest.raises(ValueError):
         OffsetGrid(**bad)
+
+
+def test_a_job_over_several_poses_tests_yaw_unless_every_pose_is_round_from_above():
+    upright, lying = Part(), Part(axis="y")
+
+    assert OffsetGrid.for_parts([upright], error()) == OffsetGrid.for_part(upright, error()) == OffsetGrid()
+    assert OffsetGrid.for_parts([upright, lying], error()).yaws_deg == OffsetGrid.for_part(lying, error()).yaws_deg == [-12, 0, 12]
+    assert OffsetGrid.for_parts([upright, upright], error()).yaws_deg == [0]

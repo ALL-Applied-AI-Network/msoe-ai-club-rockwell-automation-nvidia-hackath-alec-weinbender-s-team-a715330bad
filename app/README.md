@@ -123,6 +123,9 @@ GPU page, validation, the quick logger, parts and settings ([status](../docs/not
 The optimizer is `backend/src/api/services/optimizer.py`.
 
 - **Part** (`models/part.py`): a cylinder (standing, or lying across the jaws) or a box, as it rests on the table.
+- **Poses** (`models/job_pose.py`): a job covers one or more of the part's resting poses, each with its own grasp. The
+  fingers are built for the likeliest (the primary) and regripped in each other (`finger.regrip()`); every round sends
+  one sim request per pose, and a design's score is weighted by the poses' likelihoods.
 - **Design space** (`models/search_space.py`): six numbers defined relative to the part (pad width, groove angle, groove depth,
   slack, fingertip height, lead-in), mapped from a unit cube so every point is a finger that fits and the jaws can grip with.
 - **Geometry** (`models/finger.py`): a design becomes convex pieces in the gripper frame. The sim server, the CAD file and

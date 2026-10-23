@@ -178,3 +178,26 @@ def test_the_profiles_free_space_decides_what_fits(db, upload):
 
     assert proposals.candidates == []
     assert proposals.nothing_fits.reason.endswith("these fingers reach around at most 23.0 mm")
+
+
+def test_grasps_can_be_proposed_and_checked_in_any_pose(db, upload, profile_id):
+    record = upload("bar")
+    profile = cell_profiles.get_profile(db, profile_id).profile
+
+    lying, standing = parts.propose_grasps(db, record.id, profile, 0), parts.propose_grasps(db, record.id, profile, 1)
+    checked = parts.check_grasp(db, record.id, profile, angle_deg=0, pose=1)
+
+    assert parts.get_part(db, record.id).pose is None  # no chosen pose needed when the pose is given
+    assert [c.angle_deg for c in lying.candidates][:2] == [90, 0] and [c.angle_deg for c in standing.candidates] == [0, 90]
+    assert (checked.verdict, checked.width_mm) == ("ok", pytest.approx(10))
+    with pytest.raises(parts.PartInputError, match="pose must be an index"):
+        parts.propose_grasps(db, record.id, profile, 7)
+
+
+def test_poses_resolve_from_one_list(db, upload):
+    record = upload("bar")
+
+    lying, authored = parts.resolve_poses(record, [0, "as_authored"])
+
+    assert (lying.label, lying.probability) == ("on its side", pytest.approx(0.8718, abs=1e-3))
+    assert authored.source == "as_authored" and parts.resolve_pose(record, 1).label == "standing"

@@ -16,6 +16,11 @@ Each parameter has two ranges at every point:
   the user leaves the parameter alone.
 
 The user's choice (api/models/family.py: FamilyChoice) removes locked parameters from the cube: `names` is what's left.
+
+A job that covers several resting poses builds one finger, for its primary pose (`part`), and regrips it in the others
+(finger.regrip()). The pad face is the same in every pose, so the slack is bounded for all of them: with the jaws open
+the pads must clear the widest pose (lo), and closing they must still reach the narrowest before the jaws close (hi). A
+pose that can't be gripped together with the likelier ones is left out of those bounds and scores 0 (_slack_bounds).
 """
 
 import math
@@ -31,6 +36,8 @@ from api.models.family import FAMILIES, FamilyChoice
 from api.models.finger import (
     BRIDGE_MM,
     DEFAULT_GRIPPER,
+    MIN_CONTACT_MM,
+    MIN_TIP_MM,
     SEAT_GAP_MM,
     SQUEEZE_MM,
     TOP_CLEARANCE_MM,
@@ -42,9 +49,7 @@ from api.models.part import Part
 
 MIN_SLACK_MM = 0.5
 JAW_MARGIN_MM = 0.2  # gripping, the jaws stop at least this far short of fully closed
-MIN_TIP_MM = 1.0  # fingertips above the table
 MIN_PAD_MM = 2.0  # narrower pads print as fins
-MIN_CONTACT_MM = 2.0  # pad face left on the part, between the grip height and the top of the lead-in
 DEFAULT_GRIP_FRACTION = 0.6  # by default, grips are searched in the part's lower 60%
 DEFAULT_MAX_LEAD_MM = 4.0
 LOOSEST_HIGH = {"pad_width_mm"}  # a wide pad leaves later parameters the most room; for the rest it's the low end
@@ -86,8 +91,16 @@ class SearchSpace:
     full default space); gripper: the cell profile's (none: the UWM cell's); clearance_mm: the part's free space on the
     table (none: unlimited)."""
 
-    def __init__(self, part: Part, choice: FamilyChoice | None = None, gripper: Gripper | None = None, clearance_mm: float | None = None):
+    def __init__(
+        self,
+        part: Part,
+        choice: FamilyChoice | None = None,
+        gripper: Gripper | None = None,
+        clearance_mm: float | None = None,
+        others: Sequence[Part] = (),
+    ):
         self.part = part
+        self.others = list(others)  # the job's other resting poses, as the gripper meets each: the finger must grip them too
         self.choice = choice or FamilyChoice()
         self.gripper = gripper or DEFAULT_GRIPPER
         self.clearance_mm = clearance_mm
@@ -99,7 +112,10 @@ class SearchSpace:
         self.locks = {name: v for name, v in self.choice.locks.items() if self.applies[name]}
         self.ranges = {name: (r.lo, r.hi) for name, r in self.choice.ranges.items() if self.applies[name]}
         self.names = [name for name in self.fields if self.applies[name] and name not in self.locks]  # the free parameters
-        self._extent = part.extent_mm
+        # What the fingers are sized to: the section a section grip closes on (its width, and its span's length across the
+        # jaws), else the whole part.
+        near, far = part.grip_span
+        self._extent = (part.grip_width, far - near, part.extent_mm[2])
 
     def from_unit(self, unit: Sequence[float]) -> Design:
         """The design at a point of the unit cube (one coordinate per free parameter, in `names` order)."""
@@ -245,8 +261,12 @@ class SearchSpace:
             widest = 2 * (free_y - 1)
             lo = max(g.blade_mm[1], min(0.4 * y, widest - 10))
             default = (lo, min(widest, max(lo + 4, 1.2 * y)))
-            clear = None if clearance is None else y + 2 * clearance
-            return _limits(MIN_PAD_MM, "narrower pads print as fins", caps((widest, beside), clear=clear), default)
+            clear = None if clearance is None else self.part.extent_mm[1] + 2 * clearance
+            limits = caps((widest, beside), clear=clear)
+            if self.part.grip_span_mm is not None:  # the pad is centred on the grip: it stays within the section's span
+                near, far = self.part.grip_span_mm
+                limits.append((2 * min(-near, far), "a wider pad reaches the wider part beside the grip"))
+            return _limits(MIN_PAD_MM, "narrower pads print as fins", limits, default)
         if name == "groove_angle_deg":
             return _limits(60.0, "sharper grooves aren't modelled", [(180.0, "180 degrees is a flat pad")], (60.0, 180.0))
         if name == "groove_depth_mm":
@@ -258,11 +278,10 @@ class SearchSpace:
         if name == "slack_mm":
             depth = p.get("groove_depth_mm", 0.0)
             profile = v_profile(p["pad_width_mm"], p.get("groove_angle_deg", 180.0), depth)
-            room = seat_distance(self.part, profile) - x / 2 + g.stroke_mm - SQUEEZE_MM - JAW_MARGIN_MM
             reach = free_x - x / 2 - depth - WALL_MM
             clear = None if clearance is None else clearance - depth - WALL_MM
-            limits = caps((room, "the stroke leaves no more"), (reach, beside), clear=clear)
-            return _limits(MIN_SLACK_MM, "the pads need room to land beside the part", limits, (MIN_SLACK_MM, math.inf))
+            lo, why_lo, limits, _ = self._slack_bounds(profile, caps((reach, beside), clear=clear))
+            return _limits(lo, why_lo, limits, (MIN_SLACK_MM, math.inf))
         if name == "tip_height_mm":
             mount = height + TOP_CLEARANCE_MM + BRIDGE_MM - (g.blade_mm[2] - g.mount_kept_mm)
             lo, why_lo = max((MIN_TIP_MM, "the fingertips stay off the table"), (mount, "a lower grip reaches the pad into the mount"))
@@ -280,6 +299,33 @@ class SearchSpace:
             return _limits(0.0, "", limits, (0.0, DEFAULT_MAX_LEAD_MM))
         raise KeyError(name)
 
+    def _slack_bounds(
+        self, profile: list[tuple[float, float]], extra: list[tuple[float, str]]
+    ) -> tuple[float, str, list[tuple[float, str]], int]:
+        """The slack's floor (and why), its caps (the stroke's, then `extra`), and how many other poses they cover. The
+        floor leaves the pads room to land beside the part; the stroke caps where the jaws close before the pads reach it
+        (finger.regrip()'s jaw position falls below JAW_MARGIN_MM). The pad face is set from the primary's width, so a
+        wider pose raises the floor (the open pads must clear it) and a narrower one lowers the stroke's cap (the jaws must
+        still reach it). Other poses are taken most likely first, each only if the range stays open with it: one that
+        can't be gripped together with those before it isn't bounded for, and scores 0 (the plan warns)."""
+        x, g = self._extent[0], self.gripper
+
+        def room(part: Part) -> float:
+            return seat_distance(part, profile) - x / 2 + g.stroke_mm - SQUEEZE_MM - JAW_MARGIN_MM
+
+        lo, why = MIN_SLACK_MM, "the pads need room to land beside the part"
+        limits, kept = [(room(self.part), "the stroke leaves no more"), *extra], 0
+        for other in self.others:
+            need = max(lo, (other.grip_width - x) / 2 + MIN_SLACK_MM)
+            cap = (room(other), "the jaws must still reach the part's other resting poses before closing")
+            if min(c for c, _ in [*limits, cap]) < need:
+                continue
+            if need > lo:
+                lo, why = need, "the pads must clear the part's other resting poses when open"
+            limits.append(cap)
+            kept += 1
+        return lo, why, limits, kept
+
     def _max_depth(self, width: float, angle_deg: float) -> float:
         """The deepest groove that leaves a printable shoulder each side (export_check.MIN_WALL_MM, so no design the search
         can propose is later blocked from export), keeps the gripped part's centre SEAT_GAP_MM in front of the face (so the
@@ -290,8 +336,14 @@ class SearchSpace:
             return 0.0
         need = max(SEAT_GAP_MM, r - (self.gripper.stroke_mm - SQUEEZE_MM - JAW_MARGIN_MM - MIN_SLACK_MM))
 
+        # a groove mustn't cost the slack range a pose a flat pad can grip too
+        kept = self._slack_bounds(v_profile(width, angle_deg, 0.0), [])[3] if self.others else 0
+
         def fits(depth: float) -> bool:
-            return seat_distance(self.part, v_profile(width, angle_deg, depth)) >= need
+            profile = v_profile(width, angle_deg, depth)
+            if seat_distance(self.part, profile) < need:
+                return False
+            return not self.others or self._slack_bounds(profile, [])[3] >= kept
 
         if fits(cap):
             return cap

@@ -97,9 +97,11 @@ def client(config, db, cad, spawned, spawned_sessions, compute_client):
 
 
 # Test parts, built with CadQuery, in mm, as authored. The cap is cup-shaped like the yellow vial caps on the cell; the
-# tube lies along x; the plate is too wide for these fingers lying flat, but not standing on an edge.
+# tube lies along x; the plate is too wide for these fingers lying flat, but not standing on an edge; the bar comes to
+# rest on its side (pose 0, 87%) or standing (pose 1, 13%), and is 10 mm across both ways.
 SHAPES = {
     "cube": lambda: cq.Workplane("XY").box(10, 10, 10),
+    "bar": lambda: cq.Workplane("XY").box(10, 10, 20),
     "vial_cap": lambda: cq.Workplane("XY").circle(15.875).extrude(15.7).faces(">Z").workplane().hole(28.0, 13.7),
     "glass_tube": lambda: cq.Workplane("YZ").circle(8.5).extrude(140),
     "l_bracket": lambda: cq.Workplane("XY").polyline([(0, 0), (30, 0), (30, 6), (6, 6), (6, 20), (0, 20)]).close().extrude(12),
@@ -109,7 +111,7 @@ SHAPES = {
 
 @pytest.fixture(scope="session")
 def shapes() -> dict[str, cq.Workplane]:
-    """The test parts by name: cube, vial_cap, glass_tube, l_bracket, wide_plate."""
+    """The test parts by name: cube, bar, vial_cap, glass_tube, l_bracket, wide_plate."""
     return {name: make() for name, make in SHAPES.items()}
 
 
@@ -181,10 +183,47 @@ def finished_job(tmp_path_factory, cad) -> FinishedJob:
     database.close()
 
 
+@pytest.fixture(scope="session")
+def two_pose_job(tmp_path_factory, cad) -> FinishedJob:
+    """A bar experiment over two resting poses, on its side (the primary, 87%) and standing (13%), run to the end on the
+    mock sim in its own database, for tests that only read it. Shared by the whole session: don't change it."""
+    from api.clients.sim import MockSim
+    from api.models.job_spec import PoseGrasp
+    from api.services import parts
+    from api.services.optimizer import run_job
+
+    config = AppConfig(data_dir=tmp_path_factory.mktemp("two_poses"))
+    database = DatabaseClient(config.db)
+    database.migrate()
+    cell_profiles.ensure_default_profile(database)
+    profile = cell_profiles.list_profiles(database)[0]
+    path = config.data_dir / "bar.step"
+    cq.exporters.export(SHAPES["bar"](), str(path))
+    record = parts.create_part(database, config, cad, path.name, path.read_bytes(), None)
+    parts.update_part(database, record.id, {"material": "pla"})
+    poses = [PoseGrasp(pose=0, grasp=GraspChoice(angle_deg=90)), PoseGrasp(pose=1, grasp=GraspChoice(angle_deg=0))]
+    spec = JobSpec(part_id=record.id, cell_profile_id=profile.id, poses=poses, budget=14)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(jobs, "spawn_worker", lambda *args: None)
+        job = jobs.create_job(database, config, spec)
+    run_job(database, job.id, sim=MockSim(), cad=cad, outputs_dir=config.outputs_dir)
+    assert jobs.get_job(database, job.id).status == "done"
+    yield FinishedJob(config, database, job.id, record.id, profile.id)
+    database.close()
+
+
 @pytest.fixture
 def finished_client(finished_job, cad):
     """The API over the finished job's database, for read-only route tests."""
     app.dependency_overrides = {get_config: lambda: finished_job.config, get_db: lambda: finished_job.db, get_cad: lambda: cad}
+    yield TestClient(app)
+    app.dependency_overrides = {}
+
+
+@pytest.fixture
+def two_pose_client(two_pose_job, cad):
+    """The API over the two-pose job's database, for read-only route tests."""
+    app.dependency_overrides = {get_config: lambda: two_pose_job.config, get_db: lambda: two_pose_job.db, get_cad: lambda: cad}
     yield TestClient(app)
     app.dependency_overrides = {}
 

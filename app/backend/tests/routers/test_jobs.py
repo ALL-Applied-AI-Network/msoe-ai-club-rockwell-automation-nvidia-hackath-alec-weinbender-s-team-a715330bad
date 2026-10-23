@@ -196,3 +196,12 @@ def test_the_review_gate_needs_a_reviewer_to_approve(client, profile_id, cube_id
     assert client.post(f"/api/jobs/{job_id}/review", data={"status": "approved"}).status_code == 422
     assert client.post(f"/api/jobs/{job_id}/review", data={"status": "approved", "reviewer": "Ana"}).json() == {"ok": True}
     assert client.get(f"/api/jobs/{job_id}").json()["review"]["reviewer"] == "Ana"
+
+
+def test_the_finger_preview_takes_a_resting_pose(two_pose_client, two_pose_job):
+    url = f"/api/jobs/{two_pose_job.job_id}/finger"
+
+    standing, unknown = two_pose_client.get(url, params={"pose": "p1"}), two_pose_client.get(url, params={"pose": "p9"})
+
+    assert standing.status_code == 200 and (standing.json()["pose"], standing.json()["pose_label"]) == ("p1", "standing")
+    assert unknown.status_code == 404

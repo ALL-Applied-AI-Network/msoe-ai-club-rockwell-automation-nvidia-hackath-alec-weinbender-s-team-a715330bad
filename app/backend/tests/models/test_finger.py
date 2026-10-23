@@ -13,6 +13,7 @@ from api.models.finger import (
     footprints,
     overlaps,
     problems,
+    regrip,
     seat_distance,
     section,
     sections,
@@ -215,7 +216,7 @@ def test_a_cylinder_lying_along_the_jaws_is_a_box_from_above():
 
     for offset in (CENTRED, {"dx": 0, "dy": 0, "yaw_deg": 30}, {"dx": 1, "dy": 0, "yaw_deg": 0}):
         assert overlaps(pad, along, offset) == overlaps(pad, CUBE, offset)
-    assert seat_distance(along, v_profile(20, 90, 3)) == seat_distance(CUBE, v_profile(20, 90, 3)) == 5 - 3
+    assert seat_distance(along, v_profile(20, 90, 3)) == seat_distance(CUBE, v_profile(20, 90, 3)) == 5  # on the groove's shoulders
 
 
 def test_a_meshs_outline_is_its_pieces_footprints():
@@ -254,3 +255,67 @@ def test_the_stock_grasp_pose_is_the_one_the_sim_runs():
 
     assert (pose["tip_height_mm"], pose["jaw_close_mm"], pose["jaw_open_mm"]) == (2.5, 2.7, 6.0)
     assert stock_grasp_pose(Part())["jaw_close_mm"] == 6.0  # the 31.75 mm cap is wider than the stock tips open: clamped
+
+
+def test_regripping_the_pose_a_finger_was_built_for_changes_nothing():
+    built = build_finger(CUBE, vpad())
+
+    assert regrip(CUBE, CUBE, vpad()) == built
+    assert regrip(CUBE, CUBE, vpad(), built=built) is built
+    assert built.pad_top_mm == pytest.approx(10 - 4 + 3)  # 3 mm above the cube, from 4 mm fingertips
+
+
+def test_another_pose_keeps_the_pieces_and_moves_the_jaws_and_fingertips():
+    built = build_finger(CUBE, vpad())
+    taller = Part(shape="box", height_mm=20)  # the same footprint, twice as tall
+    shorter = Part(shape="box", width_mm=8, height_mm=5)
+
+    up, down = regrip(CUBE, taller, vpad(), built=built), regrip(CUBE, shorter, vpad(), built=built)
+
+    assert up.pieces == down.pieces == built.pieces and up.pad_top_mm == down.pad_top_mm == built.pad_top_mm
+    # Raised so its top sits as far under the bridge as the cube's did (6 mm above the fingertips) ...
+    assert (up.tip_height_mm, up.contact_mm, up.jaw_close_mm) == pytest.approx((14, 6, built.jaw_close_mm))
+    # ... and lowered from 4 mm to leave 2 mm of pad on a 5 mm part; 2 mm narrower, the jaws close 1 mm further each
+    assert (down.tip_height_mm, down.contact_mm, down.jaw_close_mm) == pytest.approx((3, 2, built.jaw_close_mm - 1))
+    assert problems(taller, up) == [] and problems(shorter, down) == []
+
+
+def test_a_shorter_pose_keeps_its_pad_above_the_lead_in():
+    leaded = vpad(lead_in_mm=2.0)
+    built = build_finger(CUBE, leaded)
+    shorter = Part(shape="box", height_mm=6)
+
+    down = regrip(CUBE, shorter, leaded, built=built)
+
+    # lowered from 4 mm to 2 mm: 2 mm of pad on the part above the 2 mm lead-in
+    assert (down.tip_height_mm, down.contact_mm) == pytest.approx((2, 2))
+    assert problems(shorter, down) == []
+
+
+def test_a_pose_the_finger_cant_grip_is_ruled_out():
+    built = build_finger(CUBE, vpad())
+    wide, narrow, tall = Part(shape="box", width_mm=20), Part(shape="box", width_mm=2), Part(shape="box", height_mm=20)
+
+    low = regrip(CUBE, tall, vpad(), built=built, tip_height_mm=2.0)  # its grasp locks a low grip
+
+    assert any("land" in p for p in problems(wide, regrip(CUBE, wide, vpad(), built=built)))
+    assert any("can't reach" in p for p in problems(narrow, regrip(CUBE, narrow, vpad(), built=built)))
+    assert low.tip_height_mm == 2.0 and "the part's top would reach the bridge above the pad" in problems(tall, low)
+    assert not any("bridge" in p for p in problems(CUBE, built))  # never in the pose it was built for
+
+
+def test_the_baselines_regrip_too():
+    taller, narrow = Part(shape="box", height_mm=20), Part(shape="box", width_mm=8)
+    imprint = build_finger(CUBE, Design(kind="imprint"))
+
+    moved = regrip(CUBE, narrow, Design(kind="imprint"), built=imprint)
+
+    assert regrip(CUBE, taller, Design(kind="stock")) == stock_finger(taller)  # the robot's own fingers, in any pose
+    assert moved.pieces == imprint.pieces and moved.jaw_close_mm == pytest.approx(imprint.jaw_close_mm - 1)
+
+
+def test_a_flat_side_rests_on_the_most_forward_point_of_the_face_across_it():
+    narrow = Part(shape="box", width_mm=10, depth_mm=4)  # 4 mm across sinks into the 6 mm mouth until its edges meet the flanks
+
+    assert seat_distance(narrow, v_profile(20, 90, 3)) == pytest.approx(5 - 1)
+    assert seat_distance(CUBE, v_profile(20, 180, 0)) == 5

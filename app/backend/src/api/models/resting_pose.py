@@ -4,7 +4,8 @@ every later step. The table frame has z up, the part resting on z = 0 and its fo
 trimesh's compute_stable_poses() proposes the ways a mesh can rest on a flat surface, each with a likelihood; poses that
 look the same from the gripper (same footprint and height, e.g. a cylinder's many side facets) are merged and their
 likelihoods summed. "As in the CAD file" is always offered too, for parts whose CAD is already oriented the way they
-arrive. One pose per run: if parts arrive both ways, run twice.
+arrive. A job can cover several stable poses, each with its own grasp, scored by their likelihoods (likely: at least
+POSE_CUTOFF; see api/models/job_pose.py). The likelihoods are trimesh's quasi-static estimate, not measured on the cell.
 
 Each stable pose is also turned about z so its footprint's smallest bounding rectangle lines up with x and y, longer
 side along x: then 0 and 90 degrees in the grasp step are along the part's own sides.
@@ -26,6 +27,7 @@ AS_AUTHORED = "as in the CAD file"
 SAME_SIZE_MM = 0.5  # two poses look the same if their footprint and height agree to this, or to SAME_SIZE_FRACTION
 SAME_SIZE_FRACTION = 0.02
 SQUARE_UP_GAIN = 0.01  # turn a footprint to its smallest bounding rectangle only if that's at least 1% smaller
+POSE_CUTOFF = 0.10  # a stable pose at least this likely is "likely": ticked by default when a job covers several poses
 
 
 class RestingPose(BaseModel):
@@ -65,6 +67,16 @@ def resting_poses(mesh: PartMesh, centre_of_mass: tuple[float, float, float], co
     ]
     poses.append(RestingPose(rotation=IDENTITY, label=AS_AUTHORED, source="as_authored", extent_mm=_extent(corners)))
     return poses
+
+
+def is_likely(pose: RestingPose) -> bool:
+    return pose.source == "stable" and pose.probability is not None and pose.probability >= POSE_CUTOFF
+
+
+def is_same_pose(listed: RestingPose, chosen: RestingPose | None) -> bool:
+    """Whether a pose from resting_poses() is the part's chosen one. By source and rotation only: a stored "as in the CAD
+    file" carries the part's measured extent, rounded differently from the listed one's."""
+    return chosen is not None and listed.source == chosen.source and listed.rotation == chosen.rotation
 
 
 def table_transform(points: np.ndarray, pose: RestingPose | None) -> tuple[np.ndarray, np.ndarray]:

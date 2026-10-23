@@ -5,6 +5,10 @@ data for surrogate models and anyone re-analysing a run. Physical-trial exports 
 Each row carries what it needs to be read on its own: the job's badge (mock rows are never predictions), the part as the
 gripper met it, the task and error model it was scored for, and its grid's definition (OffsetGrid.points() regenerates
 the offsets its held / in_hand lists are aligned with).
+
+A job covering several resting poses (api/models/job_pose.py) keeps part, held, in_hand and held_after_transport the
+primary pose's, and adds `poses` (each pose's key, label, likelihood, weight, grasp and part, in order) and
+`pose_outcomes` (every other pose's raw outcomes, in that order). success_rate is then weighted over the poses.
 """
 
 from typing import Any
@@ -39,7 +43,12 @@ def trial_rows(db: DatabaseClient, job_id: str | None = None) -> list[dict[str, 
     for job in found:
         part, task, error = job.part.model_dump(mode="json"), job.spec.task.model_dump(mode="json"), job.spec.error.model_dump(mode="json")
         grids = {"search": job.plan.grid.model_dump(mode="json"), "final": job.plan.final_grid.model_dump(mode="json")}
+        several = len(job.poses) > 1
+        poses = [pose.model_dump(mode="json", exclude={"resting"}) for pose in job.poses] if several else None
         for trial, duration in trials.get(job.id, []):
+            extra = {}
+            if several:
+                extra = {"poses": poses, "pose_outcomes": [out.model_dump(mode="json") for out in trial.pose_outcomes or []]}
             rows.append(
                 {
                     "job_id": job.id,
@@ -66,6 +75,7 @@ def trial_rows(db: DatabaseClient, job_id: str | None = None) -> list[dict[str, 
                     "grid_definition": grids[trial.grid],
                     "duration_s": duration,  # its share of its round's sim time; 0 for a design that wasn't simulated
                     "chosen_best": (job.id, trial.number) in chosen,  # D1's final-grid trial
+                    **extra,
                 }
             )
     return rows
