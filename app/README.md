@@ -99,6 +99,21 @@ key on the team account (SETUP.md); there's no password setting, by team rule. A
 CLI not logged in) shows its error in the panel; the others are still listed. Logs: `DATA_DIR/compute.log`
 (sessions), `DATA_DIR/compute_forward.log` (the port forward).
 
+## Hosted on the GB10
+
+The team shares one copy of the app on `spark1`: one database, next to the sim server. On the MSOE VPN, with your key on
+the team account (SETUP.md), from any shell:
+
+```bash
+ssh -N -L 8080:/home/hackathon11/autograsp/app.sock hackathon11@spark1.ai.msoe.edu   # keep it running
+# open http://localhost:8080/app.html (the old UI is at /)
+```
+
+It listens on a Unix socket in the team's home folder, not a port, because other teams can reach every `127.0.0.1` port
+on the GB10. Its GPU page connects the GB10 like a laptop does. Someone clicks **Connect** once, and it stays connected for
+everyone. `app/deploy/gb10.sh deploy` ships HEAD (build the UI, install, restart); `status`, `logs`, `restart` and `stop`
+manage it. The layout on the GB10 is in `app/deploy/serve.sh`.
+
 ## Frontend
 
 The new UI is a Vite + React + TypeScript app in `frontend/` (setup in [../SETUP.md](../SETUP.md#web-app-app)). It has every

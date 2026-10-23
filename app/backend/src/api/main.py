@@ -94,4 +94,7 @@ for module in (
     export,
 ):
     app.include_router(module.router)
-app.mount("/", StaticFiles(directory=APP_DIR / "frontend", html=True), name="static")  # last: it matches every path
+static = StaticFiles(directory=APP_DIR / "frontend", html=True)
+if (APP_DIR / "frontend" / "dist").is_dir():  # npm run build: the new UI at /app.html, ahead of its unbuilt source
+    static.all_directories.insert(0, APP_DIR / "frontend" / "dist")
+app.mount("/", static, name="static")  # last: it matches every path
