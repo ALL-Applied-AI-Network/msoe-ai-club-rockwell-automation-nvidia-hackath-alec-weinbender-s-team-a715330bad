@@ -7,6 +7,7 @@
 #   venv/      its Python environment (uv, backend only)
 #   data/      DATA_DIR: database, uploads, outputs and the logs. Kept across deploys
 #   app.env    the app's settings, written on the first install. Edit them there, then restart
+#   ssh_config the GPU session's ssh to this machine (below)
 #   app.sock   where the API listens. Not a TCP port: other teams can reach every 127.0.0.1 port here, but home is 0700,
 #              so only this account can open the socket. Teammates reach it through ssh -L (gb10.sh connect)
 #
@@ -35,11 +36,12 @@ install() {  # gb10.sh has extracted the new commit into src.new
     restart
 }
 
-self_key() {  # the GPU session's ssh to this machine; the key only works from here
+self_key() {  # the GPU session's ssh to this machine, as "spark1" (the GPU page's name for it); the key only works from here
     [ -f "$SELF_KEY" ] || ssh-keygen -q -t ed25519 -N "" -C "autograsp app on spark1, to itself" -f "$SELF_KEY"
     grep -qF "$(cut -d' ' -f2 "$SELF_KEY.pub")" "$HOME/.ssh/authorized_keys" ||
         echo "from=\"127.0.0.1,::1\" $(cat "$SELF_KEY.pub")" >> "$HOME/.ssh/authorized_keys"
-    ssh -i "$SELF_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new 127.0.0.1 true
+    printf 'Host spark1\n    HostName 127.0.0.1\n    IdentityFile %s\n    IdentitiesOnly yes\n' "$SELF_KEY" > "$ROOT/ssh_config"
+    ssh -F "$ROOT/ssh_config" -o BatchMode=yes -o StrictHostKeyChecking=accept-new spark1 true
 }
 
 write_env() {
@@ -49,8 +51,8 @@ DATA_DIR=$ROOT/data
 SIM_BACKEND=http
 SIM_URL=http://127.0.0.1:19011
 COMPUTE_BACKENDS=gb10
-COMPUTE_GB10_HOST=127.0.0.1
-COMPUTE_SSH="ssh -i $SELF_KEY"
+COMPUTE_GB10_HOST=spark1
+COMPUTE_SSH="ssh -F $ROOT/ssh_config"
 EOF
 }
 

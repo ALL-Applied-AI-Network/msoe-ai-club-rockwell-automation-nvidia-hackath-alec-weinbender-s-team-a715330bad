@@ -24,7 +24,7 @@ deploy() {
     (cd app/frontend && { [ -d node_modules ] || npm ci; } && npm run build)
     local tmp
     tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
+    trap "rm -rf '$tmp'" EXIT  # expanded now: tmp is gone by the time the trap runs
     git archive --format=tar -o "$tmp/app.tar" HEAD
     tar -rf "$tmp/app.tar" app/frontend/dist  # gitignored: the build above
     git log -1 --format='%h %s (%cs)' > "$tmp/DEPLOYED"
