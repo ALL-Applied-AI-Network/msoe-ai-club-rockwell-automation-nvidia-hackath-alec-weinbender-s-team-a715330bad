@@ -1,6 +1,7 @@
 import type { Schemas } from "../../backend/client";
-import { degrees, mm } from "../../format";
+import { degrees, mm, percent } from "../../format";
 import { searchMethodLabel } from "../../labels";
+import type { Results } from "./types";
 
 // How an experiment's settings read in words on its page.
 
@@ -43,6 +44,17 @@ export function errorText(error: ErrorModel): string {
   parts.push(`yaw ${degrees(error.sigma_deg)}`);
   if (error.bias_mm) parts.push(`bias ${mm(error.bias_mm)} at ${degrees(error.bias_direction_deg)}`);
   return parts.join(", ");
+}
+
+/** A job's resting poses with their shares of the score, from its scores: null for a job with one pose. */
+export function scoredPoses(results: Results): Schemas["PoseScore"][] | null {
+  return results.summary?.best.poses ?? results.final_table.find((row) => row.poses)?.poses ?? null;
+}
+
+/** The poses and their shares, e.g. "Lying on its side 62%, standing 38%". */
+export function posesText(poses: { label?: string | null; weight: number }[]): string {
+  const text = poses.map((p) => `${p.label ?? "unnamed pose"} ${percent(p.weight)}`).join(", ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** Whether the run's camera error is one of the presets still waiting to be measured on the cell. */

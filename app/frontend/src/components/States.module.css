@@ -1,22 +1,20 @@
 .box {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-6) var(--space-5);
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-4);
   border: 1px dashed var(--line-strong);
   border-radius: var(--r);
-  text-align: center;
 }
 
 .title {
-  font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
 }
 
 .body {
-  max-width: 56ch;
-  color: var(--faint);
+  max-width: 72ch;
+  color: var(--mute);
 }
 
 .action {

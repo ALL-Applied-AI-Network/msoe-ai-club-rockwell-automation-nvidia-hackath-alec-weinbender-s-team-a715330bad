@@ -6,6 +6,9 @@ point-wise offsets of api/models/test_plan.py, repeated, then offsets drawn from
 numpy Generator: the seed is stored, so the same seed, designs and counts give the same plan. Trial IDs continue across
 the job's plans and its extra trials (T0001, ...), so a trial ID alone names one attempt.
 
+A job covering several resting poses is planned and predicted in its primary pose (job.part, the plan's first pose)
+only: place the parts that way at the robot. Planning the other poses is deferred.
+
 predict_test_plan() runs in the detached worker (python -m api.worker <job_id> predict <plan_id>), since only workers
 call the sim. It never raises: a failure is stored on the plan (prediction_status "failed", prediction_error).
 

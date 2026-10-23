@@ -15,6 +15,13 @@ How a direction is judged (docs/notes/input-flow-backend-plan.md, 4.2), with u t
 
 A pad can only touch what's at the extremes, so everything here works on the triangles near them; no ray casting is
 needed except for face picks and the internal-grip check.
+
+A section grasp grips part of the part: a stretch along v that's clearly narrower than the whole part along u (a screw's
+shank beside its head, an L-bracket's arm). Its pads sit within that stretch (span_mm), so they never meet the wider
+material, and it's judged exactly like a whole-part direction on the slab of the part between the stretch's ends: the
+pads touch what's at the extremes of the slab. Proposals rank whole-part directions as they always have; when the part
+has sections, sections and whole-part directions are ranked together by verdict (ok, then warn, then blocked), then the
+narrower width (less stroke, and the pads close across the part rather than along it), then the larger contact area.
 """
 
 import math
@@ -52,6 +59,13 @@ HOLLOW_FRACTION = 0.6  # an internal grip needs the part's volume under 60% of i
 MIN_FEATURE_MM = 2.0  # a narrower feature must be at least this tall
 TABLE_SLOP_MM = 0.05  # piece corners this close below the table are put on it
 WIDER_BELOW_MM = 0.5  # a grip height over a base wider than this is refused (the pads are sized to the whole part)
+SECTION_STEP_MM = 0.5  # the width profile along v is sampled this finely
+SECTION_ANGLE_STEP = 5  # sections are looked for every 5 degrees
+SECTION_NARROWER_MM, SECTION_NARROWER_FRACTION = 1.0, 0.15  # a section is narrower than the whole part by at least this
+SECTION_MIN_MM = 4.0  # and at least this long along v: a 2 mm pad and a margin each side
+SECTION_PLATEAU_MM, SECTION_PLATEAU_FRACTION = 0.5, 0.10  # a section's width varies by at most this over it
+SECTION_MIN_CONTACT_MM = 2.0  # the pads touch it along at least this much of v
+VERDICT_RANK = {"ok": 0, "warn": 1, "blocked": 2}
 ROUND_NOTE = "round from above: any direction works"
 LAST_RESORT = "needs a longer-stroke gripper or a suction cup"
 
@@ -70,7 +84,10 @@ class GraspCandidate(BaseModel):
 
     angle_deg: float  # closing direction, 0..180
     centre_mm: tuple[float, float]  # where the jaws centre, table frame
-    width_mm: float  # the part's extent along the closing direction
+    # A section grasp: where along v (across the jaws), from the centre, the pads may sit without meeting the wider part
+    # beside it. None: the whole part.
+    span_mm: tuple[float, float] | None = None
+    width_mm: float  # the part's extent along the closing direction (the section's, for a section grasp)
     depth_mm: float  # and across it
     contact_area_mm2: float  # the smaller of the two contact patches
     opposition_deg: float  # how far the two contact faces are from pointing straight at each other
@@ -101,6 +118,7 @@ class GraspChoice(BaseModel):
 
     angle_deg: float = Field(ge=0, lt=360)
     centre_mm: tuple[float, float] = (0.0, 0.0)
+    span_mm: tuple[float, float] | None = None  # a section grasp's span (GraspCandidate.span_mm); None: the whole part
     source: Literal["auto", "manual"] = "auto"
     grip_height_mm: float | None = Field(None, gt=0)  # locks tip_height_mm in every family; None: the optimizer chooses
     picks: list[GraspPick] = []  # the faces clicked, for a manual grasp (logged)
@@ -126,8 +144,9 @@ def table_mesh(record: PartRecord, mesh: PartMesh, pose: RestingPose | None = No
 
 
 def propose_grasps(mesh: PartMesh, centre_of_mass: tuple[float, float, float], friction: float, gripper: Gripper) -> GraspProposals:
-    """Auto proposal: sweep closing directions over the table-frame mesh and rank the ones that work.
-    friction is the static coefficient against the pad (the friction cone's half-angle is atan of it)."""
+    """Auto proposal: sweep closing directions over the table-frame mesh and rank the ones that work, with the part's
+    sections (module docstring) when it has any. friction is the static coefficient against the pad (the friction cone's
+    half-angle is atan of it)."""
     reach, com = reach_mm(gripper), np.asarray(centre_of_mass, float)
     surface = _surface(mesh, friction, MIN_TIP_MM)
     if surface is None:
@@ -139,7 +158,8 @@ def propose_grasps(mesh: PartMesh, centre_of_mass: tuple[float, float, float], f
     contacts = [_contact(surface, float(angle)) for angle in range(180)]
     failures = [contact.failure(reach) for contact in contacts]
     rejected = _rejections(contacts, failures, friction, reach)
-    if all(failures):
+    sections = _section_candidates(mesh, surface, com, friction, gripper, reach)
+    if all(failures) and not sections:
         return GraspProposals(
             candidates=[], rejected=rejected, nothing_fits=_nothing_fits(mesh, com, friction, gripper, contacts, failures)
         )
@@ -149,7 +169,9 @@ def propose_grasps(mesh: PartMesh, centre_of_mass: tuple[float, float, float], f
     for contact in best:
         if all(_axis_gap(contact.angle, other.angle) >= SAME_GRASP_DEG for other in chosen):
             chosen.append(contact)
-    return GraspProposals(candidates=[_candidate(c, com, gripper, reach) for c in chosen[:MAX_CANDIDATES]], rejected=rejected)
+    whole = [_candidate(c, com, gripper, reach) for c in chosen]
+    candidates = _ranked(whole + sections) if sections else whole
+    return GraspProposals(candidates=candidates[:MAX_CANDIDATES], rejected=rejected)
 
 
 def check_grasp(
@@ -161,16 +183,21 @@ def check_grasp(
     angle_deg: float | None = None,
     picks: list[GraspPick] = (),
     grip_height_mm: float | None = None,
+    centre_mm: tuple[float, float] | None = None,
+    span_mm: tuple[float, float] | None = None,
 ) -> GraspCandidate:
     """A manual choice (an angle, or one or two face picks), checked like a proposal: blocked if it can't fit, a warning if
     it's risky. One pick sets the angle from the face's horizontal normal, and a ray from it along -n finds the face
     opposite; two picks set it from the line between them. The grip goes through the picks, and they're checked against
-    where the jaws touch first. With an angle as well (a manual GraspChoice carries both), the angle sets the direction
-    and the picks only place the grip. A grip height lifts the fingertips, so only the part above it counts. Raises
-    ValueError for input that doesn't set a direction."""
+    where the jaws touch first; when they lie on a section (module docstring), the grasp grips that section. With an
+    angle as well (a manual GraspChoice carries both), the angle sets the direction and the picks only place the grip. A
+    grip height lifts the fingertips, so only the part above it counts. A section grasp chosen before (an angle with its
+    centre_mm and span_mm) is checked on that same section. Raises ValueError for input that doesn't set a direction."""
     picks = list(picks)
     if angle_deg is None and not picks:
         raise ValueError("give an angle or one or two face picks")
+    if span_mm is not None and (angle_deg is None or centre_mm is None):
+        raise ValueError("a section grasp needs its angle and centre")
     if len(picks) > 2:
         raise ValueError("pick one face, or two points to grip between")
     reach, com = reach_mm(gripper), np.asarray(centre_of_mass, float)
@@ -201,8 +228,19 @@ def check_grasp(
         if np.linalg.norm(line) < 0.5:
             raise ValueError("the two picks are too close together to set a direction")
         angle = math.degrees(math.atan2(line[1], line[0]))
-    contact = _contact(surface, round(angle % 180, 1) % 180)
-    if floor > MIN_TIP_MM and (whole := _surface(mesh, friction, MIN_TIP_MM)) is not None:
+    angle = round(angle % 180, 1) % 180
+    _, v = _axes(angle)
+    target = float(np.mean([p[:2] @ v for p in points])) if points else None
+    span = None
+    if span_mm is not None:
+        centre_v = float(np.asarray(centre_mm, float) @ v)
+        span, target = (centre_v + span_mm[0], centre_v + span_mm[1]), centre_v
+    elif target is not None:
+        span = next((s for s in _sections(surface, angle) if s[0] <= target <= s[1]), None)
+    contact = _contact(surface, angle) if span is None else _section_contact(mesh, friction, floor, angle, span)
+    if contact is None:
+        raise ValueError(f"nothing to grip in that section above {floor:g} mm")
+    if floor > MIN_TIP_MM and (whole := _surface(mesh, friction, MIN_TIP_MM, None if span is None else (v, *span))) is not None:
         full = _contact(whole, contact.angle).width
         if full > contact.width + WIDER_BELOW_MM:
             # The grasp step looks only above the grip height, but the V-pad's pads are sized to the part's whole width
@@ -212,7 +250,6 @@ def check_grasp(
                 f"{contact.width:.1f} mm above it, and the fingers are sized to its whole width"
             )
     risks = []
-    target = float(np.mean([p[:2] @ contact.v for p in points])) if points else None
     for point, what in [(p, "the picked point") for p in points] + (
         [(opposite, "the face opposite the pick")] if opposite is not None else []
     ):
@@ -221,11 +258,16 @@ def check_grasp(
         if gap > contact.band:
             risks.append(f"the jaws first touch the part {gap:.1f} mm further out than {what}")
     risks += [f"the picked point is below the fingertips: they stay {floor:g} mm up" for p in points if p[2] < floor - 1e-6]
-    return _candidate(contact, com, gripper, reach, target_v=target, risks=risks, blocked=blocked)
+    if span is not None and (contact.overlap is None or contact.overlap[1] - contact.overlap[0] < SECTION_MIN_CONTACT_MM):
+        blocked.append(f"the pads would touch the section along less than {SECTION_MIN_CONTACT_MM:g} mm")
+    return _candidate(contact, com, gripper, reach, target_v=target, risks=risks, blocked=blocked, span=span)
 
 
-def posed_part(record: PartRecord, grasp: GraspChoice, pad_friction: tuple[float, float], mesh: PartMesh | None = None) -> Part:
-    """The part as the gripper meets it: resting pose, then -angle about z, then the grasp centre to the origin.
+def posed_part(
+    record: PartRecord, grasp: GraspChoice, pad_friction: tuple[float, float], mesh: PartMesh | None = None, pose: RestingPose | None = None
+) -> Part:
+    """The part as the gripper meets it: resting pose (`pose`, by default the record's chosen one), then -angle about z,
+    then the grasp centre to the origin.
     Classified by its convex hull as a box, a cylinder (axis z, y or x) or a mesh of the transformed pieces; mass and
     friction from the record. The pieces were split once, in the CAD frame, and are only moved here. A primitive is
     centred on the grasp by definition, so a grip off its centre (a manual pick near one end) is sent as a mesh. Raises
@@ -239,14 +281,32 @@ def posed_part(record: PartRecord, grasp: GraspChoice, pad_friction: tuple[float
         raise ValueError("the part has no mass yet: choose its material (or enter a density) or enter a measured mass")
     pieces = record.measured.pieces
     corners = np.array([p for piece in pieces for p in piece.points], float)
-    rotation, shift = table_transform(mesh.vertices if mesh is not None else corners, record.pose)
+    rotation, shift = table_transform(mesh.vertices if mesh is not None else corners, pose or record.pose)
     turn = _about_z(-math.radians(grasp.angle_deg))
     rotation, shift = turn @ rotation, turn @ (shift - np.array([*grasp.centre_mm, 0.0]))
     friction = record.friction(pad_friction)
+    grip = {}
+    if grasp.span_mm is not None:
+        if mesh is not None:
+            vertices, triangles = np.asarray(mesh.vertices, float), np.asarray(mesh.triangles)
+        else:
+            vertices = corners
+            triangles = np.concatenate([np.asarray(p.triangles) + sum(len(q.points) for q in pieces[:i]) for i, p in enumerate(pieces)])
+        grip = {"grip_width_mm": _section_width(vertices @ rotation.T + shift, triangles, grasp.span_mm), "grip_span_mm": grasp.span_mm}
     shape = _primitive(corners @ rotation.T + shift)
-    if shape is not None:
+    if shape is not None and not grip:
         return Part(**shape, mass_g=mass, friction=friction)
-    return Part(shape="mesh", pieces=_on_table(transform_pieces(pieces, rotation, shift)), mass_g=mass, friction=friction)
+    return Part(shape="mesh", pieces=_on_table(transform_pieces(pieces, rotation, shift)), mass_g=mass, friction=friction, **grip)
+
+
+def _section_width(vertices: np.ndarray, triangles: np.ndarray, span: tuple[float, float]) -> float:
+    """The width along x of the part (grasp-frame vertices) between y = span[0] and span[1]: what a section grip closes on."""
+    for sign, at in ((1.0, span[0]), (-1.0, span[1])):
+        vertices, triangles, _ = slice_faces_plane(vertices, triangles, plane_normal=[0.0, sign, 0.0], plane_origin=[0.0, at, 0.0])
+        if len(triangles) == 0:
+            raise ValueError("the grasp's section misses the part")
+    used = vertices[np.unique(triangles)]
+    return float(np.ptp(used[:, 0]))
 
 
 def _on_table(pieces: list[Piece]) -> list[Piece]:
@@ -263,6 +323,7 @@ class _Surface:
     """The part's surface above the fingertips, in the table frame, ready for sweeping."""
 
     outline: np.ndarray  # (k, 2) the convex hull of its footprint: all a width needs
+    solid: np.ndarray  # (n, 3, 3) every triangle above the floor: what a width profile needs
     corners: np.ndarray  # (m, 3, 3) the triangles that could face a jaw (their normal tilts less than the cone from level)
     normals: np.ndarray  # (m, 3) unit, outward
     areas: np.ndarray  # (m,)
@@ -322,11 +383,20 @@ class _Contact:
         return "apart" if self.overlap is None else None
 
 
-def _surface(mesh: PartMesh, friction: float, floor: float) -> _Surface | None:
-    """The mesh above `floor`, with what a sweep needs precomputed. None if nothing solid is left above it."""
+def _surface(mesh: PartMesh, friction: float, floor: float, slab: tuple[np.ndarray, float, float] | None = None) -> _Surface | None:
+    """The mesh above `floor` (and, for a section, between a and b along the unit vector v of slab = (v, a, b)), with
+    what a sweep needs precomputed. None if nothing solid is left."""
     vertices, triangles, _ = slice_faces_plane(
         np.asarray(mesh.vertices, float), np.asarray(mesh.triangles), plane_normal=[0.0, 0.0, 1.0], plane_origin=[0.0, 0.0, floor]
     )
+    if slab is not None:
+        v, a, b = slab
+        for sign, at in ((1.0, a), (-1.0, b)):
+            if len(triangles) == 0:
+                break
+            vertices, triangles, _ = slice_faces_plane(
+                vertices, triangles, plane_normal=[sign * v[0], sign * v[1], 0.0], plane_origin=[at * v[0], at * v[1], 0.0]
+            )
     if len(triangles) == 0:
         return None
     try:
@@ -334,7 +404,7 @@ def _surface(mesh: PartMesh, friction: float, floor: float) -> _Surface | None:
         outline = footprint[ConvexHull(footprint).vertices]
     except QhullError:  # a sliver or a line: nothing to grip
         return None
-    corners = vertices[triangles]
+    corners = solid = vertices[triangles]
     cross = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
     double_area = np.linalg.norm(cross, axis=1)
     normals = cross / np.where(double_area > 0, double_area, 1.0)[:, None]
@@ -343,7 +413,110 @@ def _surface(mesh: PartMesh, friction: float, floor: float) -> _Surface | None:
     corners, normals, areas = corners[keep], normals[keep], double_area[keep] / 2
     planes = np.column_stack([np.round(normals * 100), np.round(np.einsum("ij,ij->i", normals, corners[:, 0]) * 10)])
     faces = np.unique(planes, axis=0, return_inverse=True)[1].reshape(-1) if len(planes) else np.zeros(0, int)
-    return _Surface(outline=outline, corners=corners, normals=normals, areas=areas, faces=faces, cos_cone=cos_cone)
+    return _Surface(outline=outline, solid=solid, corners=corners, normals=normals, areas=areas, faces=faces, cos_cone=cos_cone)
+
+
+def _axes(angle: float) -> tuple[np.ndarray, np.ndarray]:
+    """u (the closing direction) and v (across the jaws) at this angle."""
+    theta = math.radians(angle)
+    return np.array([math.cos(theta), math.sin(theta)]), np.array([-math.sin(theta), math.cos(theta)])
+
+
+def _width_profile(surface: _Surface, angle: float) -> tuple[np.ndarray, np.ndarray]:
+    """(v, width): the part's extent along u where the plane at each v cuts it, every SECTION_STEP_MM along v; NaN where
+    the plane misses it. From where every triangle's edges cross each plane, so long triangles (a turned shank's sides)
+    count along their whole length."""
+    u, v = _axes(angle)
+    fu, fv = surface.solid[:, :, :2] @ u, surface.solid[:, :, :2] @ v
+    lo, hi = float(fv.min()), float(fv.max())
+    centres = np.arange(lo + SECTION_STEP_MM / 2, hi, SECTION_STEP_MM)
+    c = centres[:, None]
+    low, high = np.full((len(centres), len(fu)), np.inf), np.full((len(centres), len(fu)), -np.inf)
+    for i, j in ((0, 1), (1, 2), (2, 0)):
+        a, b = fv[:, i], fv[:, j]
+        crosses = ((a - c) * (b - c) <= 0) & (a != b)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            at = fu[:, i] + (c - a) / (b - a) * (fu[:, j] - fu[:, i])
+        low, high = np.where(crosses, np.minimum(low, at), low), np.where(crosses, np.maximum(high, at), high)
+    widths = high.max(axis=1) - low.min(axis=1)
+    return centres, np.where(np.isfinite(widths), widths, np.nan)
+
+
+def _sections(surface: _Surface, angle: float) -> list[tuple[float, float]]:
+    """The stretches (a, b) along v where the part is clearly narrower along u than at its widest, and long enough for a
+    pad. Each is trimmed to its plateau (the longest run within SECTION_PLATEAU of its median width), so a flare toward
+    the wider part (a countersunk head's cone) stays outside it: the pads would touch the flare first. The ends are the
+    outermost sampled planes inside, so a pad within the stretch stays off the wider part."""
+    centres, widths = _width_profile(surface, angle)
+    if not np.isfinite(widths).any():
+        return []
+    whole = float(np.nanmax(widths))
+    limit = whole - max(SECTION_NARROWER_MM, SECTION_NARROWER_FRACTION * whole)
+    out = []
+    for run in _runs(np.isfinite(widths) & (widths <= limit)):
+        typical = float(np.median(widths[run]))
+        level = typical + max(SECTION_PLATEAU_MM, SECTION_PLATEAU_FRACTION * typical)
+        plateau = max(_runs(widths[run] <= level), key=len, default=None)
+        if plateau is None:
+            continue
+        a, b = float(centres[run][plateau[0]]), float(centres[run][plateau[-1]])
+        if b - a >= SECTION_MIN_MM:
+            out.append((a, b))
+    return out
+
+
+def _runs(flags: np.ndarray) -> list[np.ndarray]:
+    """The index runs where flags is True."""
+    out, start = [], None
+    for i, flag in enumerate([*flags, False]):
+        if flag and start is None:
+            start = i
+        elif not flag and start is not None:
+            out.append(np.arange(start, i))
+            start = None
+    return out
+
+
+def _section_contact(mesh: PartMesh, friction: float, floor: float, angle: float, span: tuple[float, float]) -> _Contact | None:
+    """The direction judged on the slab of the part between span = (a, b) along v: what pads within it touch."""
+    _, v = _axes(angle)
+    surface = _surface(mesh, friction, floor, slab=(v, *span))
+    return None if surface is None else _contact(surface, angle)
+
+
+def _section_target(contact: _Contact, span: tuple[float, float], com: np.ndarray) -> float:
+    """Where along v a section grasp centres: on the centre of mass if it's inside the span with room for a pad either
+    side, else the span's middle (then clamped to where both patches are, by _candidate)."""
+    com_v, half_pad = float(com[:2] @ contact.v), SECTION_MIN_CONTACT_MM / 2
+    return com_v if span[0] + half_pad <= com_v <= span[1] - half_pad else (span[0] + span[1]) / 2
+
+
+def _section_candidates(
+    mesh: PartMesh, surface: _Surface, com: np.ndarray, friction: float, gripper: Gripper, reach: float
+) -> list[GraspCandidate]:
+    """Every section that works, one per SECTION_ANGLE_STEP direction and stretch: the pads touch it along at least
+    SECTION_MIN_CONTACT_MM and the direction passes the same rules as a whole-part one."""
+    out = []
+    for angle in range(0, 180, SECTION_ANGLE_STEP):
+        for span in _sections(surface, float(angle)):
+            contact = _section_contact(mesh, friction, MIN_TIP_MM, float(angle), span)
+            if contact is None or contact.failure(reach) is not None:
+                continue
+            overlap = contact.overlap
+            if overlap is None or overlap[1] - overlap[0] < SECTION_MIN_CONTACT_MM:
+                continue
+            out.append(_candidate(contact, com, gripper, reach, target_v=_section_target(contact, span, com), span=span))
+    return out
+
+
+def _ranked(candidates: list[GraspCandidate]) -> list[GraspCandidate]:
+    """Whole-part and section candidates together, best first (the rule is in the module docstring), one per axis."""
+    ordered = sorted(candidates, key=lambda c: (VERDICT_RANK[c.verdict], round(c.width_mm, 1), -c.contact_area_mm2, c.angle_deg))
+    chosen: list[GraspCandidate] = []
+    for candidate in ordered:
+        if all(_axis_gap(candidate.angle_deg, other.angle_deg) >= SAME_GRASP_DEG for other in chosen):
+            chosen.append(candidate)
+    return chosen
 
 
 def _contact(surface: _Surface, angle: float) -> _Contact:
@@ -422,9 +595,11 @@ def _candidate(
     risks: list[str] = (),
     blocked: list[str] = (),
     note: str | None = None,
+    span: tuple[float, float] | None = None,
 ) -> GraspCandidate:
     """The candidate for one direction: centred between the extremes along u and, along v, at the target (the centre of
-    mass, or the picks) clamped to where both patches are."""
+    mass, or the picks) clamped to where both patches are. span: a section grasp's stretch (a, b) along v, which the
+    candidate gives relative to its centre."""
     com_v = float(com[:2] @ contact.v)
     want = com_v if target_v is None else target_v
     overlap = contact.overlap
@@ -452,6 +627,7 @@ def _candidate(
     return GraspCandidate(
         angle_deg=round(contact.angle, 1),
         centre_mm=(round(float(centre[0]), 3), round(float(centre[1]), 3)),
+        span_mm=None if span is None else (round(span[0] - centre_v, 3), round(span[1] - centre_v, 3)),
         width_mm=round(contact.width, 3),
         depth_mm=round(contact.depth, 3),
         contact_area_mm2=round(contact.contact_area, 2),

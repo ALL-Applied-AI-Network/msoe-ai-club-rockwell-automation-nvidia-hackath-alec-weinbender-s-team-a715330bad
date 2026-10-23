@@ -24,12 +24,9 @@ export function SessionLog({ backends }: { backends: Backend[] }) {
 
   return (
     <section className={styles.section} aria-labelledby="log-title">
-      <div>
-        <h2 id="log-title" className={styles.sectionTitle}>
-          Session log
-        </h2>
-        <p className={styles.note}>Every GPU session from this app, latest first: the record of GPU time and credits.</p>
-      </div>
+      <h2 id="log-title" className={styles.sectionTitle}>
+        Session log
+      </h2>
       {sessions.isPending && <Skeleton height={120} />}
       {sessions.isError && (
         <ErrorState title="Couldn't load the session log" message={sessions.error.message} onRetry={() => void sessions.refetch()} />
@@ -53,7 +50,7 @@ export function SessionLog({ backends }: { backends: Backend[] }) {
               ),
               sortValue: (s) => s.instance,
             },
-            { key: "started", header: "Asked for", render: (s) => dateTime(s.requested), sortValue: (s) => s.requested },
+            { key: "started", header: "Requested", render: (s) => dateTime(s.requested), sortValue: (s) => s.requested },
             {
               key: "up",
               header: "Up for",

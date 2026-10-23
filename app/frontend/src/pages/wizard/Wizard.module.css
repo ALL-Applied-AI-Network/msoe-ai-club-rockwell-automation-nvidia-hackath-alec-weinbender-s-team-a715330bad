@@ -9,6 +9,49 @@
   color: var(--warn);
 }
 
+/* The summary rail: one panel, its sections split by hairlines */
+
+.rail {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+
+.railSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.railSection + .railSection {
+  border-top: 1px solid var(--line);
+}
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 7.5em minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.fact dt {
+  color: var(--faint);
+}
+
+.fact dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
 /* Back and Next */
 
 .next {
@@ -41,11 +84,6 @@
   gap: var(--space-3);
 }
 
-.sectionTitle {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-}
-
 .fields {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -61,11 +99,11 @@
 }
 
 .choiceGrid {
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
 }
 
 .poseGrid {
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 }
 
 .choice {
@@ -73,8 +111,8 @@
   flex-direction: column;
   gap: var(--space-1);
   min-width: 0;
-  padding: var(--space-2);
-  border: 1px solid var(--line-strong);
+  padding: 6px;
+  border: 1px solid var(--line);
   border-radius: var(--r);
   background: var(--surface);
   color: inherit;
@@ -87,7 +125,7 @@
 }
 
 .choice:hover {
-  border-color: var(--faint);
+  border-color: var(--line-strong);
 }
 
 .choice[aria-checked="true"] {
@@ -100,16 +138,18 @@
 }
 
 .choiceLabel {
-  padding: 0 var(--space-1);
+  padding: 2px 2px 0;
   color: var(--ink);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
 .choiceNote {
-  padding: 0 var(--space-1) var(--space-1);
+  padding: 0 2px 2px;
   color: var(--faint);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
 .sizeRow {
@@ -143,24 +183,48 @@
 
 /* Review */
 
-.reviewGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--gap);
+.review {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
 }
 
-.taskReview {
+.reviewRow {
+  display: grid;
+  grid-template-columns: 9em minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.reviewRow + .reviewRow {
+  border-top: 1px solid var(--line);
+}
+
+.reviewRow dt {
+  color: var(--faint);
+}
+
+.reviewRow dd {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
-.still {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+.line {
+  display: block;
+}
+
+.edit {
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.edit:hover {
+  color: var(--acc-text);
 }
 
 .list {
@@ -195,6 +259,15 @@
 }
 
 @media (max-width: 860px) {
+  .reviewRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .reviewRow dd {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
   .taskLayout,
   .sizeRow,
   .cellPicker {

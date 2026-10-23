@@ -104,3 +104,11 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The 3D pair, with the pose switch above it for a job scored over several resting poses */
+.pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}

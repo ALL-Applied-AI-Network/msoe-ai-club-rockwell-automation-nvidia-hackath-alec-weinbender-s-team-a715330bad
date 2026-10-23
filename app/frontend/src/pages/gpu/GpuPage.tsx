@@ -29,10 +29,7 @@ export function GpuPage() {
     : undefined;
 
   return (
-    <Page
-      title="GPU"
-      description="The Isaac sim runs on one GPU at a time: the MSOE GB10 (free, shared) or a Brev instance (the paid backup). Jobs wait until it's ready."
-    >
+    <Page title="GPU">
       {compute.isPending && <Skeleton height={160} />}
       {compute.isError && (
         <ErrorState title="Couldn't load the GPU status" message={compute.error.message} onRetry={() => void compute.refetch()} />
@@ -41,8 +38,7 @@ export function GpuPage() {
         <>
           {onlyMock && (
             <Banner tone="info" title="Mock targets only.">
-              They're made up, for working on the app offline, and jobs don't wait for them. Add brev or gb10 to
-              COMPUTE_BACKENDS in the backend's .env for the real ones.
+              Add brev or gb10 to COMPUTE_BACKENDS in the backend's .env for real ones.
             </Banner>
           )}
           {data.session ? (

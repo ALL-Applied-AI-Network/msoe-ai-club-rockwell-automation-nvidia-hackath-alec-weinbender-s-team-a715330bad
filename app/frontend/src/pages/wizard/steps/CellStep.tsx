@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { Schemas } from "../../../backend/client";
 import { useCellProfile, useCellProfiles } from "../../../backend/queries";
-import { Badge } from "../../../components/Badge";
 import { Banner } from "../../../components/Banner";
 import { Button, LinkButton } from "../../../components/Button";
 import { Card } from "../../../components/Card";
@@ -22,10 +21,10 @@ export function CellStep() {
   const profiles = useCellProfiles();
   const confirmed = useCellProfile(draft.cell_profile_id);
   const [chosen, setChosen] = useState<number | null>(null);
-  useStepGate(4, draft.cell_profile_id != null ? { ok: true } : { ok: false, reason: "Confirm a cell profile" });
+  useStepGate(4, draft.cell_profile_id != null ? { ok: true } : { ok: false, reason: "Confirm a cell" });
 
   if (profiles.isPending) return <Skeleton height={320} />;
-  if (profiles.isError) return <ErrorState title="Couldn't load the cell profiles" message={profiles.error.message} onRetry={() => profiles.refetch()} />;
+  if (profiles.isError) return <ErrorState title="Couldn't load the cells" message={profiles.error.message} onRetry={() => profiles.refetch()} />;
 
   // The profile on show: the one picked in the list, else the confirmed one's latest version, else the first.
   const latestOfConfirmed = confirmed.data && profiles.data.find((p) => p.name === confirmed.data.name);
@@ -38,16 +37,19 @@ export function CellStep() {
     <>
       <div className={styles.cellPicker}>
         <Select
-          label="Cell profile"
+          label="Cell"
           value={shownId != null ? String(shownId) : ""}
           onChange={(event) => setChosen(Number(event.target.value))}
           options={profiles.data.map((p) => ({ value: String(p.id), label: `${p.name}, version ${p.version}` }))}
         />
         <Button
           disabled={!shown || isConfirmed}
-          onClick={() => shown && update({ cell_profile_id: shown.id, grasp: undefined /* the stroke decides which grasps fit */ })}
+          onClick={() =>
+            // the stroke decides which grasps fit, so every pose's grasp is chosen again
+            shown && update({ cell_profile_id: shown.id, poses: draft.poses?.map((p) => ({ pose: p.pose })) })
+          }
         >
-          {isConfirmed ? "Confirmed" : "Confirm this profile"}
+          {isConfirmed ? "Confirmed" : "Confirm this cell"}
         </Button>
       </div>
 
@@ -58,17 +60,12 @@ export function CellStep() {
         </Banner>
       )}
 
-      {shown && <ProfileCard profile={olderVersion && !chosen ? olderVersion : shown} confirmed={isConfirmed || (olderVersion != null && !chosen)} />}
-
-      <p className={styles.note}>
-        This step comes before the grasp because which grasps fit depends on the gripper's stroke, so the grasp step's
-        proposal is right the first time. A job records the exact profile version it ran with.
-      </p>
+      {shown && <ProfileCard profile={olderVersion && !chosen ? olderVersion : shown} />}
     </>
   );
 }
 
-function ProfileCard({ profile, confirmed }: { profile: Profile; confirmed: boolean }) {
+function ProfileCard({ profile }: { profile: Profile }) {
   const p = profile.profile;
   const placeholder = (field: string) => p.to_confirm.includes(field);
   return (
@@ -76,12 +73,9 @@ function ProfileCard({ profile, confirmed }: { profile: Profile; confirmed: bool
       title={profile.name}
       subtitle={`Version ${profile.version}, saved ${dateTime(profile.created)}`}
       aside={
-        <>
-          {confirmed && <Badge tone="ok" label="Confirmed for this experiment" />}
-          <LinkButton variant="secondary" size="sm" to={`/settings/cells/${profile.id}`}>
-            Edit in Settings
-          </LinkButton>
-        </>
+        <LinkButton variant="secondary" size="sm" to={`/cells/${profile.id}`}>
+          Edit in Settings
+        </LinkButton>
       }
     >
       {profile.twin_mismatches.length > 0 && (

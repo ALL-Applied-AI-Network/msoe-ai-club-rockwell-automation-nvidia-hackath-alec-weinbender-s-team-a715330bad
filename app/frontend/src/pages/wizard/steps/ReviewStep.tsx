@@ -5,7 +5,7 @@ import { api } from "../../../backend/client";
 import { useCellProfile, useCompute, useMeta, usePart } from "../../../backend/queries";
 import { SimBadge } from "../../../components/Badges";
 import { Banner } from "../../../components/Banner";
-import { Button, LinkButton } from "../../../components/Button";
+import { Button } from "../../../components/Button";
 import { Card } from "../../../components/Card";
 import { NumberInput } from "../../../components/Field";
 import { KeyValues } from "../../../components/KeyValues";
@@ -15,9 +15,9 @@ import { degrees, dims, mass, mm } from "../../../format";
 import { gpuSummary } from "../../../gpu";
 import { paramLabel, searchMethodLabel, WIZARD_STEPS, wizardStep } from "../../../labels";
 import { clearStoredDraft, useDraft } from "../draft";
+import { capitalise, findPose, posesText, usePoses } from "../poses";
 import { errorLabel, estimateText, taskLabel } from "../summary";
 import styles from "../Wizard.module.css";
-
 
 // How fast each way of running the Isaac sim server goes, for a typical job of about 12,100 grasps (frontend-plan.md,
 // step 8; CONTEXT.md risk 7). The plan's estimate doesn't know the path yet (plan section 13).
@@ -44,6 +44,8 @@ export function ReviewStep() {
   const meta = useMeta();
   const compute = useCompute();
   const part = usePart(draft.part_id);
+  const poses = usePoses(draft.part_id);
+  const ticked = draft.poses ?? [];
   const profile = useCellProfile(draft.cell_profile_id);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -72,87 +74,75 @@ export function ReviewStep() {
 
   return (
     <>
-      <div className={styles.reviewGrid}>
-        <Section step={1} title="Part">
+      <dl className={styles.review}>
+        <Row step={1} label="Name">
+          {draft.name || "Named after the CAD file and today's date"}
+        </Row>
+        <Row step={1} label="Part">
           {part.data ? (
-            <KeyValues
-              items={[
-                { label: "Experiment name", value: draft.name || "Named after the CAD file and today's date" },
-                { label: "Part", value: part.data.name },
-                { label: "Size", value: dims(part.data.extent_mm) },
-                { label: "Material", value: meta.data?.materials.find((m) => m.name === part.data.material)?.label ?? "Not set" },
-                {
-                  label: "Mass",
-                  value:
-                    part.data.confirmed_mass_g == null
-                      ? "Not known"
-                      : `${mass(part.data.confirmed_mass_g, part.data.mass_unit)}, ${part.data.mass_source ?? "computed"}`,
-                },
-              ]}
-            />
+            [
+              part.data.name,
+              dims(part.data.extent_mm),
+              meta.data?.materials.find((m) => m.name === part.data.material)?.label.toLowerCase() ?? "material not set",
+              part.data.confirmed_mass_g == null
+                ? "mass not known"
+                : `${mass(part.data.confirmed_mass_g, part.data.mass_unit)} ${part.data.mass_source ?? "computed"}`,
+            ].join(", ")
           ) : (
-            <Missing>No part chosen.</Missing>
+            <Missing>No part chosen</Missing>
           )}
-        </Section>
-        <Section step={2} title="Resting pose">
-          {part.data?.pose ? <p>{capitalise(part.data.pose.label)}</p> : <Missing>No pose chosen.</Missing>}
-        </Section>
-        <Section step={3} title="Task">
-          {draft.task && meta.data ? (
-            <div className={styles.taskReview}>
-              <img
-                className={styles.still}
-                src={`/task-examples/${draft.task.kind}.jpg`}
-                alt={`The end of the ${draft.task.kind} example in Isaac Sim, with a 10 mm cube`}
-              />
-              <p>{taskLabel(draft.task, meta.data)}</p>
-            </div>
-          ) : (
-            <Missing>No task chosen.</Missing>
-          )}
-        </Section>
-        <Section step={4} title="Cell profile">
+        </Row>
+        <Row step={2} label={ticked.length > 1 ? "Resting poses" : "Resting pose"}>
+          {ticked.length > 0 && poses.data ? posesText(ticked, poses.data) : <Missing>No pose chosen</Missing>}
+        </Row>
+        <Row step={3} label="Task">
+          {draft.task && meta.data ? taskLabel(draft.task, meta.data) : <Missing>No task chosen</Missing>}
+        </Row>
+        <Row step={4} label="Cell">
           {profile.data ? (
-            <p>
+            <>
               {profile.data.name}, version {profile.data.version}
               {profile.data.twin_mismatches.length > 0 && ": results simulate the twin's gripper"}
-            </p>
+            </>
           ) : (
-            <Missing>No profile confirmed.</Missing>
+            <Missing>No cell confirmed</Missing>
           )}
-        </Section>
-        <Section step={5} title="Grasp">
-          {draft.grasp ? (
-            <p>
-              Jaws close at {degrees(draft.grasp.angle_deg)}, {draft.grasp.source === "auto" ? "as proposed" : "picked by hand"};{" "}
-              {draft.grasp.grip_height_mm != null ? `grip height fixed at ${mm(draft.grasp.grip_height_mm)}` : "the search chooses the grip height"}
-            </p>
-          ) : (
-            <Missing>No grasp chosen.</Missing>
-          )}
-        </Section>
-        <Section step={6} title="Finger families">
-          {p ? (
-            p.families.map((f) => (
-              <p key={f.family}>
-                {f.label}: {f.free.length === 0 ? "testing one design, every parameter fixed" : `${f.free.length} free parameters: ${f.free.map((name) => paramLabel(name).toLowerCase()).join(", ")}`}
-              </p>
+        </Row>
+        <Row step={5} label="Grasp">
+          {ticked.length > 0 && ticked.every((d) => d.grasp) ? (
+            ticked.map(({ pose, grasp }) => (
+              <span key={String(pose)} className={styles.line}>
+                {ticked.length > 1 && `${capitalise(findPose(poses.data, pose)?.label ?? "pose")}: `}
+                {ticked.length > 1 ? "jaws" : "Jaws"} close at {degrees(grasp!.angle_deg)}, {grasp!.source === "auto" ? "as proposed" : "picked by hand"};{" "}
+                {grasp!.grip_height_mm != null ? `grip height fixed at ${mm(grasp!.grip_height_mm)}` : "the search chooses the grip height"}
+              </span>
             ))
           ) : (
-            <Missing>Shown once the plan is worked out.</Missing>
+            <Missing>No grasp chosen</Missing>
           )}
-        </Section>
-        <Section step={7} title="Camera error">
+        </Row>
+        <Row step={6} label="Finger families">
+          {p ? (
+            p.families.map((f) => (
+              <span key={f.family} className={styles.line}>
+                {f.label}: {f.free.length === 0 ? "one design, every parameter fixed" : `${f.free.length} free parameters: ${f.free.map((name) => paramLabel(name).toLowerCase()).join(", ")}`}
+              </span>
+            ))
+          ) : (
+            <Missing>Shown once the plan is worked out</Missing>
+          )}
+        </Row>
+        <Row step={7} label="Camera error">
           {draft.error && meta.data ? (
-            <p>
+            <>
               {errorLabel(draft.error, meta.data)}
               {p && `; ${p.totals.search_offsets} offsets per design while searching, ${p.totals.final_offsets} in the final test`}
-            </p>
+            </>
           ) : (
-            <Missing>No camera error set.</Missing>
+            <Missing>No camera error set</Missing>
           )}
-        </Section>
-      </div>
+        </Row>
+      </dl>
 
       {blockers.length > 0 && (
         <Banner tone="bad" title="Can't run yet">
@@ -200,18 +190,20 @@ export function ReviewStep() {
                 },
               ]}
             />
-            <p className={styles.note}>The estimate depends heavily on how the sim server runs:</p>
-            <Table
-              label="Speed of each sim path"
-              rowKey={(row) => row.path}
-              rows={SIM_PATHS}
-              columns={[
-                { key: "path", header: "Path", render: (row) => row.path },
-                { key: "rate", header: "Rate", render: (row) => row.rate },
-                { key: "typical", header: "A typical job", render: (row) => row.typical },
-                { key: "note", header: "Results", render: (row) => row.note },
-              ]}
-            />
+            <details className={styles.advanced}>
+              <summary>Speed of each sim path</summary>
+              <Table
+                label="Speed of each sim path"
+                rowKey={(row) => row.path}
+                rows={SIM_PATHS}
+                columns={[
+                  { key: "path", header: "Path", render: (row) => row.path },
+                  { key: "rate", header: "Rate", render: (row) => row.rate },
+                  { key: "typical", header: "A typical job", render: (row) => row.typical },
+                  { key: "note", header: "Results", render: (row) => row.note },
+                ]}
+              />
+            </details>
           </>
         ) : (
           <p className={styles.note}>
@@ -225,7 +217,7 @@ export function ReviewStep() {
           {p && <SimBadge backend={p.sim_backend} />}
           {compute.data && <span>{gpuSummary(compute.data).text}</span>}
         </div>
-        {p?.sim_backend === "mock" && <p className={styles.note}>{CAVEATS.mock} Results from the mock sim check geometry only.</p>}
+        {p?.sim_backend === "mock" && <p className={styles.note}>{CAVEATS.mock}</p>}
         <details className={styles.advanced}>
           <summary>Advanced</summary>
           <div className={styles.fields}>
@@ -235,7 +227,7 @@ export function ReviewStep() {
               min={0}
               value={draft.seed}
               onChange={(seed) => update({ seed: seed == null ? 0 : Math.round(seed) })}
-              hint="The random starting designs. The same seed and inputs repeat the same search."
+              hint="The same seed and inputs repeat the same search."
             />
           </div>
         </details>
@@ -256,23 +248,21 @@ export function ReviewStep() {
   );
 }
 
-function Section({ step, title, children }: { step: number; title: string; children: ReactNode }) {
+/** One choice on the review list, with a way back to its step. */
+function Row({ step, label, children }: { step: number; label: string; children: ReactNode }) {
   return (
-    <Card
-      title={title}
-      aside={
-        <LinkButton variant="ghost" size="sm" to={`/new/${WIZARD_STEPS[step - 1].slug}`}>
-          Edit
-        </LinkButton>
-      }
-    >
-      {children}
-    </Card>
+    <div className={styles.reviewRow}>
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+      <Link to={`/new/${WIZARD_STEPS[step - 1].slug}`} className={styles.edit} aria-label={`Edit ${label.toLowerCase()}`}>
+        Edit
+      </Link>
+    </div>
   );
 }
 
 function Missing({ children }: { children: ReactNode }) {
-  return <p className={styles.missing}>{children}</p>;
+  return <span className={styles.missing}>{children}</span>;
 }
 
 /** The API's refusal as an Error: a blocked spec (422 with the step to fix), no GPU (409), or anything else. */
@@ -285,8 +275,4 @@ function refusal(error: unknown, response: Response): Error {
   if (typeof detail === "string") return new Error(detail);
   if (Array.isArray(detail)) return new Error(detail.map((d) => (d as { msg?: string }).msg ?? JSON.stringify(d)).join("; "));
   return new Error(`${response.status} ${response.statusText}`);
-}
-
-function capitalise(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

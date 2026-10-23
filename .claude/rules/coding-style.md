@@ -239,16 +239,16 @@ app/frontend/
     format.ts            The one place numbers become text: percentages, mm, degrees, grams
     caveats.ts           The one place the caveats' wording lives (frontend plan, section 10)
     labels.ts            Codes written out for people: wizard steps, design labels
-    gpu.ts               The GPU status in one line (the header chip), the starting steps, the reconnecting check
+    gpu.ts               The GPU status in one line (the status bar), the starting steps, the reconnecting check
     gpuHelp.ts           The help for each GPU error message, matched by substring (frontend plan 4.5)
 ```
 
 Built (2026-10-22): every page in [docs/notes/frontend-plan.md](../../docs/notes/frontend-plan.md) section 1's table.
 The shared components are `Badge` (and its mappings in `Badges`), `Banner`, `Button`/`LinkButton`, `Card`,
 `ConfirmDialog`, `CopyButton`, `DownloadButton`, `Field` with `TextInput`/`NumberInput`/`Checkbox`, `FileDrop`,
-`FingerViewer`, `GpuChip`, `HelpCard`, `Icon`, `KeyValues`, `Modal`, `Page`, `PartForm`, `PartUpload`, `PartViewer`,
-`ProgressBar`, `RadioCards`, `RangeSlider`/`ValueSlider`, `Segmented`, `Select`, `Stat`, `States`, `StepLayout`, `Table`,
-`Tabs`, `VideoPair`, `VideoPlayer`, and the Recharts charts in `components/charts/`. The old `index.html` doesn't need to
+`FingerViewer`, `HelpCard`, `Icon`, `KeyValues`, `Modal`, `Page`, `PartForm`, `PartUpload`, `PartViewer`,
+`ProgressBar`, `RadioCards`, `RangeSlider`/`ValueSlider`, `Segmented`, `Select`, `Stat`, `States`, `StatusBar`,
+`StepLayout`, `Table`, `Tabs`, `VideoPair`, `VideoPlayer`, and the Recharts charts in `components/charts/`. The old `index.html` doesn't need to
 be kept or built on.
 
 ### Design
@@ -259,12 +259,17 @@ be kept or built on.
   tables or badges.
 - **One look across every page.** Colors, fonts, radii, spacing and shadows come only from the variables in
   `styles/tokens.css`: no hex values, font names or one-off sizes inside components. Every page sits in the same page
-  shell (header, sim badge, content width), every wizard step uses the same step layout, and the same thing always looks
+  shell (top bar, content width, status bar), every wizard step uses the same step layout, and the same thing always looks
   the same: a job status is always the same badge, a success rate always goes through `format.ts`.
-- **The look follows NVIDIA Brev's console, dark only:** near-black surfaces (`--bg`, `--surface`), thin borders
-  (`--line`) instead of shadows, NVIDIA green (`--acc`, black text) for primary actions and progress, cyan (`--active`)
-  for running and starting, and Inter with JetBrains Mono for IDs, bundled so the app works offline at the cell. There
-  is no light theme.
+- **The look follows NVIDIA Brev's console, dark only:** Brev's `#0c0c0c` page (`--bg`) with barely lifted panels (`--surface`),
+  hairline borders (`--line`) instead of shadows, small radii (`--r-sm`, `--r`; pills only for dots and progress),
+  NVIDIA green (`--acc`, black text) for primary actions and progress, cyan (`--active`) for running and starting. Barlow
+  (a DIN-style sans) for text, JetBrains Mono only for what a machine wrote (hosts, files, IDs, logs) and the status bar,
+  both bundled so the app works offline at the cell. The GPU and sim state live in the status bar along the bottom, like
+  a terminal's. There is no light theme.
+- **Say less.** No page subtitles or paragraphs that explain how the system works; no notes that restate a label or a
+  value ("STL file, read in millimetres"). Keep the caveats beside the numbers they qualify, warnings that change a
+  result, and errors that say how to fix them. No all-caps labels, eyebrows, or middle-dot joiners.
 - **Component styles live next to the component** as a CSS module (`Button.tsx` with `Button.module.css`) and use only
   the tokens. Inline `style={...}` is only for values computed at runtime, like a progress bar's width.
 - **No emojis** anywhere in the UI or the frontend code: labels, buttons, messages, placeholders, alt text, comments.

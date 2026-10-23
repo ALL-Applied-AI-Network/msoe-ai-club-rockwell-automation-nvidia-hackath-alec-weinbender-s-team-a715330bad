@@ -6,21 +6,9 @@
   gap: var(--gap);
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
-.lead {
-  color: var(--faint);
-}
-
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(480px, 100%), 1fr)); /* room for the name, version and two badges */
   gap: var(--gap);
 }
 
@@ -92,7 +80,6 @@
 .editorTitle {
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
-  letter-spacing: -0.01em;
 }
 
 .subtle {

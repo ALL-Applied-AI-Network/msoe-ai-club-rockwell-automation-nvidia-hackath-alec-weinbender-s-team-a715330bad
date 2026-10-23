@@ -6,8 +6,9 @@ Planning never raises for something the user can fix: every problem goes into th
 step whose screen fixes it, so the review screen can show them all at once and link back. Creating a blocked job is
 refused with the same list.
 
-A job snapshots what it runs with when it's created (the spec, the part as the gripper meets it, the plan, the grip
-force), so editing the part record or the cell profile later never changes a run or its results.
+A job snapshots what it runs with when it's created (the spec, the part as the gripper meets it in every resting pose it
+covers, the plan, the grip force), so editing the part record or the cell profile later never changes a run or its
+results.
 """
 
 import datetime
@@ -27,10 +28,13 @@ from api.config import AppConfig
 from api.db.tables import JobRow, PartRow, TrialRow
 from api.models import grasp
 from api.models.cell_profile import DEFAULT_PROFILE, CellProfile, CellProfileVersion
+from api.models.grasp import GraspChoice
 from api.models.job import ACTIVE_STATUSES, RESUMABLE_STATUSES, Job, JobStatus
-from api.models.job_spec import JobSpec, SimBackend
+from api.models.job_pose import JobPose, PoseChoice, pose_weights
+from api.models.job_spec import JobSpec, PoseGrasp, SimBackend
 from api.models.part import Part
 from api.models.part_record import PartRecord
+from api.models.resting_pose import RestingPose, is_same_pose
 from api.models.results import CardScore, JobCard
 from api.models.search_plan import Blocker, JobPlan, TimeEstimate, plan_job
 from api.services import cell_profiles, compute, parts
@@ -70,9 +74,10 @@ class JobBlockedError(ValueError):
 
 @dataclass(frozen=True)
 class SpecPlan:
-    """A spec worked out: the plan (always there, blockers included), and what it was worked out from. part, profile
-    and record are None where they don't exist or couldn't be used; the plan then stands in for them (the default cell
-    profile, a placeholder mass or part) so its totals still show, and its blockers say what to fix."""
+    """A spec worked out: the plan (always there, blockers included), and what it was worked out from. part (the
+    primary pose's), profile and record are None where they don't exist or couldn't be used; the plan then stands in
+    for them (the default cell profile, a placeholder mass or part) so its totals still show, and its blockers say what
+    to fix."""
 
     plan: JobPlan
     part: Part | None
@@ -82,8 +87,9 @@ class SpecPlan:
 
 def plan_spec(db: DatabaseClient, config: AppConfig, spec: JobSpec) -> SpecPlan:
     """The plan for a spec, as POST /api/jobs/plan shows it and POST /api/jobs stores it. Collects every user-fixable
-    problem as a Blocker instead of raising: no part or no mass (step 1), no resting pose (2), no cell profile (4), a
-    grasp that the geometry check blocks (5), and families with no buildable design (6)."""
+    problem as a Blocker instead of raising: no part or no mass (step 1), no resting pose or one that doesn't exist (2),
+    no cell profile (4), a grasp that the geometry check blocks in its pose (5), and families with no buildable design
+    (6)."""
     blockers: list[Blocker] = []
     record = version = None
     try:
@@ -96,48 +102,97 @@ def plan_spec(db: DatabaseClient, config: AppConfig, spec: JobSpec) -> SpecPlan:
         blockers.append(Blocker(step=4, reason=f"cell profile {spec.cell_profile_id} doesn't exist: choose a cell profile"))
     profile = version.profile if version is not None else DEFAULT_PROFILE
 
-    part = None
+    poses: list[JobPose] = []
     if record is not None:
-        blockers += _record_blockers(db, spec, record, profile)
-        posed = record if record.confirmed_mass_g is not None else record.model_copy(update={"mass_g": STAND_IN_MASS_G})
-        try:
-            part = grasp.posed_part(posed, spec.grasp, profile.pad_friction, parts.load_mesh(record))
-        except (OSError, ValueError) as e:
-            blockers.append(Blocker(step=1, reason=f"the part can't be posed ({e}): upload its CAD file again"))
-    planned = part or Part()  # a stand-in: the plan is blocked at step 1 and only its totals mean anything
+        if record.confirmed_mass_g is None:
+            reason = "the part has no mass yet: choose its material (or enter a density) or enter a measured mass"
+            blockers.append(Blocker(step=1, reason=reason))
+        poses, found = _job_poses(db, spec, record, profile)
+        blockers += found
+    part = poses[0].part if poses else None
+    planned = part or Part()  # a stand-in: the plan is blocked at step 1 or 2 and only its totals mean anything
+    poses = poses or [JobPose(key="p0", grasp=_grasps(spec)[0], part=planned)]
 
     badge = sim_badge(config.sim.backend)
     clearance = record.clearance_mm if record is not None else None
-    plan = plan_job(planned, spec, profile, sim_backend=badge, estimate=throughput(db, config, badge), clearance_mm=clearance)
+    estimate = throughput(db, config, badge)
+    plan = plan_job(planned, spec, profile, sim_backend=badge, estimate=estimate, clearance_mm=clearance, poses=poses)
     blockers += [Blocker(step=6, reason=reason) for reason in plan.blocked]
     blockers.sort(key=lambda b: b.step)
     force, warnings = _grip_force(profile.grip_force_n, record)
     plan = plan.model_copy(
         update={"blockers": blockers, "blocked": [b.reason for b in blockers], "grip_force_n": force, "warnings": plan.warnings + warnings}
     )
-    usable = record is not None and record.confirmed_mass_g is not None and record.pose is not None
+    usable = record is not None and record.confirmed_mass_g is not None and all(pose.resting is not None for pose in poses)
     return SpecPlan(plan=plan, part=part if usable else None, profile=version, record=record)
 
 
-def _record_blockers(db: DatabaseClient, spec: JobSpec, record: PartRecord, profile: CellProfile) -> list[Blocker]:
-    """What the part record still needs (mass, pose), and the grasp re-checked against it on this cell's gripper."""
-    out = []
-    if record.confirmed_mass_g is None:
-        out.append(Blocker(step=1, reason="the part has no mass yet: choose its material (or enter a density) or enter a measured mass"))
-    if record.pose is None:
-        out.append(Blocker(step=2, reason="no resting pose chosen: choose how the part lies on the table"))
-        return out
-    g = spec.grasp
+def _grasps(spec: JobSpec) -> list[GraspChoice]:
+    return [spec.grasp] if spec.grasp is not None else [pose.grasp for pose in spec.poses]
+
+
+def _job_poses(db: DatabaseClient, spec: JobSpec, record: PartRecord, profile: CellProfile) -> tuple[list[JobPose], list[Blocker]]:
+    """The resting poses the spec covers, primary (the likeliest) first, each with its weight, its grasp re-checked in
+    that pose on this cell's gripper, and the part posed and turned to it; and what blocks them. A spec with one grasp
+    (as every spec was before jobs covered poses) covers the part record's chosen pose. A part without a mass is posed
+    with a stand-in, so a blocked plan still has its totals."""
+    blockers: list[Blocker] = []
+    if spec.grasp is not None:
+        if record.pose is None:
+            blockers.append(Blocker(step=2, reason="no resting pose chosen: choose how the part lies on the table"))
+        chosen: list[tuple[PoseChoice | None, RestingPose | None, GraspChoice]] = [(None, record.pose, spec.grasp)]
+    else:
+        try:
+            resting = parts.resolve_poses(record, [p.pose for p in spec.poses])
+        except parts.PartInputError as e:
+            return [], [Blocker(step=2, reason=f"resting pose: {e}")]
+        chosen = [(p.pose, r, p.grasp) for p, r in zip(spec.poses, resting, strict=True)]
+        chosen.sort(key=lambda c: (-(c[1].probability or 0.0), c[0] if isinstance(c[0], int) else 0))
+    posed = record if record.confirmed_mass_g is not None else record.model_copy(update={"mass_g": STAND_IN_MASS_G})
     try:
-        candidate = parts.check_grasp(db, record.id, profile, angle_deg=g.angle_deg, picks=g.picks, grip_height_mm=g.grip_height_mm)
+        mesh = parts.load_mesh(record)
+    except OSError as e:
+        return [], [*blockers, Blocker(step=1, reason=f"the part can't be posed ({e}): upload its CAD file again")]
+    weights = pose_weights([resting.probability if resting is not None else None for _, resting, _ in chosen])
+    poses = []
+    for i, ((choice, resting, g), weight) in enumerate(zip(chosen, weights, strict=True)):
+        label = resting.label if resting is not None else None
+        where = f" ({label})" if len(chosen) > 1 else ""
+        if resting is not None:
+            blockers += _grasp_blockers(db, record, profile, g, resting, where)
+        try:
+            part = grasp.posed_part(posed, g, profile.pad_friction, mesh, pose=resting)
+        except ValueError as e:
+            return [], [*blockers, Blocker(step=1, reason=f"the part can't be posed ({e}): upload its CAD file again")]
+        probability = resting.probability if resting is not None else None
+        poses.append(
+            JobPose(key=f"p{i}", label=label, choice=choice, probability=probability, weight=weight, resting=resting, grasp=g, part=part)
+        )
+    return poses, blockers
+
+
+def _grasp_blockers(
+    db: DatabaseClient, record: PartRecord, profile: CellProfile, g: GraspChoice, resting: RestingPose, where: str
+) -> list[Blocker]:
+    """The grasp re-checked in its pose on this cell's gripper: what blocks it, at step 5."""
+    try:
+        candidate = parts.check_grasp(
+            db,
+            record.id,
+            profile,
+            angle_deg=g.angle_deg,
+            picks=g.picks,
+            grip_height_mm=g.grip_height_mm,
+            pose=resting,
+            centre_mm=g.centre_mm if g.span_mm is not None else None,
+            span_mm=g.span_mm,
+        )
     except parts.PartInputError as e:
-        return [*out, Blocker(step=5, reason=f"grasp: {e}")]
-    except parts.PoseNotChosenError:
-        return [*out, Blocker(step=2, reason="no resting pose chosen: choose how the part lies on the table")]
-    if candidate.verdict == "blocked":
-        reasons = candidate.blocked_reasons or [f"the grasp at {g.angle_deg:g} deg doesn't fit this gripper"]
-        out += [Blocker(step=5, reason=f"grasp: {reason}") for reason in reasons]
-    return out
+        return [Blocker(step=5, reason=f"grasp{where}: {e}")]
+    if candidate.verdict != "blocked":
+        return []
+    reasons = candidate.blocked_reasons or [f"the grasp at {g.angle_deg:g} deg doesn't fit this gripper"]
+    return [Blocker(step=5, reason=f"grasp{where}: {reason}") for reason in reasons]
 
 
 def _grip_force(profile_force: float | None, record: PartRecord | None) -> tuple[float | None, list[str]]:
@@ -328,9 +383,32 @@ def rename_job(db: DatabaseClient, job_id: str, name: str) -> Job:
 
 
 def duplicate_job(db: DatabaseClient, job_id: str) -> JobSpec:
-    """A copy of the job's spec named "<name> (copy)", for the wizard to edit. Nothing is stored or started."""
+    """A copy of the job's spec named "<name> (copy)", for the wizard to edit. Nothing is stored or started. A spec with
+    one grasp (from before jobs covered poses) comes back with that grasp on its pose in `poses`, when the pose can still
+    be found among the part's; otherwise as it was."""
     job = get_job(db, job_id)
-    return job.spec.model_copy(update={"name": f"{job.name} (copy)"})
+    spec = job.spec.model_copy(update={"name": f"{job.name} (copy)"})
+    if spec.grasp is None:
+        return spec
+    try:
+        record = parts.get_part(db, job.part_id)
+        resting = job.plan.poses[0].resting if job.plan.poses else record.pose
+        choice = _pose_choice(record, resting)
+    except (parts.PartNotFoundError, OSError):
+        return spec
+    if choice is None:
+        return spec
+    return spec.model_copy(update={"grasp": None, "poses": [PoseGrasp(pose=choice, grasp=spec.grasp)]})
+
+
+def _pose_choice(record: PartRecord, resting: RestingPose | None) -> PoseChoice | None:
+    """Which of the part's resting poses this is, as a job spec's poses name it; None if it isn't one of them."""
+    if resting is None:
+        return None
+    if resting.source == "as_authored":
+        return "as_authored"
+    listed = parts.resting_poses_of(record)
+    return next((i for i, pose in enumerate(listed) if pose.source == "stable" and is_same_pose(pose, resting)), None)
 
 
 def cancel_job(db: DatabaseClient, job_id: str) -> None:

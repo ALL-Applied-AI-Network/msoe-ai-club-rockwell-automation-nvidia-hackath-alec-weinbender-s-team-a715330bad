@@ -72,7 +72,7 @@ export function LogStage({
       step={5}
       title="Log the trials and compare"
       status={STATUS[validation?.badge ?? "none"]}
-      description="Run the plan at the robot, fill in the spreadsheet, and upload it. The comparison below fills in as trials are logged."
+      description="Run the plan at the robot, fill in the spreadsheet, and upload it."
     >
       {!plan ? (
         <p className={styles.note}>Create a test plan first.</p>
@@ -123,7 +123,7 @@ export function LogStage({
             accept=".xlsx,.csv"
             busy={upload.isPending ? "Reading the spreadsheet" : undefined}
             error={upload.error?.message}
-            hint="Uploading again is safe: it keeps every earlier outcome in the trial's history."
+            hint="Uploading again keeps earlier outcomes."
             onFile={(file) => upload.mutate({ planId: plan.id, file })}
           />
 
@@ -139,8 +139,7 @@ export function LogStage({
               {upload.data.errors.length > 0 && (
                 <>
                   <p className={styles.note}>
-                    The rows below weren't applied. Every other valid row was, so there's no need to upload the rest
-                    again: fix these rows and upload the file once more.
+                    These rows weren't applied; the rest were. Fix them and upload the file again.
                   </p>
                   <Table
                     label="Rows that weren't applied"

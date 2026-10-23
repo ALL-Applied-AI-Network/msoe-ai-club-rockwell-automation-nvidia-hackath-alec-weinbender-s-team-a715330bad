@@ -20,6 +20,7 @@ from api.models.clip import ClipOutcome, ClipStatus
 from api.models.compute import ComputeBackend, SessionStatus, StopReason
 from api.models.job import JobStatus
 from api.models.job_spec import JobSpec
+from api.models.outcome import Outcomes
 from api.models.part import Part
 from api.models.part_cad import PartCad
 from api.models.resting_pose import RestingPose
@@ -146,6 +147,8 @@ class TrialRow(Base):
     held: Mapped[list[bool]]
     in_hand: Mapped[list[Any]]  # [dx, dy, dz, tilt, yaw] or null per grid point
     held_after_transport: Mapped[list[bool] | None]
+    # Every resting pose's outcomes after the primary's (held ... above), in the job's pose order; NULL for one pose
+    pose_outcomes: Mapped[list[Outcomes] | None] = mapped_column(PydanticJSON(list[Outcomes]))
     duration: Mapped[float]  # seconds of the round's sim time, per design
     created: Mapped[float] = mapped_column(default=time.time)
 

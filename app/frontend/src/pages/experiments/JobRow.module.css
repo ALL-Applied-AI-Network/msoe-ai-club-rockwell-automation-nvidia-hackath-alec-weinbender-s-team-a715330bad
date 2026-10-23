@@ -1,0 +1,134 @@
+/* The columns are shared with the list's header row in ExperimentsPage.module.css */
+.row {
+  display: grid;
+  grid-template-columns: var(--job-columns);
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.row:hover {
+  background: var(--surface-2);
+}
+
+.name,
+.part,
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.title:hover {
+  color: var(--acc-text);
+  text-decoration: none;
+}
+
+.id {
+  color: var(--faint);
+  font-size: var(--text-xs);
+}
+
+.value {
+  color: var(--mute);
+  overflow-wrap: anywhere;
+}
+
+.sub {
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.score {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+
+.best {
+  color: var(--acc-text);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.time {
+  color: var(--faint);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+/* A second line under the row, only when there's something to act on */
+.detail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  grid-column: 1 / -1;
+}
+
+.note {
+  font-size: var(--text-sm);
+  color: var(--mute);
+}
+
+.failure {
+  font-size: var(--text-sm);
+  color: var(--bad);
+  overflow-wrap: anywhere;
+}
+
+.waiting {
+  font-size: var(--text-sm);
+  color: var(--warn);
+}
+
+@media (max-width: 1100px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .name {
+    grid-area: 1 / 1;
+  }
+
+  .badges {
+    grid-area: 1 / 2;
+    justify-content: flex-end;
+  }
+
+  .part {
+    grid-area: 2 / 1;
+  }
+
+  .time {
+    grid-area: 2 / 2;
+    justify-self: end;
+  }
+
+  .result,
+  .actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}

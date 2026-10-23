@@ -33,3 +33,12 @@ def test_rows_for_every_job_and_an_unknown_job(finished_job):
     assert len(export.trial_rows(finished_job.db)) == len(export.trial_rows(finished_job.db, finished_job.job_id))
     with pytest.raises(jobs.JobNotFoundError):
         export.trial_rows(finished_job.db, "nope")
+
+
+def test_a_job_over_two_poses_exports_every_poses_outcomes(two_pose_job, finished_job):
+    rows = export.trial_rows(two_pose_job.db, two_pose_job.job_id)
+
+    assert all(len(r["pose_outcomes"]) == 1 and len(r["pose_outcomes"][0]["held"]) == len(r["held"]) for r in rows)
+    assert [(p["key"], p["label"]) for p in rows[0]["poses"]] == [("p0", "on its side"), ("p1", "standing")]
+    assert rows[0]["poses"][1]["part"]["height_mm"] == 20 and rows[0]["part"] == rows[0]["poses"][0]["part"]
+    assert "poses" not in export.trial_rows(finished_job.db, finished_job.job_id)[0]  # one pose: as before

@@ -5,7 +5,7 @@
   gap: var(--space-5);
 }
 
-/* The step list */
+/* The step list: a rail with the current step marked in green, numbers instead of circles */
 
 .steps {
   position: sticky;
@@ -15,38 +15,33 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   margin: 0;
   padding: 0;
+  border-left: 1px solid var(--line);
   list-style: none;
 }
 
 .step {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   gap: var(--space-3);
-  padding: var(--space-2);
-  border-radius: var(--r-sm);
-  color: var(--faint);
+  margin-left: -1px;
+  padding: 6px var(--space-3);
+  border-left: 2px solid transparent;
+  color: var(--mute);
   text-decoration: none;
 }
 
 .step:hover {
-  background: var(--surface-2);
   color: var(--ink);
   text-decoration: none;
 }
 
 .number {
-  display: grid;
   flex: none;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 50%;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
+  width: 1.2em;
+  color: var(--faint);
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -54,7 +49,6 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding-top: 1px;
 }
 
 .label {
@@ -67,39 +61,24 @@
 }
 
 .done .number {
-  border-color: var(--acc);
-  background: var(--acc);
-  color: var(--acc-ink);
-}
-
-.done {
-  color: var(--mute);
+  color: var(--acc-text);
 }
 
 .current {
-  background: var(--surface-2);
+  border-left-color: var(--acc);
   color: var(--ink);
 }
 
 .current .number {
-  border-color: var(--acc);
-  color: var(--acc-text);
+  color: var(--ink);
 }
 
-.attention .number {
-  border-color: var(--warn);
-  color: var(--warn);
-}
-
+.attention .number,
 .attention .note {
   color: var(--warn);
 }
 
-.blocked .number {
-  border-color: var(--bad);
-  color: var(--bad);
-}
-
+.blocked .number,
 .blocked .note {
   color: var(--bad);
 }
@@ -118,29 +97,19 @@
 .main {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-4);
   min-width: 0;
 }
 
-.count {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--faint);
-}
-
 .title {
-  margin-top: var(--space-1);
   font-size: var(--text-xl);
-  font-weight: var(--weight-bold);
-  letter-spacing: -0.01em;
+  font-weight: var(--weight-semibold);
 }
 
 .description {
   margin-top: var(--space-1);
   max-width: 70ch;
-  color: var(--faint);
+  color: var(--mute);
 }
 
 .content {
@@ -196,11 +165,20 @@
 
   .list {
     flex-direction: row;
+    border-bottom: 1px solid var(--line);
+    border-left: 0;
   }
 
   .step {
-    align-items: center;
+    margin: 0 0 -1px;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 2px solid transparent;
+    border-left: 0;
     white-space: nowrap;
+  }
+
+  .current {
+    border-bottom-color: var(--acc);
   }
 
   .note {

@@ -40,10 +40,7 @@ export function Stopped({ card }: { card: JobCard }) {
   if (card.status === "interrupted") {
     return (
       <Banner tone="warn" title="Interrupted">
-        <span>
-          The worker stopped before the experiment finished: the computer running the app slept, shut down or restarted.
-          The app marks such experiments when it next starts. {kept}
-        </span>
+        <span>The computer running the app slept, shut down or restarted before the experiment finished. {kept}</span>
       </Banner>
     );
   }

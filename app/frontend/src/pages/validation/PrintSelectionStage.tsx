@@ -57,7 +57,7 @@ export function PrintSelectionStage({
       step={1}
       title="Choose the designs to print"
       status={chosen.size ? { tone: "ok", label: `${chosen.size} chosen` } : { tone: "neutral", label: "None chosen yet" }}
-      description="Tick the final designs worth testing on the robot. Stock and the imprint are always tested as well, as the baselines, so they aren't listed here."
+      description="Stock and the imprint are always tested too."
     >
       <Table
         label="Final designs"

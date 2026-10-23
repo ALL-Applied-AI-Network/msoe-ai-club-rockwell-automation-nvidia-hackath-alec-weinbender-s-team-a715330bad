@@ -10,15 +10,13 @@ export function NotBuiltPage({ title, plan }: { title: string; plan: string }) {
   return (
     <Page title={title}>
       <EmptyState
-        title="This page isn't built yet"
+        title={plan}
         action={
           <LinkButton variant="secondary" to="/">
-            Back to the experiments
+            Experiments
           </LinkButton>
         }
-      >
-        {plan}
-      </EmptyState>
+      />
     </Page>
   );
 }

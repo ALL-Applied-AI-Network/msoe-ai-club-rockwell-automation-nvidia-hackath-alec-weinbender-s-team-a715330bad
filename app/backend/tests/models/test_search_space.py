@@ -5,7 +5,7 @@ import pytest
 from api.models.cell_profile import Gripper
 from api.models.design import Design
 from api.models.family import FamilyChoice, ParamRange, VPadParams
-from api.models.finger import WALL_MM, build_finger, problems
+from api.models.finger import WALL_MM, build_finger, problems, regrip
 from api.models.part import Part
 from api.models.piece import hull_piece
 from api.models.search_space import SearchSpace
@@ -190,3 +190,39 @@ def test_describe_summarises_every_parameter_in_field_order():
     assert {s.unit for s in summaries} == {"mm", "deg"}
     assert all(s.applies and s.note is None and s.effective_range == s.default_range for s in summaries)
     assert all(s.limits[0] <= s.default_range[0] <= s.default_range[1] <= s.limits[1] for s in summaries)
+
+
+def slack_limits(space: SearchSpace) -> tuple[float, float]:
+    return next(p.limits for p in space.describe() if p.name == "slack_mm")
+
+
+def test_other_poses_bound_the_slack_both_ways():
+    box = Part(shape="box", width_mm=20, depth_mm=20)  # the pose the finger is built for: the pad face sits slack + 10 out
+    wider, narrower = Part(shape="box", width_mm=26, depth_mm=20), Part(shape="box", width_mm=17, depth_mm=20)
+
+    alone, with_wider = slack_limits(SearchSpace(box)), slack_limits(SearchSpace(box, others=[wider]))
+    with_narrower = slack_limits(SearchSpace(box, others=[narrower]))
+
+    # the stroke leaves 6 - 0.3 squeeze - 0.2 margin = 5.5 mm; open, the pads clear a pose 3 mm wider per side plus 0.5
+    assert alone == pytest.approx((0.5, 5.5)) and with_wider == pytest.approx((3.5, 5.5))
+    # closing, they must still reach a pose 1.5 mm narrower per side
+    assert with_narrower == pytest.approx((0.5, 4.0))
+
+
+def test_every_design_grips_every_pose_it_was_bounded_for():
+    box = Part(shape="box", width_mm=20, depth_mm=20, height_mm=12)
+    others = [Part(shape="box", width_mm=24, depth_mm=20, height_mm=8), Part(shape="box", width_mm=18, depth_mm=20, height_mm=16)]
+    space = SearchSpace(box, others=others)
+
+    for unit in corners_and_samples(len(space.names)):
+        design = space.from_unit(unit)
+        built = build_finger(box, design)
+        for other in others:
+            found = problems(other, regrip(box, other, design, built=built))
+            assert not any("can't reach" in p or "land" in p for p in found), (unit, other.extent_mm, found)
+
+
+def test_a_pose_that_cant_be_gripped_with_the_likelier_ones_is_left_out():
+    cube, far_wider = Part(shape="box"), Part(shape="box", width_mm=40)  # 15 mm wider per side than the stroke can span
+
+    assert slack_limits(SearchSpace(cube, others=[far_wider])) == slack_limits(SearchSpace(cube))

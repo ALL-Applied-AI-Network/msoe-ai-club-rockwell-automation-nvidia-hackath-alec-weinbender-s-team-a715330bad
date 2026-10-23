@@ -41,8 +41,9 @@ export function ErrorStep() {
 
   useStepGate(STEP, error ? { ok: true } : { ok: false, reason: "Choose a camera error" });
 
-  const part = plan.data?.part;
-  const request = useDebounced(part && error ? { part, error, final: false } : null, 150);
+  const part = plan.data?.part; // the primary pose's; the grid covers every pose's (yaw layers if any pose needs them)
+  const parts = plan.data?.poses.map((p) => p.part) ?? [];
+  const request = useDebounced(part && error ? { part, parts, error, final: false } : null, 150);
   const grid = useQuery({
     queryKey: ["grid", request],
     queryFn: () => unwrapAs<Grid>(api.POST("/api/grids", { body: request! })),
@@ -77,7 +78,7 @@ export function ErrorStep() {
               description: `${mm(p.sigma_mm, 2)} sigma, yaw ${degrees(p.sigma_deg, 1)}: ${p.note}.`,
               aside: p.placeholder ? <Badge tone="warn" label="Placeholder" title={CAVEATS.placeholderError} /> : undefined,
             })),
-            { value: "custom" as Preset, label: "Custom", description: "Your own numbers, for example from measuring the cell." },
+            { value: "custom" as Preset, label: "Custom", description: "Your own numbers, e.g. measured at the cell." },
           ]}
         />
         {preset?.placeholder && <Banner tone="warn">{CAVEATS.placeholderError}</Banner>}
@@ -89,7 +90,6 @@ export function ErrorStep() {
             format={(v) => mm(v, 2)}
             value={error.sigma_mm}
             onChange={(sigma_mm) => setError({ sigma_mm, preset: "custom" })}
-            hint="How far the camera's estimate of the part's position is off, typically."
           />
           <ValueSlider
             label="Yaw error, 1 sigma"
@@ -115,7 +115,7 @@ export function ErrorStep() {
                 sigma_range_mm: on ? [Math.max(SIGMA.min, round(error.sigma_mm / 2)), Math.min(SIGMA.max, round(error.sigma_mm * 1.5))] : null,
               })
             }
-            hint="Costs nothing extra: every offset is simulated once, and the results score at any sigma."
+            hint="No extra simulation."
           />
           {error.sigma_range_mm && (
             <RangeSlider
@@ -212,7 +212,7 @@ function GridPanel({
   return (
     <div className={styles.panel}>
       <div className={styles.row}>
-        <h3 className={styles.panelTitle}>The offsets each design is tested at</h3>
+        <h3 className={styles.panelTitle}>Test offsets</h3>
         {layers.length > 1 && (
           <Segmented
             label="Yaw layer"

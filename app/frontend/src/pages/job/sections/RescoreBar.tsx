@@ -48,7 +48,7 @@ export function RescoreBar({ error: base, task: baseTask, active, pending, failu
   return (
     <Card
       title="Re-score"
-      subtitle="Try another camera error or task on the same simulated grasps. Nothing is simulated again."
+      subtitle="Score the stored grasps at another camera error or task. Nothing is simulated again."
       aside={
         <Button variant="secondary" size="sm" disabled={!active} onClick={reset}>
           Reset to the run
@@ -124,7 +124,6 @@ export function RescoreBar({ error: base, task: baseTask, active, pending, failu
       </div>
       <Checkbox
         label="Design for a range of camera errors"
-        hint="Scores each design over a range of sigmas instead of one. It costs nothing extra."
         checked={Boolean(error.sigma_range_mm)}
         onChange={(on) => setErr({ sigma_range_mm: on ? [Math.max(0.5, error.sigma_mm / 2), error.sigma_mm * 1.5] : null })}
       />

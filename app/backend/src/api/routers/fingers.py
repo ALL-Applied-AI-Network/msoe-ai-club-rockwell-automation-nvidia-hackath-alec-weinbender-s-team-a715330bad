@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/fingers", tags=["fingers"])
 
 class FingerPreviewRequest(BaseModel):
     part: Part  # as the gripper meets it (posed and turned to the grasp axis)
+    others: list[Part] = []  # the job's other resting poses (JobPlan.poses after the first): they bound the slack too
     cell_profile_id: int
     choice: FamilyChoice = FamilyChoice()
     clearance_mm: float | None = Field(None, ge=0)  # the part record's clearance on the table, if set
@@ -57,6 +58,7 @@ def preview_fingers(request: FingerPreviewRequest, db: DbDep) -> FingerPreviewRe
             grip_height_mm=request.grip_height_mm,
             vary=request.vary,
             designs=request.designs,
+            others=request.others,
         )
     except CellProfileNotFoundError:
         raise HTTPException(404, f"no cell profile {request.cell_profile_id}") from None

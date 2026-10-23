@@ -42,7 +42,7 @@ export function PartDetailPage() {
   return (
     <Page
       title={p.name}
-      description={`${p.source === "stl" ? `STL file, read in ${p.units === "in" ? "inches" : "millimetres"}` : "STEP file"}, uploaded ${dateTime(p.created)}`}
+      description={`Uploaded ${dateTime(p.created)}`}
       actions={
         <>
           <LinkButton to="/parts">All parts</LinkButton>
@@ -53,10 +53,10 @@ export function PartDetailPage() {
       <div className={styles.layout}>
         <div className={styles.column}>
           <Card title="Size">
-            <Stat size="lg" label="Bounding box" value={dims(p.extent_mm)} detail={`x ${quantity(x, "mm", 1)}, y ${quantity(y, "mm", 1)}, z ${quantity(z, "mm", 1)}, as in the CAD file`} />
+            <Stat size="lg" label="Bounding box" value={dims(p.extent_mm)} detail={`x ${quantity(x, "mm", 1)}, y ${quantity(y, "mm", 1)}, z ${quantity(z, "mm", 1)}`} />
             <p className={styles.note}>
-              Check it against the real part. A size 25.4 times too big or too small means the file's units were read
-              wrong: upload it again{p.source === "stl" ? " and choose the other units" : ""}.
+              25.4 times off means the units were read wrong: upload it again
+              {p.source === "stl" ? ` in ${p.units === "in" ? "millimetres" : "inches"}` : ""}.
             </p>
           </Card>
           <Card title="3D view" subtitle={`Resting ${p.pose?.label ?? "as in the CAD file"}`}>
@@ -70,7 +70,7 @@ export function PartDetailPage() {
             />
           </Card>
         </div>
-        <Card title="Material and handling" subtitle="What the sim needs to know about the part. Only what you change is saved.">
+        <Card title="Material and handling">
           <PartForm key={p.id} part={p} />
         </Card>
       </div>

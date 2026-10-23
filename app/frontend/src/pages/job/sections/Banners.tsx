@@ -37,9 +37,8 @@ export function ResultBanners({ job, results }: { job: JobDetail; results: Resul
   return (
     <>
       {results.header.sim_backend === "mock" && (
-        <Banner tone="warn" title="Mock sim">
-          {CAVEATS.mock} It checks capture geometry only, with no physics, so these numbers show how the search works,
-          not how the fingers will do.
+        <Banner tone="warn">
+          {CAVEATS.mock} No physics: these numbers show how the search works, not how the fingers will do.
         </Banner>
       )}
       {path?.exploratory && (
@@ -48,7 +47,7 @@ export function ResultBanners({ job, results }: { job: JobDetail; results: Resul
         </Banner>
       )}
       {isaac.length > 0 && (
-        <Banner tone="info" title="Read these numbers with the twin's known biases">
+        <Banner tone="info" title="Known biases of the twin">
           <ul className={styles.list}>
             {isaac.map((text) => (
               <li key={text}>{text}</li>
@@ -56,6 +55,7 @@ export function ResultBanners({ job, results }: { job: JobDetail; results: Resul
           </ul>
         </Banner>
       )}
+      {job.plan.poses.length > 1 && <Banner tone="info">{CAVEATS.poseRecognition}</Banner>}
       {(placeholderError || mismatches.length > 0) && (
         <Banner tone="info" title="Placeholders in this run">
           <ul className={styles.list}>

@@ -42,7 +42,7 @@
 .count {
   min-width: 18px;
   padding: 0 5px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-sm);
   background: var(--surface-2);
   color: var(--faint);
   font-size: var(--text-xs);

@@ -102,10 +102,10 @@ export function PartForm({ part, onSaved }: { part: Part; onSaved?: (part: Part)
           placeholder={material ? undefined : "Choose the material"}
           onChange={(event) => setMaterial(event.target.value as Material)}
           options={materials.map((m) => ({ value: m.name, label: m.label }))}
-          error={errors.material}
+          error={changed ? errors.material : undefined} // only once there's something to save that it blocks
           hint={
             !part.material && part.measured.material_hint
-              ? "Suggested by the CAD file. Saving confirms it."
+              ? "From the CAD file. Save to confirm."
               : info?.density_g_cm3
                 ? `Density ${quantity(info.density_g_cm3, "g/cm³")}`
                 : undefined
@@ -116,7 +116,7 @@ export function PartForm({ part, onSaved }: { part: Part; onSaved?: (part: Part)
           value={surface}
           onChange={(event) => setSurface(event.target.value as Part["surface"])}
           options={(meta.data?.surfaces ?? []).map((s) => ({ value: s.name, label: s.label }))}
-          hint={`Scales the friction. Against the printed pad, as saved: ${trim(part.friction_vs_pad[0])} static, ${trim(part.friction_vs_pad[1])} dynamic.`}
+          hint={`Friction against the pad: ${trim(part.friction_vs_pad[0])} static, ${trim(part.friction_vs_pad[1])} dynamic`}
         />
         {isOther && (
           <NumberInput label="Density" unit="g/cm³" value={density} onChange={setDensity} min={0} step={0.01} error={errors.density} />
@@ -127,9 +127,9 @@ export function PartForm({ part, onSaved }: { part: Part; onSaved?: (part: Part)
         <legend className={styles.legend}>Mass</legend>
         <p className={styles.computed}>
           {computedG != null
-            ? `Computed from the CAD volume (${quantity(part.measured.volume_mm3 / 1000, "cm³")}) and the density: ${mass(computedG, unit)}.`
+            ? `Computed: ${mass(computedG, unit)}, from ${quantity(part.measured.volume_mm3 / 1000, "cm³")}.`
             : "Choose a material to compute the mass."}{" "}
-          {!measured && computedG != null && <strong className={styles.used}>This one is used.</strong>}
+          {!measured && computedG != null && <strong className={styles.used}>In use.</strong>}
         </p>
         <div className={styles.grid}>
           <Select
@@ -141,7 +141,6 @@ export function PartForm({ part, onSaved }: { part: Part; onSaved?: (part: Part)
           <div className={styles.measured}>
             <Checkbox
               label="Use a measured mass instead"
-              hint="Weigh the part if you can: the CAD may be hollow, or the material's density off."
               checked={measured}
               onChange={setMeasured}
             />
@@ -155,7 +154,7 @@ export function PartForm({ part, onSaved }: { part: Part; onSaved?: (part: Part)
               min={0}
               step="any"
               error={errors.mass}
-              hint="This one is used."
+              hint="In use."
             />
           )}
         </div>
@@ -165,7 +164,7 @@ export function PartForm({ part, onSaved }: { part: Part; onSaved?: (part: Part)
         <legend className={styles.legend}>Handling</legend>
         <div className={styles.grid}>
           <div className={styles.measured}>
-            <Checkbox label="Fragile" hint="Limits how hard the fingers may grip it." checked={fragile} onChange={setFragile} />
+            <Checkbox label="Fragile" checked={fragile} onChange={setFragile} />
           </div>
           {fragile && (
             <NumberInput
@@ -176,7 +175,7 @@ export function PartForm({ part, onSaved }: { part: Part; onSaved?: (part: Part)
               min={0}
               step="any"
               error={errors.maxForce}
-              hint="Optional. Empty: no limit beyond the gripper's own."
+              hint="Optional"
             />
           )}
           <NumberInput
@@ -187,7 +186,7 @@ export function PartForm({ part, onSaved }: { part: Part; onSaved?: (part: Part)
             min={0}
             step="any"
             error={errors.clearance}
-            hint="Optional. Free space beside the part for the fingers; empty if nothing is close."
+            hint="Optional: free space beside the part"
           />
         </div>
       </fieldset>
@@ -196,7 +195,7 @@ export function PartForm({ part, onSaved }: { part: Part; onSaved?: (part: Part)
         {save.error && <p className={styles.error}>{save.error.message}</p>}
         {save.isSuccess && !changed && <p className={styles.saved}>Saved.</p>}
         <Button type="submit" disabled={!changed || !valid || save.isPending}>
-          {save.isPending ? "Saving" : "Save the part"}
+          {save.isPending ? "Saving" : "Save"}
         </Button>
       </div>
     </form>

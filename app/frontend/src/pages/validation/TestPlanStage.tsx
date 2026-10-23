@@ -89,7 +89,7 @@ export function TestPlanStage({
       step={3}
       title="Create a test plan"
       status={plans.length ? { tone: "ok", label: count(plans.length, "plan", "plans") } : { tone: "neutral", label: "No plan yet" }}
-      description={`Each design gets the same ${POINTWISE_OFFSETS} point-wise offsets, repeated, plus random offsets drawn from the experiment's camera-error model with a seed, so the sim and the robot are compared on exactly the same grasps.`}
+      description={`The sim and the robot get the same grasps: ${POINTWISE_OFFSETS} point-wise offsets, repeated, plus seeded random ones from the camera-error model.`}
     >
       {plans.length > 0 && (
         <Table label="Test plans" columns={columns} rows={plans} rowKey={(p) => String(p.id)} />
@@ -161,7 +161,7 @@ export function PredictionStage({ jobId, plan }: { jobId: string; plan: Plan | u
       step={4}
       title="Wait for the sim's prediction"
       status={plan ? PREDICTION[plan.prediction_status] : { tone: "neutral", label: "Needs a test plan" }}
-      description="The sim predicts every trial in the plan, so each one can be compared with the robot. It runs in the background on the GPU: you can leave this page."
+      description="Runs on the GPU in the background. You can leave this page."
     >
       {!plan && <p className={styles.note}>Create a test plan first.</p>}
       {plan?.prediction_status === "done" && (
@@ -169,7 +169,7 @@ export function PredictionStage({ jobId, plan }: { jobId: string; plan: Plan | u
       )}
       {(plan?.prediction_status === "pending" || plan?.prediction_status === "running") && (
         <p className={styles.note}>
-          Predicting {plan.planned} trials. This page updates by itself when it's done.
+          Predicting {plan.planned} trials.
         </p>
       )}
       {plan?.prediction_status === "failed" && (

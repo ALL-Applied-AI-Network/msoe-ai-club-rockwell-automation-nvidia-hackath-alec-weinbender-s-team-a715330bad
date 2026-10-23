@@ -122,3 +122,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The task's example video, kept small: it isn't this experiment */
+.example {
+  max-width: 560px;
+}

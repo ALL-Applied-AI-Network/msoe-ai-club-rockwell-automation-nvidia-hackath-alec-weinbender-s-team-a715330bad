@@ -266,7 +266,14 @@ def _section(pdf: FPDF, title: str, rows: Sequence[tuple[str, str]], size: float
 
 
 def _pose_item(key: str, value) -> str:
-    """("tip_height_mm", 4.0) -> "tip height 4.0 mm"."""
+    """("tip_height_mm", 4.0) -> "tip height 4.0 mm". A job covering several resting poses lists each pose's grasp:
+    ("poses", [...]) -> "pose 1 (lying on its side, weight 0.62): grasp angle 0 deg, ...; pose 2 (...): ..."."""
+    if key == "poses" and isinstance(value, list):
+        return "; ".join(
+            f"pose {i} ({pose.get('resting_pose')}, weight {pose.get('weight')}): "
+            + ", ".join(_pose_item(k, v) for k, v in pose.items() if k not in ("resting_pose", "weight"))
+            for i, pose in enumerate(value, 1)
+        )
     label, unit = _split_unit(key)
     return f"{label} {value} {unit}".strip()
 

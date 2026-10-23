@@ -39,7 +39,7 @@ section 14 lists the differences.
 6. [Experiments list and progress](#6-experiments-list-and-progress)
 7. [Results page](#7-results-page)
 8. [Physical validation: simulated vs real trials](#8-physical-validation-simulated-vs-real-trials)
-9. [Settings](#9-settings)
+9. [Cells](#9-cells)
 10. [Caveats the UI shows](#10-caveats-the-ui-shows)
 11. [Shared components to build](#11-shared-components-to-build)
 12. [Priorities and build order](#12-priorities-and-build-order)
@@ -56,7 +56,7 @@ dark only), three.js for 3D, and Recharts for every chart.
 
 | Area | Where | Notes |
 | --- | --- | --- |
-| Shell: top bar, sim badge, GPU chip, demo banner | `components/Page.tsx`, `GpuChip.tsx` | The app is called Auto-Grasp. Nav: Experiments (home), Parts, Validation, Settings. |
+| Shell: top bar, demo banner, status bar (GPU, sim) | `components/Page.tsx`, `StatusBar.tsx` | The app is called Auto-Grasp. Nav: Experiments (home), Parts, Validation, Cells. |
 | Experiments list with live cards | `pages/experiments/` | SSE per running card on screen; polls past 6 running. |
 | Wizard, all eight steps | `pages/wizard/` | `draft.tsx` holds the draft (localStorage too) and the debounced plan; each step reports its gate. |
 | Experiment page: progress, then results | `pages/job/` | Re-score bar, curves, held maps (click a dot to pick a clip), in-hand, failures, best finger and downloads, clips, final test with print boxes, review gate, run details. |
@@ -64,7 +64,7 @@ dark only), three.js for 3D, and Recharts for every chart.
 | Validation, per experiment and across them | `pages/validation/` | The five stages, the spreadsheet round trip, predicted vs measured, the mismatch map, the sim-vs-real scatter. |
 | Quick logger | `pages/log/` | Phone layout; no Undo yet (no API to delete a trial). |
 | Parts library | `pages/parts/` | Upload, size check, 3D view, material and mass. |
-| Settings | `pages/settings/` | Cell-profile editor with placeholders and version history; GPU targets and About, read-only. |
+| Cells | `pages/cells/` | The cells (each cell profile's latest version), the editor with placeholders and version history. |
 
 **Not built:** the design-space cloud (Later), the 3D robot and cell render (no model endpoint), richer provisional
 results and several grasp axes (both need the backend changes in section 13), and one-click sample parts from `cad/`
@@ -136,22 +136,21 @@ These hold on every page. Most of the design work is applying them consistently.
 | `#/validation` | Sim vs real across experiments (later) | 8.5 |
 | `#/parts` | Parts library: every uploaded part, reusable in a new experiment | 5, step 1 |
 | `#/gpu` | GPU: targets, the current session, the session log, help | 4 |
-| `#/settings/cells`, `#/settings/cells/<id>` | Cell profiles: list, edit, versions | 9.1 |
-| `#/settings` | Settings home: cell profiles, the enabled GPU targets, about | 9 |
+| `#/cells`, `#/cells/<id>` | Cells: list, edit, versions. Old `#/settings/...` links redirect here. | 9 |
 
 **The header** (part of `Page`, on every page) carries:
 
-- the app name, Auto-Grasp, which links home, and the navigation: Experiments (home), Parts, Validation, Settings.
+- the app name, Auto-Grasp, which links home, and the navigation: Experiments (home), Parts, Validation, Cells.
   New experiment is the main button on the Experiments page, not a nav item;
 - the sim badge from `GET /api/meta` (`sim.badge`): Mock or Isaac;
-- the GPU chip (4.2), which opens the GPU page or a drawer;
+- the GPU status in the status bar (4.2), which opens the GPU page;
 - the demo-data banner, when it applies.
 
 ### Journeys the app must support
 
 **A. First experiment**
 
-1. The GPU chip says no GPU is connected.
+1. The status bar says no GPU is connected.
 2. The user connects the GB10, or starts Brev, from the chip.
 3. New experiment, eight steps (5).
 4. Run. The experiment page shows live progress (6.2).
@@ -217,12 +216,12 @@ says exactly that; offer a button that does it.
 against them. That's for working on the UI offline. With only the mock enabled, `managed` is false and jobs never wait
 for a GPU.
 
-### 4.2 The GPU chip (header, every page)
+### 4.2 The GPU status (status bar, every page)
 
 One compact status that's always visible, from `GET /api/compute`. Poll it every 3 s while a session is active and every
 15 s otherwise.
 
-| State (from the API) | Chip text | Tone |
+| State (from the API) | Status text | Tone |
 | --- | --- | --- |
 | `managed` false | Mock sim: results aren't predictions | warn |
 | No session, `managed` | No GPU connected | warn |
@@ -233,7 +232,8 @@ One compact status that's always visible, from `GET /api/compute`. Poll it every
 | stopping | Stopping: `<instance>` | warn |
 | No session, `last` failed | GPU failed: open for details | bad |
 
-Clicking it opens the GPU page, or a drawer holding the same panel.
+Clicking it opens the GPU page. The status bar also shows the target kind, how long it has been up, and which sim
+answers (`isaac sim` or `mock sim`) with its URL.
 
 ### 4.3 The GPU page
 
@@ -363,7 +363,7 @@ Each step is a route (`#/new/part`, ...), so the browser's Back works and a fail
 **The draft:**
 
 - **Parts** are stored on the server as soon as they're uploaded (step 1), and they're edited with `PATCH`.
-- **Cell profiles** are stored in Settings.
+- **Cell profiles** are stored on the Cells page.
 - **The job spec itself** isn't stored until Run. Keep it in client state, and also in `localStorage` (a per-browser
   convenience) so a reload doesn't lose a half-filled wizard.
 
@@ -523,7 +523,7 @@ version it ran with.
 - **`twin_mismatches`** are where this profile differs from the gripper the sim actually models (the twin's SMC
   MHZL2-16D2). Show them as warnings: results for such a profile simulate the twin's gripper, not this one.
 
-**Edit in Settings:** a link that opens the profile in Settings (9.1). Saving there makes a new version, and the wizard
+**Edit:** a link that opens the profile on the Cells page (9). Saving there makes a new version, and the wizard
 picks it up.
 
 **Later:** a 3D render of the robot, gripper and stock fingers. The API serves no robot model yet. Until then, show the
@@ -979,9 +979,10 @@ the diagonal mean the sim can be trusted. It grows more convincing with each exp
 
 There's no endpoint for it yet. Build it from each validated job's `/validation` (section 13).
 
-## 9. Settings
+## 9. Cells
 
-### 9.1 Cell profiles
+The page is only the cells: the UI calls a cell profile a cell. The enabled GPU targets are on the GPU page, and the sim,
+its address and demo data are in the status bar, so there's no separate Settings page.
 
 A cell profile describes one robot, gripper and cell ("workcell"). Switching profiles in the demo shows the tool isn't
 tied to one cell.
@@ -1019,26 +1020,8 @@ tied to one cell.
 designs per round). The sim server is started with its own flags, though, and a job warns when they differ. Explain
 that next to the field.
 
-### 9.2 GPU targets
-
-Read-only.
-
-- **What's shown:** which backends are enabled (`GET /api/compute` `backends`), each one's label, and whether it's
-  always on.
-- **Changing them** is done in the backend's `.env` (`COMPUTE_BACKENDS` and the `COMPUTE_*` settings) and needs an API
-  restart. Show that, and link to SETUP.
-
-The UI can't change compute settings, by design: they hold machine paths and must match each user's own setup.
-
-### 9.3 About
-
-From `/api/meta`:
-
-- the sim backend and its URL;
-- whether demo data is on;
-- the number of CPUs.
-
-Add the app's version, once there is one.
+The UI can't change compute settings, by design: they're set in the backend's `.env` (`COMPUTE_BACKENDS` and the
+`COMPUTE_*` settings), hold machine paths and must match each user's own setup.
 
 ## 10. Caveats the UI shows
 
@@ -1112,7 +1095,7 @@ video shows first, and against demo data, so nothing waits on the GPU or the rob
 
 | Item | Priority |
 | --- | --- |
-| Shell: header, navigation, GPU chip, sim badge, demo banner | Must |
+| Shell: header, navigation, status bar (GPU, sim), demo banner | Must |
 | Experiments list with live cards and status badges | Must |
 | Results: summary, success-vs-error curves, held maps, best finger with downloads, caveat banners, sim path | Must |
 | Wizard steps 1 (STEP upload, size, material, mass), 3 (task), 4 (confirm the cell), 7 (error presets and grid), 8 (review and run) | Must |
@@ -1124,7 +1107,7 @@ video shows first, and against demo data, so nothing waits on the GPU or the rob
 | Step 2 resting-pose thumbnails | Should |
 | Re-score bar | Should |
 | Mismatch map, curve overlay | Should |
-| Settings: cell profile editor with versions and placeholders | Should |
+| Cells: cell profile editor with versions and placeholders | Should |
 | Running-experiment page with the search-progress chart | Should |
 | Provisional results while a job runs (needs the backend addition in section 13) | Should |
 | Isaac Sim clips of the best finger and stock (7.5; the calls exist, first GPU recording still to verify) | Should |
@@ -1171,7 +1154,7 @@ None blocks the Must list. Raise them with whoever owns the backend.
 | "Find the best grasp axis" across candidates | Still wanted, but not built: one axis per experiment for now (section 13). |
 | Results only once the job is done | Wanted: provisional results while it runs (6.2), once the backend adds them. |
 | 3D render of the robot and gripper on the cell step | No model endpoint yet (section 13). |
-| A Settings page holding everything | Cell profiles are in Settings. GPU targets are set in the backend's `.env`, not the UI. |
+| A Settings page holding everything | Cells have their own page; GPU targets are set in the backend's `.env`, not the UI. |
 | Results open from a finished card | One address per experiment: progress while running, results when done. The results view answers during the run, so search progress can show live. |
 | GPU choice not covered | A whole part of the app: section 4. |
 | Physical logging: spreadsheet first, quick logger later | Unchanged; both endpoints exist (spreadsheet upload, and one trial per call). |

@@ -2,11 +2,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 22px;
-  padding: 0 var(--space-2);
-  border: 1px solid;
-  border-radius: var(--r-pill);
-  font-size: var(--text-sm);
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   line-height: 1;
   white-space: nowrap;
@@ -15,7 +14,7 @@
 .dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--r-pill);
   background: currentColor;
   flex: none;
 }
@@ -23,13 +22,11 @@
 .neutral {
   color: var(--neutral);
   background: var(--neutral-soft);
-  border-color: var(--neutral-line);
 }
 
 .active {
   color: var(--active);
   background: var(--active-soft);
-  border-color: var(--active-line);
 }
 
 .active .dot {
@@ -39,19 +36,16 @@
 .ok {
   color: var(--ok);
   background: var(--ok-soft);
-  border-color: var(--ok-line);
 }
 
 .warn {
   color: var(--warn);
   background: var(--warn-soft);
-  border-color: var(--warn-line);
 }
 
 .bad {
   color: var(--bad);
   background: var(--bad-soft);
-  border-color: var(--bad-line);
 }
 
 @keyframes pulse {

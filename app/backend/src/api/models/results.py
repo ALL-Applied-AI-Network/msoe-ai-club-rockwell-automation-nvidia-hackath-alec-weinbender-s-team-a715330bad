@@ -20,6 +20,7 @@ from api.models.export_check import ExportCheck
 from api.models.family import FamilyParams
 from api.models.finger import Finger
 from api.models.job import JobStatus
+from api.models.job_pose import PoseScore
 from api.models.job_spec import SimBackend
 from api.models.offset_grid import OffsetGrid
 from api.models.outcome import Outcomes
@@ -92,6 +93,9 @@ class DesignScore(BaseModel):
     success: float  # expected success
     capture_radius_mm: float | None  # every grasp succeeded out to this offset; None if even the centre failed
     task_metric: float | None  # place and insert: the share of held grasps within tolerance; None for pick and drop
+    # A job covering several resting poses: the score in each (success above is weighted over them, the capture radius
+    # the smallest). None for one pose.
+    poses: list[PoseScore] | None = None
 
 
 class ResultsSummary(BaseModel):
@@ -130,6 +134,8 @@ class MapPoint(BaseModel):
 class HeldMap(BaseModel):
     label: str
     points: list[MapPoint]  # the final grid's points
+    pose: str | None = None  # the resting pose's key ("p0", ...) when the job covers several; None for one
+    pose_label: str | None = None
 
 
 class InHandView(BaseModel):
@@ -192,6 +198,7 @@ class FinalRow(BaseModel):
     capture_radius_mm: float | None
     task_metric: float | None
     print_selected: bool  # in the job's print selection
+    poses: list[PoseScore] | None = None  # per resting pose, when the job covers several
 
 
 class SearchProgress(BaseModel):
@@ -256,11 +263,13 @@ class FingerPreview(BaseModel):
     Open the jaws by moving the left finger +jaw_open_mm along x and the right one -jaw_open_mm."""
 
     label: str
-    part: Part
+    part: Part  # in the resting pose shown
     extent_mm: tuple[float, float, float]  # the part along the closing direction, across it, and its height
     jaw_open_mm: float
     finger: Finger  # the left finger (+x jaw): its pieces, grasp settings and closed gap
     right: list[Piece]  # the right finger: the left one mirrored in x
+    pose: str = "p0"  # the resting pose shown (the job's poses' keys); the primary by default
+    pose_label: str | None = None
 
 
 def task_metric(outcomes: Outcomes, task: Task, weights: list[float]) -> float | None:
@@ -338,9 +347,15 @@ def file_stem(name: str, experiment_id: str, label: str, sim_backend: SimBackend
 
 
 def grasp_pose_text(pose: dict[str, Any]) -> str:
-    """A grasp pose as "key: value" lines, for pasting into a robot program's comments or a work instruction."""
+    """A grasp pose as "key: value" lines, for pasting into a robot program's comments or a work instruction. A job
+    covering several resting poses adds a block per pose."""
     lines = []
     for key, value in pose.items():
+        if key == "poses" and isinstance(value, list):
+            for i, each in enumerate(value, 1):
+                lines.append(f"pose {i}:")
+                lines += ["  " + line for line in grasp_pose_text(each).splitlines()]
+            continue
         if isinstance(value, list | tuple):
             value = ", ".join(f"{v:g}" if isinstance(v, float) else str(v) for v in value)
         elif isinstance(value, float):

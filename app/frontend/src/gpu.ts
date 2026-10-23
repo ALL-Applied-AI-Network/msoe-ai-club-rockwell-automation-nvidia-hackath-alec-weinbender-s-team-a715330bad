@@ -5,7 +5,7 @@ type ComputeStatus = Schemas["ComputeStatusResponse"];
 type Session = Schemas["ComputeSession"];
 type BackendInfo = Schemas["BackendInfo"];
 
-/** The GPU in one line, for the header chip (docs/notes/frontend-plan.md, 4.2). */
+/** The GPU in one line, for the status bar (docs/notes/frontend-plan.md, 4.2). */
 export function gpuSummary(compute: ComputeStatus): { tone: Tone; text: string } {
   const { session, managed, last, backends } = compute;
   if (session) {

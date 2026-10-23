@@ -30,7 +30,7 @@ export function QuickLogPage() {
   const planId = planChoice ?? plans.data?.at(-1)?.id;
   const plan = useTestPlan(id, planId);
 
-  const title = job.data ? `${job.data.name} (${job.data.experiment_id})` : "Quick logger";
+  const title = job.data ? `${job.data.name}, ${job.data.experiment_id}` : "Quick logger";
   return (
     <Page title="Quick logger" description={job.data ? title : undefined}>
       {job.isPending && <Skeleton height={320} />}
@@ -39,7 +39,7 @@ export function QuickLogPage() {
       )}
       {job.data && !done && (
         <EmptyState title="Not ready for the robot yet">
-          Trials are logged against a test plan, which needs the experiment's final test to have finished.
+          Logging opens once the final test has finished.
         </EmptyState>
       )}
       {done && plans.data?.length === 0 && (
@@ -51,14 +51,14 @@ export function QuickLogPage() {
             </LinkButton>
           }
         >
-          A test plan lists every grasp to try on the robot. Create one on the validation page, then log it here.
+          Create one on the validation page, then log it here.
         </EmptyState>
       )}
       {done && job.data && plans.data && plans.data.length > 0 && (
         <>
           {job.data.review?.status !== "approved" && (
-            <Banner tone="warn" title="Not approved for the robot yet.">
-              No printed finger goes on the real arm until a named reviewer approves it on the results page.
+            <Banner tone="warn" title="Not approved for the robot yet">
+              Printed fingers go on the real arm only after a named reviewer approves them on the results page.
             </Banner>
           )}
           {plans.data.length > 1 && (
@@ -175,9 +175,7 @@ function Logger({
               Compare with the sim
             </LinkButton>
           }
-        >
-          The validation page compares them with the sim's prediction.
-        </EmptyState>
+        />
       ) : (
         <section className={styles.trial} aria-label={`Trial ${row.trial_id}`}>
           <div className={styles.trialHead}>
@@ -208,8 +206,7 @@ function Logger({
 
           {already && (
             <Banner tone="info">
-              Already logged as {already.outcome}. Logging it again replaces that; the earlier outcome stays in its
-              history.
+              Already logged as {already.outcome}. Logging it again replaces it; the old outcome stays in the history.
             </Banner>
           )}
 
@@ -251,7 +248,7 @@ function Logger({
                   setCursor((next ?? pending[0]).trial_id);
                 }}
               >
-                Later: show the next one
+                Do this one later
               </Button>
             )}
           </div>

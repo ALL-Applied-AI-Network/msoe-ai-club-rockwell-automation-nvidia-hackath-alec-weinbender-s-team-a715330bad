@@ -9,7 +9,7 @@ from api.clients.sim import MockSim, SimError, SimSettings
 from api.db.tables import ResultRow, RunMetaRow, TrialRow
 from api.models.family import FamilyChoice
 from api.models.grasp import GraspChoice
-from api.models.job_spec import JobSpec
+from api.models.job_spec import JobSpec, PoseGrasp
 from api.models.outcome import Outcomes
 from api.models.task import Task
 from api.services import jobs, optimizer, parts
@@ -257,3 +257,97 @@ def test_a_job_never_runs_on_another_sim_than_its_badge_says(db, config, cad, cu
     job = jobs.get_job(db, job_id)
     assert job.status == "failed" and "runs on the mock sim" in job.failure
     assert trials(db, job_id) == []
+
+
+class PoseRecordingSim(RecordingSim):
+    """RecordingSim that also records the posed part's size (along the jaws, across, height) of each request."""
+
+    def __init__(self):
+        super().__init__()
+        self.parts: list[tuple[float, float, float]] = []
+
+    def run_batch(self, part, fingers, offsets, settings):
+        self.parts.append(tuple(round(v, 3) for v in part.extent_mm))
+        return super().run_batch(part, fingers, offsets, settings)
+
+
+LYING, STANDING = (10.0, 20.0, 10.0), (10.0, 10.0, 20.0)  # the bar as each pose's grasp meets it
+
+
+@pytest.fixture
+def bar_job(db, config, cad, shapes, step_file, profile_id, spawned):
+    """bar_job(standing_grasp=GraspChoice(angle_deg=0), **spec_changes) -> a queued job over the bar's two resting
+    poses: on its side (the primary, gripped across at 90 deg) and standing."""
+
+    def create(standing_grasp: GraspChoice | None = None, **spec_changes):
+        record = parts.create_part(db, config, cad, "bar.step", step_file(shapes["bar"], "bar.step"), None)
+        parts.update_part(db, record.id, {"material": "pla"})
+        poses = [PoseGrasp(pose=0, grasp=GraspChoice(angle_deg=90)), PoseGrasp(pose=1, grasp=standing_grasp or GraspChoice(angle_deg=0))]
+        values = {"part_id": record.id, "cell_profile_id": profile_id, "poses": poses, "budget": 14}
+        return jobs.create_job(db, config, JobSpec(**values | spec_changes))
+
+    return create
+
+
+def test_every_round_sends_one_request_per_pose_and_scores_over_both(db, config, cad, bar_job):
+    job = bar_job()
+    sim = PoseRecordingSim()
+
+    run(db, config, cad, job.id, sim)
+
+    done = jobs.get_job(db, job.id)
+    assert done.status == "done", done.error
+    assert sim.designs == [14, 14, 1, 1, 1, 1, 5, 5] and sim.parts == [LYING, STANDING] * 4
+    weights = [pose.weight for pose in done.poses]
+    for trial in trials(db, job.id):
+        (standing,) = trial.pose_outcomes
+        assert trial.n_grasps == 2 * len(trial.held) and trial.n_success == sum(trial.held) + sum(standing.held)
+        grid = done.plan.final_grid if trial.grid == "final" else done.plan.grid
+        error = done.spec.error
+        expected = weights[0] * grid.expected_success(trial.held, error) + weights[1] * grid.expected_success(standing.held, error)
+        assert trial.success_rate == pytest.approx(expected)
+    with db.session() as s:
+        pose = s.get(ResultRow, job.id).grasp_pose
+    assert [(p["resting_pose"], p["grasp_angle_deg"]) for p in pose["poses"]] == [("on its side", 90), ("standing", 0)]
+    assert pose["poses"][1]["tip_height_mm"] > pose["poses"][0]["tip_height_mm"]  # the standing bar is twice as tall
+
+
+def test_a_pose_a_design_cant_grip_scores_zero_there_and_isnt_sent(db, config, cad, bar_job):
+    job = bar_job(GraspChoice(angle_deg=0, grip_height_mm=1.0))  # standing, gripped this low its top reaches every bridge
+    sim = PoseRecordingSim()
+
+    run(db, config, cad, job.id, sim)
+
+    done = jobs.get_job(db, job.id)
+    assert done.status == "done", done.error
+    # Standing, only the stock fingers (the robot's own) are sent: in round 0 and the final test, and no request at all in
+    # the rounds that have none
+    assert list(zip(sim.parts, sim.designs, strict=True)) == [(LYING, 14), (STANDING, 1), (LYING, 1), (LYING, 1), (LYING, 5), (STANDING, 1)]
+    by_kind = {}
+    for trial in trials(db, job.id):
+        by_kind.setdefault(trial.kind, []).append(trial)
+    assert all(not any(t.pose_outcomes[0].held) for kind in ("search", "imprint") for t in by_kind[kind])
+    primary = done.poses[0].weight
+    for t in by_kind["search"]:
+        grid = done.plan.final_grid if t.grid == "final" else done.plan.grid
+        assert t.success_rate == pytest.approx(primary * grid.expected_success(t.held, done.spec.error))
+
+
+def test_one_pose_runs_exactly_as_a_spec_with_one_grasp_did(db, config, cad, cube_job):
+    legacy = cube_job(seed=3)
+    record_id = legacy.part_id
+    alone = jobs.create_job(
+        db,
+        config,
+        legacy.spec.model_copy(update={"name": None, "grasp": None, "poses": [PoseGrasp(pose=0, grasp=legacy.spec.grasp)]}),
+    )
+    assert alone.part_id == record_id
+
+    for job in (legacy, alone):
+        run(db, config, cad, job.id, RecordingSim())
+
+    first, second = trials(db, legacy.id), trials(db, alone.id)
+    assert [(t.label, t.success_rate, t.capture_radius_mm, t.n_grasps, t.held) for t in first] == [
+        (t.label, t.success_rate, t.capture_radius_mm, t.n_grasps, t.held) for t in second
+    ]
+    assert all(t.pose_outcomes is None for t in first + second)

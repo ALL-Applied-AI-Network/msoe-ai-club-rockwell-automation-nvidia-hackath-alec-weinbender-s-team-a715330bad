@@ -68,65 +68,66 @@ export function ValidationPage() {
   const close = points.filter((p) => p.low != null && p.high != null && p.predicted >= p.low && p.predicted <= p.high).length;
 
   return (
-    <Page
-      title="Validation"
-      description="Sim success is a prediction. Printed fingers tested on the real arm show how far it holds, against the stock fingers and the imprint on the same offsets."
-    >
+    <Page title="Validation">
       {jobs.isPending && <Skeleton height={360} />}
       {jobs.isError && <ErrorState title="Couldn't load the experiments" message={jobs.error.message} onRetry={() => jobs.refetch()} />}
 
-      {jobs.isSuccess && (
+      {jobs.isSuccess && tested.length === 0 && ready.length === 0 && (
+        <EmptyState
+          title="Nothing to validate yet"
+          action={
+            <LinkButton variant="secondary" to="/">
+              Experiments
+            </LinkButton>
+          }
+        >
+          Finished experiments show up here, ready to print and test on the robot.
+          {notDone > 0 && ` ${count(notDone, "experiment is", "experiments are")} still running or stopped.`}
+        </EmptyState>
+      )}
+
+      {jobs.isSuccess && (tested.length > 0 || ready.length > 0) && (
         <>
-          <section className={styles.section}>
-            <h2 className={styles.heading}>Sim against the robot</h2>
-            {points.length === 0 ? (
-              <EmptyState title="No measured designs yet">
-                Each design tested on the robot adds a point here: its predicted success against its measured success.
-              </EmptyState>
-            ) : (
+          {points.length > 0 && (
+            <section className={styles.section}>
+              <h2 className={styles.heading}>Sim against the robot</h2>
               <Card>
                 {anyMock && <Banner tone="warn">{CAVEATS.mock} Some predictions here come from the mock sim.</Banner>}
                 <div className={styles.parity}>
                   <ParityScatter
                     points={points}
                     summary={`Predicted against measured success for ${count(points.length, "design", "designs")} across ${count(tested.length, "experiment", "experiments")}. ${close} of ${points.length} predictions fall inside the measured 95% interval.`}
-                    note="Each dot is one design, with the 95% interval of its measured rate. Dots near the diagonal mean the sim can be trusted; above it the robot did better than predicted, below it worse."
+                    note="Each dot is one design, with the 95% interval of its measured rate. Above the diagonal the robot did better than predicted, below it worse."
                   />
                   <p className={styles.callout}>
                     <strong>{close} of {points.length}</strong> predictions fall inside the measured 95% interval.
                   </p>
                 </div>
               </Card>
-            )}
-          </section>
+            </section>
+          )}
 
-          <section className={styles.section}>
-            <h2 className={styles.heading}>Tested on the robot</h2>
-            {tested.length === 0 ? (
-              <EmptyState title="No physical trials yet">Start with a finished experiment below.</EmptyState>
-            ) : (
+          {ready.length > 0 && (
+            <section className={styles.section}>
+              <h2 className={styles.heading}>Ready to validate</h2>
+              <Table label="Experiments ready to validate" columns={READY_COLUMNS} rows={ready} rowKey={(job) => job.id} />
+            </section>
+          )}
+
+          {tested.length > 0 && (
+            <section className={styles.section}>
+              <h2 className={styles.heading}>Tested on the robot</h2>
               <div className={styles.grid}>
                 {tested.map((job, i) => (
                   <TestedCard key={job.id} job={job} designs={validations[i]?.data?.designs} error={validations[i]?.error?.message} />
                 ))}
               </div>
-            )}
-          </section>
+            </section>
+          )}
 
-          <section className={styles.section}>
-            <h2 className={styles.heading}>Ready to validate</h2>
-            {ready.length === 0 ? (
-              <EmptyState title="Nothing waiting">Experiments appear here once they're done.</EmptyState>
-            ) : (
-              <Table label="Experiments ready to validate" columns={READY_COLUMNS} rows={ready} rowKey={(job) => job.id} />
-            )}
-            {notDone > 0 && (
-              <p className={styles.note}>
-                {count(notDone, "other experiment is", "other experiments are")} still running, stopped or failed; they
-                appear here once done.
-              </p>
-            )}
-          </section>
+          {notDone > 0 && (
+            <p className={styles.note}>{count(notDone, "other experiment is", "other experiments are")} still running or stopped.</p>
+          )}
         </>
       )}
     </Page>
@@ -143,7 +144,7 @@ function TestedCard({ job, designs, error }: { job: Job; designs: DesignValidati
         <>
           <span className={styles.note}>{job.part_name ?? "Unknown part"}</span>
           <LinkButton size="sm" to={`/jobs/${job.id}/validation`} className={styles.push}>
-            Open the validation
+            Open
           </LinkButton>
         </>
       }
@@ -189,7 +190,7 @@ const READY_COLUMNS: Column<Job>[] = [
     align: "right",
     render: (job) => (
       <LinkButton size="sm" to={`/jobs/${job.id}/validation`}>
-        Start validating
+        Validate
       </LinkButton>
     ),
   },

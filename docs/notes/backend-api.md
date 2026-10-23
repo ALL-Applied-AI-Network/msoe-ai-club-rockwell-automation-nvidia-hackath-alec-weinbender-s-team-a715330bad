@@ -106,14 +106,25 @@ surface, mass_g, mass_unit, fragile, max_grip_force_n, clearance_mm and pose.
 `friction_vs_pad`. The friction comes from the profile when you add `?cell_profile_id=`, else from 0.6 / 0.5.
 
 **Catalogs:** `GET /api/meta` gives materials, surfaces, families with their parameter schemas, error presets, task
-kinds with the tolerances each needs, transport speeds, mass units, the sim backend, and `demo_data`.
+kinds with the tolerances each needs, transport speeds, mass units, the sim backend, `demo_data`, and `pose_cutoff`
+(0.1: a stable pose at least this likely is "likely").
 
 ### Step 2, resting pose
 
 **Poses:** `GET /api/parts/{id}/poses` returns the top 4 stable poses, most likely first, then "as in the CAD file".
-Each pose has `index`, `label`, `probability`, `extent_mm`, `rotation` and `chosen`.
+Each pose has `index`, `label`, `probability`, `extent_mm`, `rotation`, `chosen` (the part record's chosen pose) and
+`likely` (a stable pose with `probability >= pose_cutoff`). The likelihoods are trimesh's quasi-static estimate, not
+measured on the cell.
 
-**Choosing one:** `PATCH {pose: <index> | "as_authored"}`.
+**A job covers one or more poses.** The spec's `poses` is a list of `{pose: <index> | "as_authored", grasp}`, one per
+pose, at most 4, no pose twice; "as_authored" has no likelihood, so it can only be the one pose. Tick the likely poses
+by default. Every design is simulated in every pose and scored by the poses' likelihoods, renormalised over the ones
+ticked: `w_k = p_k / sum(p)`. The likeliest is the primary: the fingers are built for it and its ranges are searched.
+The run takes about as many times as long as there are poses. A spec with `grasp` instead of `poses` (exactly one of
+the two) is the older form: one grasp on the part record's chosen pose. It still plans and runs the same.
+
+**Choosing the part's own pose:** `PATCH {pose: <index> | "as_authored"}`. The part library and the grasp endpoints use
+it when no pose is given; a job with `poses` doesn't need it.
 
 **For the 3D thumbnails:** `GET /api/parts/{id}/mesh?pose=<index|as_authored>` returns a binary STL in that pose's table
 frame (three.js STLLoader).
@@ -145,16 +156,26 @@ The task is part of the job spec; there's no endpoint. Its fields:
 
 ### Step 5, grasp
 
-**Proposals:** `POST /api/parts/{id}/grasps {cell_profile_id}` returns `candidates`, `rejected` and `nothing_fits`.
+One grasp per pose the job covers: ask for each with that pose's index, and draw it on `GET .../mesh?pose=<index>`.
+
+**Proposals:** `POST /api/parts/{id}/grasps {cell_profile_id, pose?}` returns `candidates`, `rejected` and `nothing_fits`
+for the part in that pose.
 
 - `candidates`: the top 1–3. Draw each as an arrow: `angle_deg` from +x, at `centre_mm`.
+- A candidate with `span_mm` grips a section of the part: a stretch clearly narrower than the whole part, like a screw's
+  shank beside its head. `span_mm` is where across the jaws, from `centre_mm`, the pads may sit; `width_mm` is the
+  section's. Keep `span_mm` in the `GraspChoice`: the fingers are sized to the section, and the stock fingers close on
+  it. When a part has sections, they're ranked with the whole-part directions: ok before warn, then the narrower width.
 - `rejected`: a short note on why the other directions were rejected.
 - `nothing_fits`: when nothing fits, the exact reason and ordered `suggestions`.
-- Needs a chosen pose; 409 otherwise.
+- Without `pose`, needs the part's chosen pose; 409 otherwise. An unknown pose index is a 422.
 
-**Manual choice:** `POST /api/parts/{id}/grasps/check {cell_profile_id, angle_deg?, picks?, grip_height_mm?}`.
+**Manual choice:** `POST /api/parts/{id}/grasps/check {cell_profile_id, pose?, angle_deg?, picks?, grip_height_mm?,
+centre_mm?, span_mm?}`.
 
-- `picks` are one or two `{point, normal}` from a raycast against the table-frame mesh.
+- `picks` are one or two `{point, normal}` from a raycast against the table-frame mesh. A pick on a section grips that
+  section (`span_mm` in the response and its `choice`).
+- `centre_mm` and `span_mm` (with `angle_deg`) re-check a section grasp chosen before, on that same section.
 - The response has `verdict` (`ok` / `warn` / `blocked`), warnings and `choice`, a ready `GraspChoice` for the spec.
 - Block the Next button on `blocked`.
 
@@ -178,6 +199,9 @@ The task is part of the job spec; there's no endpoint. Its fields:
 
 - Returns the "min" and "max" fingers for one parameter, with the others mid-range.
 - `designs` instead of `vary` previews explicit designs.
+- `others`: the plan's other poses' parts (`plan.poses[1:]`). The pad face is shared by every pose, so they bound the
+  slack: the open pads must clear the widest and the jaws must still reach the narrowest. A pose that can't be gripped
+  together with the likelier ones is left out of those bounds and scores 0; the plan warns about it.
 - Each finger has `pieces`, `closed_gap_mm` and `problems`.
 
 ### Step 7, camera error and grid
@@ -185,7 +209,8 @@ The task is part of the job spec; there's no endpoint. Its fields:
 **Error model:** the spec's `error` is `{preset, sigma_mm, sigma_range_mm?, sigma_deg, bias_mm, bias_direction_deg}`.
 The presets are in `/api/meta`; the placeholder ones say so.
 
-**Grid preview:** `POST /api/grids {part, error, final?}`.
+**Grid preview:** `POST /api/grids {part, parts?, error, final?}`. For a job over several poses send every pose's part
+(`plan.poses[].part`) as `parts`: they share one grid, with yaw layers unless every pose is round from above.
 
 - Returns `points`, each with its weight; the 1σ and 2σ circles; the outer ring; the yaw layers; and warnings.
 - It takes milliseconds, so call it on every slider move.
@@ -194,11 +219,14 @@ The presets are in `/api/meta`; the placeholder ones say so.
 
 **Plan:** `POST /api/jobs/plan <JobSpec>` always returns 200. The body is the plan:
 
-- `part`, `families`, `searches` (method, budget, batch size);
-- `totals`: grasps, designs, rounds;
+- `part` (the primary pose's), `families`, `searches` (method, budget, batch size);
+- `poses`: the poses covered, primary first, each `{key ("p0", "p1", ...), label, choice, probability, weight, resting,
+  grasp, part}`;
+- `totals`: grasps (every pose's), designs, rounds, and `poses`;
 - `estimate`: seconds, or null while the throughput is unknown;
 - `warnings`;
-- `blockers: [{step, reason}]`, plus `failed_step`, the step to send the user back to.
+- `blockers: [{step, reason}]`, plus `failed_step`, the step to send the user back to. With several poses a grasp's
+  blockers name its pose ("grasp (standing): ..."), and a pose index that doesn't exist blocks step 2.
 
 Nothing is stored.
 
@@ -269,7 +297,8 @@ prediction waiting. Starting a job, a resume or a prediction restarts the clock.
 
 - `PATCH /api/jobs/{id} {name}` renames.
 - `POST /{id}/duplicate` returns a JobSpec named "… (copy)" for the wizard to edit and re-submit, with
-  `duplicated_from`. It doesn't start a run.
+  `duplicated_from`. It doesn't start a run. An older spec with one `grasp` comes back as `poses` with that grasp on its
+  pose, when the pose is still one of the part's.
 - `POST /{id}/cancel` and `POST /{id}/resume`. Interrupted, cancelled and failed jobs resume from their last round.
 
 ## Results page
@@ -290,6 +319,13 @@ prediction waiting. Starting a job, a resume or a prediction restarts the clock.
 
 Sections that need the final test are null before it.
 
+**A job over several poses:** every success is weighted over the poses and every capture radius is the smallest over
+them. `summary.best` / `stock` / `imprint` and each `final_table` row add `poses: [{key, label, weight, success,
+capture_radius_mm}]` (null for one pose). `held_maps` come per design and pose, each with `pose` and `pose_label`
+(null for one pose). Curves are weighted; `in_hand` and `failures` pool every pose's grasps, each weighted by its pose.
+The grasp pose keeps the primary's settings at the top level and adds `poses`: each pose's grasp angle and centre,
+fingertip height and jaw position, with its weight. Clips, test plans and physical validation use the primary pose only.
+
 **Re-score bar:** `POST /api/jobs/{id}/rescore {error?, task?}` returns the same view under other inputs. Nothing is
 stored.
 
@@ -307,8 +343,12 @@ stored.
 - A failed export check → 409 with the failed checks.
 - Labels are case-insensitive.
 
-**3D preview:** `GET /api/jobs/{id}/finger?design=D1` returns the part, the finger and its mirror (`right`), with
-`jaw_open_mm`.
+**3D preview:** `GET /api/jobs/{id}/finger?design=D1&pose=p1` returns the part, the finger and its mirror (`right`),
+with `jaw_open_mm`, in the primary pose or the one with that key (`pose`, `pose_label`; 404 for an unknown key). The
+finger is the same in every pose; its fingertips and jaws move to where that pose needs them.
+
+**Trials export:** with several poses each row of `trials.jsonl` keeps `part`, `held` and `in_hand` the primary's, and
+adds `poses` (the plan's poses without `resting`) and `pose_outcomes` (every other pose's raw outcomes, in order).
 
 **Review gate:** `POST /api/jobs/{id}/review` is unchanged. No finger goes on the robot without approval.
 

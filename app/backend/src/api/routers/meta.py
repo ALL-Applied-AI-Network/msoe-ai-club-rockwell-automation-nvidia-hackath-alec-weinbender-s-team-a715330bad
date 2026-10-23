@@ -15,6 +15,7 @@ from api.models.family import FAMILIES
 from api.models.job_spec import SimBackend
 from api.models.material import MATERIALS, SURFACE_FACTORS
 from api.models.part_record import GRAMS_PER, MassUnit
+from api.models.resting_pose import POSE_CUTOFF
 from api.models.task import TASK_LABELS, TaskKind, Transport
 
 router = APIRouter(prefix="/api", tags=["meta"])
@@ -100,6 +101,7 @@ class MetaResponse(BaseModel):
     llm: str
     cpus: int | None
     demo_data: bool  # DEMO_DATA=true: generated demo data (mock results, made-up physical trials), not the real database
+    pose_cutoff: float  # a stable resting pose at least this likely is "likely" (GET /api/parts/{id}/poses): ticked by default
 
 
 @router.get("/meta")
@@ -132,4 +134,5 @@ def get_meta(config: ConfigDep) -> MetaResponse:
         llm=config.llm.backend,
         cpus=os.cpu_count(),
         demo_data=config.demo_data,
+        pose_cutoff=POSE_CUTOFF,
     )

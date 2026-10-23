@@ -27,6 +27,11 @@ class Part(BaseModel):
     pieces: list[Piece] | None = None  # mesh
     mass_g: float = Field(5, gt=0)
     friction: tuple[float, float] = (0.6, 0.5)
+    # A section grip (api/models/grasp.py): the fingers close on the stretch of the part between grip_span_mm along y,
+    # which is grip_width_mm wide along x, and their pads stay within that stretch. The sim still gets the whole part;
+    # only the fingers are sized to the section. None: the whole part.
+    grip_width_mm: float | None = Field(None, gt=0)
+    grip_span_mm: tuple[float, float] | None = None
 
     @model_validator(mode="after")
     def _mesh_has_pieces(self) -> "Part":
@@ -44,6 +49,19 @@ class Part(BaseModel):
             return tuple(float(v) for v in hi - lo)
         d, length = self.diameter_mm, self.length_mm
         return {"z": (d, d, length), "y": (d, length, d), "x": (length, d, d)}[self.axis]
+
+    @property
+    def grip_width(self) -> float:
+        """What the fingers close on, along the closing direction: the section's width, else the whole part's."""
+        return self.grip_width_mm if self.grip_width_mm is not None else self.extent_mm[0]
+
+    @property
+    def grip_span(self) -> tuple[float, float]:
+        """Where along y the pads touch the part: the section's span, else the whole part's depth around the centre."""
+        if self.grip_span_mm is not None:
+            return self.grip_span_mm
+        depth = self.extent_mm[1]
+        return -depth / 2, depth / 2
 
     @property
     def round_from_above(self) -> bool:

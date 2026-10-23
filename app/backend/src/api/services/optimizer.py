@@ -16,6 +16,10 @@ and never redoes one. The final test re-runs the top FINALISTS of each search (a
 and both baselines on the dense grid. They're labelled D1, D2, ... by final score, capture radius breaking ties, and
 STOCK and IMP; those trials, the result with D1's printable CAD, and the run metadata are written in one transaction, so
 finishing is all or nothing and can simply be run again.
+
+A job covering several resting poses (api/models/job_pose.py) searches in the primary pose's space and sends one sim
+request per pose each round: every design is built once, for the primary pose, and regripped for each other
+(finger.regrip()). A design's score is weighted over the poses; one that can't grip a pose scores 0 there.
 """
 
 import logging
@@ -47,8 +51,9 @@ from api.db.tables import JobRow, ResultRow, RunMetaRow, TrialRow
 from api.models.cell_profile import CellProfileVersion, Gripper
 from api.models.design import Design
 from api.models.export_check import ExportCheck
-from api.models.finger import build_finger, problems
+from api.models.finger import Finger, build_finger, problems, regrip
 from api.models.job import Job, Trial
+from api.models.job_pose import JobPose, score_poses
 from api.models.offset_grid import OffsetGrid
 from api.models.outcome import Outcomes
 from api.models.printed_finger import finger_id
@@ -134,7 +139,7 @@ def _load(db: DatabaseClient, job: Job) -> _Run:
         job=job,
         profile=profile,
         gripper=gripper,
-        spaces={search.key: search.space(job.part, gripper) for search in searches},
+        spaces={search.key: search.space(job.part, gripper, [pose.part for pose in job.poses[1:]]) for search in searches},
         settings=SimSettings(grip_force_n=job.plan.grip_force_n, transport=job.spec.task.transport),
         clearance_mm=searches[0].clearance_mm if searches else None,
     )
@@ -226,8 +231,8 @@ def _run_round(
     outcomes, seconds = _simulate(run, sim, [design for _, design in designs], grid)
     first = _next_number(db, job_id)
     rows = [
-        _trial_row(run, grid, first + i, number, key, design, out, sec)
-        for i, ((key, design), out, sec) in enumerate(zip(designs, outcomes, seconds, strict=True))
+        _trial_row(run, grid, first + i, number, key, design, by_pose, sec)
+        for i, ((key, design), by_pose, sec) in enumerate(zip(designs, outcomes, seconds, strict=True))
     ]
     searched = [(t.success_rate, t.number) for t in earlier if t.search != BASELINE_SEARCH]
     searched += [(row.success_rate, row.number) for row in rows if row.search != BASELINE_SEARCH]
@@ -242,36 +247,71 @@ def _run_round(
     logger.info("Job %s: round %d done: %d designs in %.1f s, best %.3f", job_id, number, len(rows), sum(seconds), best_value or 0.0)
 
 
-def _simulate(run: _Run, sim: SimClient, designs: list[Design], grid: OffsetGrid) -> tuple[list[Outcomes], list[float]]:
-    """Every design at every grid point, in one sim request: (outcomes, sim seconds) per design. A design that fails the
-    geometry checks (finger.problems) isn't sent; it fails every grasp, and its seconds are 0, which keeps it out of the
-    throughput estimate. The stock fingers are the robot's own: the sim gets None for them."""
-    part, gripper, n = run.job.part, run.gripper, grid.size
-    fingers, sent = [], []
+def _simulate(run: _Run, sim: SimClient, designs: list[Design], grid: OffsetGrid) -> tuple[list[list[Outcomes]], list[float]]:
+    """Every design at every grid point in every resting pose the job covers, in one sim request per pose: (outcomes per
+    pose, sim seconds) per design. Each design is built once, for the primary pose; one that fails the geometry checks
+    (finger.problems) there isn't sent at all, and one that can't grip another pose isn't sent for it. A design fails
+    every grasp it wasn't sent for, and its seconds count only the requests it was in, which keeps a design that wasn't
+    simulated out of the throughput estimate. The stock fingers are the robot's own: the sim gets None for them."""
+    poses, gripper, n = run.job.poses, run.gripper, grid.size
+    primary = poses[0].part
+    built: list[Finger | None] = []  # per design: its finger for the primary pose; None for the stock fingers
+    usable: list[bool] = []
     for design in designs:
         if design.kind == "stock":
-            fingers.append(None)
-            sent.append(True)
+            built.append(None)
+            usable.append(True)
             continue
-        clearance = run.clearance_mm if design.kind in ("search", "locked") else None
         try:
-            finger = build_finger(part, design, gripper)
-            found = problems(part, finger, gripper, clearance_mm=clearance)
+            finger = build_finger(primary, design, gripper)
+            found = problems(primary, finger, gripper, clearance_mm=_clearance(run, design))
         except Exception as e:  # CadQuery and pydantic raise their own types; any failure here means no finger
             finger, found = None, [f"no finger can be built ({e})"]
         if found:
             logger.info("Job %s: not simulating a %s design (%s): %s", run.job.id, design.kind, design.params, "; ".join(found))
-        else:
+        built.append(finger)
+        usable.append(not found)
+    outcomes: list[list[Outcomes | None]] = [[None] * len(poses) for _ in designs]
+    seconds = [0.0] * len(designs)
+    offsets = grid.points()
+    for k, pose in enumerate(poses):
+        fingers, sent = [], []
+        for i, design in enumerate(designs):
+            if not usable[i]:
+                continue
+            finger = built[i]
+            if k > 0 and finger is not None:
+                finger, found = _regripped(run, design, finger, pose)
+                if found:
+                    why = "; ".join(found)
+                    logger.info("Job %s: a %s design (%s) can't grip %s: %s", run.job.id, design.kind, design.params, pose.key, why)
+                    continue
             fingers.append(finger)
-        sent.append(not found)
-    started = time.perf_counter()
-    results = sim.run_batch(part, fingers, grid.points(), run.settings) if fingers else []
-    seconds = (time.perf_counter() - started) / len(fingers) if fingers else 0.0
-    if len(results) != len(fingers):
-        raise SimError(f"the sim answered for {len(results)} designs out of {len(fingers)}")
-    answers = iter(results)
-    outcomes = [next(answers) if ok else Outcomes.dropped(n, run.transport) for ok in sent]
-    return outcomes, [seconds if ok else 0.0 for ok in sent]
+            sent.append(i)
+        started = time.perf_counter()
+        results = sim.run_batch(pose.part, fingers, offsets, run.settings) if fingers else []
+        share = (time.perf_counter() - started) / len(fingers) if fingers else 0.0
+        if len(results) != len(fingers):
+            raise SimError(f"the sim answered for {len(results)} designs out of {len(fingers)}")
+        for i, result in zip(sent, results, strict=True):
+            outcomes[i][k] = result
+            seconds[i] += share
+    dropped = Outcomes.dropped(n, run.transport)
+    return [[out if out is not None else dropped for out in by_pose] for by_pose in outcomes], seconds
+
+
+def _regripped(run: _Run, design: Design, built: Finger, pose: JobPose) -> tuple[Finger | None, list[str]]:
+    """The primary pose's finger gripping another pose, and what rules it out there."""
+    try:
+        finger = regrip(run.job.poses[0].part, pose.part, design, run.gripper, tip_height_mm=pose.grasp.grip_height_mm, built=built)
+        return finger, problems(pose.part, finger, run.gripper, clearance_mm=_clearance(run, design))
+    except Exception as e:  # as in _simulate: any failure means this pose can't be gripped
+        return None, [f"no grasp can be worked out ({e})"]
+
+
+def _clearance(run: _Run, design: Design) -> float | None:
+    """The part's clearance on the table, which the searched and locked designs must keep (the baselines don't)."""
+    return run.clearance_mm if design.kind in ("search", "locked") else None
 
 
 def _trial_row(
@@ -281,14 +321,16 @@ def _trial_row(
     round_number: int,
     search: str,
     design: Design,
-    outcomes: Outcomes,
+    outcomes: list[Outcomes],
     seconds: float,
     *,
     final: bool = False,
 ) -> TrialRow:
-    """A design's trial on a grid, scored at the job's own task and error model. Final-test trials are labelled once
-    they're all scored."""
-    success = run.job.spec.task.success(outcomes)
+    """A design's trial on a grid, from its outcomes in each of the job's poses, scored at the job's own task and error
+    model and weighted over the poses. Final-test trials are labelled once they're all scored."""
+    successes = [run.job.spec.task.success(out) for out in outcomes]
+    rate, radius, _ = score_poses(successes, run.job.poses, grid, run.job.spec.error)
+    primary = outcomes[0]
     return TrialRow(
         job_id=run.job.id,
         number=number,
@@ -298,13 +340,14 @@ def _trial_row(
         kind=design.kind,
         label=None,
         params=None if design.params is None else design.params.model_dump(),
-        success_rate=grid.expected_success(success, run.job.spec.error),
-        capture_radius_mm=grid.capture_radius(success),
-        n_grasps=grid.size,
-        n_success=sum(success),
-        held=outcomes.held,
-        in_hand=[None if pose is None else list(pose) for pose in outcomes.in_hand],
-        held_after_transport=outcomes.held_after_transport,
+        success_rate=rate,
+        capture_radius_mm=radius,
+        n_grasps=grid.size * len(outcomes),
+        n_success=sum(sum(success) for success in successes),
+        held=primary.held,
+        in_hand=[None if pose is None else list(pose) for pose in primary.in_hand],
+        held_after_transport=primary.held_after_transport,
+        pose_outcomes=outcomes[1:] or None,
         duration=seconds,
     )
 
@@ -326,8 +369,8 @@ def _finalize(db: DatabaseClient, run: _Run, *, sim: SimClient, cad: CadClient, 
     round_number = max(t.round for t in trials) + 1
     # Numbered by finalist order for now, so equal final scores keep the search's own ranking; renumbered when stored.
     rows = [
-        _trial_row(run, grid, i, round_number, key, design, out, sec, final=True)
-        for i, ((key, design), out, sec) in enumerate(zip(designs, outcomes, seconds, strict=True))
+        _trial_row(run, grid, i, round_number, key, design, by_pose, sec, final=True)
+        for i, ((key, design), by_pose, sec) in enumerate(zip(designs, outcomes, seconds, strict=True))
     ]
     order = _ranked(rows[: len(finalists)])
     for rank, row in enumerate(order, 1):
@@ -436,6 +479,10 @@ def _run_meta(run: _Run, sim: SimClient, trials: list[Trial], started: float) ->
         "sim": {"backend": sim.backend, "badge": job.sim_backend, "url": sim.url, "describe": described},
         "cell_profile": {"id": run.profile.id, "name": run.profile.name, "version": run.profile.version},
         "grip_force_n": plan.grip_force_n,
+        "poses": [
+            {"key": p.key, "label": p.label, "probability": p.probability, "weight": p.weight, "grasp": p.grasp.model_dump(mode="json")}
+            for p in job.poses
+        ],
         "searches": searches,
         "warnings": cell.sim.differences(described) + [f"cell profile vs the sim: {m}" for m in cell.twin_mismatches()],
         "spec": job.spec.model_dump(mode="json"),

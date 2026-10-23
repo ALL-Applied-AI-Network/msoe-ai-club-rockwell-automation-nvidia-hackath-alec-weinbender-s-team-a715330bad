@@ -21,7 +21,7 @@ from api.models.cell_profile import DEFAULT_PROFILE, CellProfile
 from api.models.grasp import GraspCandidate, GraspChoice, GraspPick, GraspProposals
 from api.models.material import Material, Surface
 from api.models.part_record import MassUnit, PartRecord
-from api.models.resting_pose import RestingPose
+from api.models.resting_pose import RestingPose, is_likely, is_same_pose
 from api.services import cell_profiles, parts
 
 router = APIRouter(prefix="/api/parts", tags=["parts"])
@@ -91,22 +91,31 @@ class UpdatePartRequest(BaseModel):
         return self
 
 
+PoseParam = Annotated[int, Field(ge=0, strict=True)] | Literal["as_authored"]  # an index into GET /poses
+
+
 class PoseResponse(RestingPose):
-    index: int  # what PATCH /api/parts/{id} takes as pose
-    chosen: bool
+    index: int  # what PATCH /api/parts/{id} and a job spec's poses take as pose
+    chosen: bool  # the part record's chosen pose
+    likely: bool  # a stable pose at least POSE_CUTOFF likely (GET /api/meta: pose_cutoff): ticked by default in step 2
 
 
 class ProposeGraspsRequest(BaseModel):
     cell_profile_id: int
+    pose: PoseParam | None = None  # the resting pose to propose for; None: the part's chosen pose
 
 
 class CheckGraspRequest(BaseModel):
-    """An angle, or one or two face picks (table frame, from the 3D view), not both."""
+    """An angle, or one or two face picks (table frame of the pose, from the 3D view), not both."""
 
     cell_profile_id: int
+    pose: PoseParam | None = None  # the resting pose the grasp is for; None: the part's chosen pose
     angle_deg: float | None = None
     picks: list[GraspPick] = Field(default_factory=list, max_length=2)
     grip_height_mm: float | None = Field(None, gt=0)  # fingertips this far up; locks tip_height_mm in every family
+    # A section grasp chosen before (a proposal's centre_mm and span_mm, with its angle): checked on that same section
+    centre_mm: tuple[float, float] | None = None
+    span_mm: tuple[float, float] | None = None
 
 
 class CheckGraspResponse(GraspCandidate):
@@ -153,7 +162,10 @@ async def resting_poses(part_id: str, db: DbDep) -> list[PoseResponse]:
     with _http_errors():
         record = parts.get_part(db, part_id)
         poses = await run_in_threadpool(parts.resting_poses, db, part_id)
-    return [PoseResponse(**pose.model_dump(), index=i, chosen=pose == record.pose) for i, pose in enumerate(poses)]
+    return [
+        PoseResponse(**pose.model_dump(), index=i, chosen=is_same_pose(pose, record.pose), likely=is_likely(pose))
+        for i, pose in enumerate(poses)
+    ]
 
 
 @router.get("/{part_id}/mesh", response_class=Response, responses={200: {"content": {"model/stl": {}}}})
@@ -170,10 +182,11 @@ async def part_mesh(part_id: str, db: DbDep, pose: str | None = None) -> Respons
 
 @router.post("/{part_id}/grasps")
 async def propose_grasps(part_id: str, body: ProposeGraspsRequest, db: DbDep) -> GraspProposals:
-    """Step 5: up to 3 grasp axes for the part in its chosen pose, on the profile's gripper; or why nothing fits."""
+    """Step 5: up to 3 grasp axes for the part in a resting pose (by default its chosen one), on the profile's gripper;
+    or why nothing fits."""
     with _http_errors():
         profile = _profile(db, body.cell_profile_id)
-        return await run_in_threadpool(parts.propose_grasps, db, part_id, profile)
+        return await run_in_threadpool(parts.propose_grasps, db, part_id, profile, body.pose)
 
 
 @router.post("/{part_id}/grasps/check")
@@ -182,11 +195,22 @@ async def check_grasp(part_id: str, body: CheckGraspRequest, db: DbDep) -> Check
     with _http_errors():
         profile = _profile(db, body.cell_profile_id)
         candidate = await run_in_threadpool(
-            lambda: parts.check_grasp(db, part_id, profile, angle_deg=body.angle_deg, picks=body.picks, grip_height_mm=body.grip_height_mm)
+            lambda: parts.check_grasp(
+                db,
+                part_id,
+                profile,
+                angle_deg=body.angle_deg,
+                picks=body.picks,
+                grip_height_mm=body.grip_height_mm,
+                pose=body.pose,
+                centre_mm=body.centre_mm,
+                span_mm=body.span_mm,
+            )
         )
     choice = GraspChoice(
         angle_deg=candidate.angle_deg,
         centre_mm=candidate.centre_mm,
+        span_mm=candidate.span_mm,
         source="manual",
         grip_height_mm=body.grip_height_mm,
         picks=body.picks,

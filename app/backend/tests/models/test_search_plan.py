@@ -4,6 +4,7 @@ from api.models.cell_profile import DEFAULT_PROFILE, CellProfile, CellSimSetting
 from api.models.error_model import ErrorModel
 from api.models.family import FamilyChoice, ParamRange
 from api.models.grasp import GraspChoice
+from api.models.job_pose import JobPose
 from api.models.job_spec import JobSpec
 from api.models.part import Part
 from api.models.piece import hull_piece
@@ -151,3 +152,41 @@ def test_too_little_clearance_blocks_the_job():
     assert result.blocked and all(reason.startswith("V-pad: no buildable design for this part: ") for reason in result.blocked)
     assert result.searches[0].clearance_mm == 2.0
     assert plan(BOX, clearance_mm=8.0).blocked == []
+
+
+def test_one_pose_plans_as_a_spec_with_one_grasp_did():
+    alone = plan(BOX, poses=[JobPose(key="p0", label="standing", probability=1.0, grasp=GraspChoice(angle_deg=0), part=BOX)])
+
+    legacy = plan(BOX)
+
+    assert alone.model_dump(exclude={"poses"}) == legacy.model_dump(exclude={"poses"})
+    assert [p.key for p in legacy.poses] == ["p0"] and alone.totals.poses == 1
+
+
+def test_every_pose_multiplies_the_grasps_and_says_what_it_assumes():
+    standing = Part(shape="box", height_mm=20)
+    poses = [
+        JobPose(key="p0", label="on its side", probability=0.6, weight=0.75, grasp=GraspChoice(angle_deg=0), part=BOX),
+        JobPose(key="p1", label="standing", probability=0.2, weight=0.25, grasp=GraspChoice(angle_deg=0), part=standing),
+    ]
+
+    two, one = plan(BOX, poses=poses), plan(BOX)
+
+    assert two.totals.poses == 2 and two.totals.total_grasps == 2 * one.totals.total_grasps
+    assert (two.totals.search_grasps, two.totals.final_grasps) == (2 * one.totals.search_grasps, 2 * one.totals.final_grasps)
+    assert (two.searches, two.grid, two.totals.rounds) == (one.searches, one.grid, one.totals.rounds)  # searched in the primary
+    assert any("2 resting poses (on its side (75%), standing (25%))" in w for w in two.warnings)
+    assert any("cover 80% of how the part comes to rest" in w for w in two.warnings)
+
+
+def test_a_pose_the_middle_design_cant_grip_is_a_warning_not_a_blocker():
+    wide = Part(shape="box", width_mm=40)  # far wider than the cube the fingers are built for: the pads land on it
+    poses = [
+        JobPose(key="p0", label="standing", probability=0.7, weight=0.7, grasp=GraspChoice(angle_deg=0), part=BOX),
+        JobPose(key="p1", label="lying flat", probability=0.3, weight=0.3, grasp=GraspChoice(angle_deg=0), part=wide),
+    ]
+
+    result = plan(BOX, poses=poses)
+
+    assert result.blocked == []
+    assert any(w.startswith("V-pad, lying flat: the middle design can't grip this pose") for w in result.warnings)

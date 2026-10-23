@@ -5,6 +5,11 @@ Everything is computed from the stored trials' raw outcomes, so a re-score at an
 /api/jobs/{id}/rescore) stores and simulates nothing. Design labels were fixed by the final test; a re-score changes the
 numbers next to them, and the summary names the design that leads at the new settings.
 
+A job covering several resting poses (api/models/job_pose.py) is scored over all of them: success weighted by the
+poses' weights, the capture radius the smallest, curves weighted, the in-hand and failure views pooled over the poses'
+grasps (each weighted by its pose). Each design's score in each pose is listed beside it, and the held maps come per
+pose.
+
 Printable files are built on demand per design and cached under outputs/<job id>/<label>/; D1's were written when the
 job finished. The CAD export runs in the API process (the routers call it in a thread), never in a database session.
 """
@@ -22,9 +27,11 @@ from api.models.cell_profile import CellProfileVersion, Gripper
 from api.models.design import Design
 from api.models.error_model import CURVE_SIGMAS_MM, PRESETS, ErrorModel
 from api.models.export_check import ExportCheck
-from api.models.finger import build_finger, stock_finger, stock_grasp_pose
+from api.models.finger import Finger, build_finger, regrip, stock_finger, stock_grasp_pose
 from api.models.job import Job, JobResult, Trial
+from api.models.job_pose import JobPose, PoseScore, score_poses
 from api.models.offset_grid import OffsetGrid
+from api.models.outcome import Outcomes
 from api.models.print_sheet import PrintSheet
 from api.models.printed_finger import finger_id
 from api.models.results import (
@@ -40,6 +47,8 @@ from api.models.results import (
     HeldMap,
     InHandView,
     MapPoint,
+    MissDistance,
+    MissGroup,
     ResultsHeader,
     ResultsSummary,
     ResultsView,
@@ -83,18 +92,30 @@ class ExportBlockedError(RuntimeError):
 
 @dataclass(frozen=True)
 class _Scored:
-    """A trial scored at the view's error model and task."""
+    """A trial scored at the view's error model and task, over the job's poses."""
 
     trial: Trial
-    success: list[bool]
+    successes: list[list[bool]]  # per pose, in the job's pose order
     rate: float
     radius: float | None
     metric: float | None
+    poses: list[PoseScore] | None  # None for a job covering one pose
+
+    @property
+    def success(self) -> list[bool]:
+        """The primary pose's."""
+        return self.successes[0]
 
     def score(self) -> DesignScore:
         t = self.trial
         return DesignScore(
-            label=t.label, kind=t.kind, search=t.search, success=self.rate, capture_radius_mm=self.radius, task_metric=self.metric
+            label=t.label,
+            kind=t.kind,
+            search=t.search,
+            success=self.rate,
+            capture_radius_mm=self.radius,
+            task_metric=self.metric,
+            poses=self.poses,
         )
 
 
@@ -109,10 +130,10 @@ def results(db: DatabaseClient, job_id: str, *, error: ErrorModel | None = None,
         result = JobResult.model_validate(result_row) if result_row else None
         meta = dict(meta_row.meta) if meta_row else {}
     error, task = error or job.spec.error, task or job.spec.task
-    grid = job.plan.final_grid
+    grid, poses = job.plan.final_grid, job.poses
     weights = grid.weights(error)
     final = sorted(
-        (_score(t, grid, error, task, weights) for t in trials if t.grid == "final"), key=lambda sc: _label_order(sc.trial.label)
+        (_score(t, grid, error, task, weights, poses) for t in trials if t.grid == "final"), key=lambda sc: _label_order(sc.trial.label)
     )
     by_label = {sc.trial.label: sc for sc in final}
     best = by_label.get("D1")
@@ -120,9 +141,11 @@ def results(db: DatabaseClient, job_id: str, *, error: ErrorModel | None = None,
     return ResultsView(
         header=_header(db, job, error, task),
         summary=_summary(final, best, by_label, searched, task) if best else None,
-        curves=_curves(final, grid, error) if final else None,
-        held_maps=[_held_map(by_label[label], grid, weights) for label in ("D1", "STOCK") if label in by_label],
-        in_hand=_in_hand(best, task, weights) if best else None,
+        curves=_curves(final, grid, error, poses) if final else None,
+        held_maps=[
+            _held_map(by_label[label], grid, weights, poses, k) for label in ("D1", "STOCK") if label in by_label for k in range(len(poses))
+        ],
+        in_hand=_in_hand(best, task, weights, poses) if best else None,
         failures=_failures(best, grid, weights, job, error, task, trials) if best else None,
         best_finger=_best_finger(result) if result else None,
         final_table=[
@@ -135,6 +158,7 @@ def results(db: DatabaseClient, job_id: str, *, error: ErrorModel | None = None,
                 capture_radius_mm=sc.radius,
                 task_metric=sc.metric,
                 print_selected=sc.trial.label in job.print_designs,
+                poses=sc.poses,
             )
             for sc in final
         ],
@@ -143,11 +167,21 @@ def results(db: DatabaseClient, job_id: str, *, error: ErrorModel | None = None,
     )
 
 
-def _score(trial: Trial, grid: OffsetGrid, error: ErrorModel, task: Task, weights: list[float]) -> _Scored:
-    outcomes = trial.outcomes()
-    success = task.success(outcomes)
-    return _Scored(
-        trial, success, grid.expected_success(success, error), grid.capture_radius(success), task_metric(outcomes, task, weights)
+def _score(trial: Trial, grid: OffsetGrid, error: ErrorModel, task: Task, weights: list[float], poses: list[JobPose]) -> _Scored:
+    by_pose = trial.outcomes_by_pose()
+    successes = [task.success(outcomes) for outcomes in by_pose]
+    rate, radius, scores = score_poses(successes, poses, grid, error)
+    metric = task_metric(_pooled(by_pose), task, [pose.weight * w for pose in poses for w in weights])
+    return _Scored(trial, successes, rate, radius, metric, scores if len(poses) > 1 else None)
+
+
+def _pooled(by_pose: list[Outcomes]) -> Outcomes:
+    """Every pose's outcomes as one list of grasps, pose after pose (weigh them by pose weight x grid weight)."""
+    after = [out.held_after_transport for out in by_pose]
+    return Outcomes(
+        held=[h for out in by_pose for h in out.held],
+        in_hand=[pose for out in by_pose for pose in out.in_hand],
+        held_after_transport=None if None in after else [h for each in after for h in each],
     )
 
 
@@ -200,28 +234,42 @@ def _summary(final: list[_Scored], best: _Scored, by_label: dict[str, _Scored], 
     )
 
 
-def _curves(final: list[_Scored], grid: OffsetGrid, error: ErrorModel) -> Curves:
+def _curves(final: list[_Scored], grid: OffsetGrid, error: ErrorModel, poses: list[JobPose]) -> Curves:
     return Curves(
         sigmas_mm=list(CURVE_SIGMAS_MM),
         target_sigma_mm=error.sigma_mm,
         target_range_mm=error.sigma_range_mm,
-        designs=[Curve(label=sc.trial.label, kind=sc.trial.kind, success=grid.curve(sc.success, error)) for sc in final],
+        designs=[Curve(label=sc.trial.label, kind=sc.trial.kind, success=_curve(sc, grid, error, poses)) for sc in final],
     )
 
 
-def _held_map(scored: _Scored, grid: OffsetGrid, weights: list[float]) -> HeldMap:
+def _curve(scored: _Scored, grid: OffsetGrid, error: ErrorModel, poses: list[JobPose]) -> dict[str, float]:
+    """Expected success against position error, weighted over the poses."""
+    curves = [grid.curve(success, error) for success in scored.successes]
+    return {sigma: sum(pose.weight * curve[sigma] for pose, curve in zip(poses, curves, strict=True)) for sigma in curves[0]}
+
+
+def _held_map(scored: _Scored, grid: OffsetGrid, weights: list[float], poses: list[JobPose], k: int) -> HeldMap:
+    """A design's held map in the job's k-th pose."""
+    held = scored.trial.outcomes_by_pose()[k].held
     points = [
-        MapPoint(dx=p["dx"], dy=p["dy"], yaw_deg=p["yaw_deg"], weight=w, held=held, success=ok)
-        for p, w, held, ok in zip(grid.points(), weights, scored.trial.held, scored.success, strict=True)
+        MapPoint(dx=p["dx"], dy=p["dy"], yaw_deg=p["yaw_deg"], weight=w, held=h, success=ok)
+        for p, w, h, ok in zip(grid.points(), weights, held, scored.successes[k], strict=True)
     ]
-    return HeldMap(label=scored.trial.label, points=points)
+    several = len(poses) > 1
+    return HeldMap(
+        label=scored.trial.label, points=points, pose=poses[k].key if several else None, pose_label=poses[k].label if several else None
+    )
 
 
-def _in_hand(best: _Scored, task: Task, weights: list[float]) -> InHandView:
-    held = [(pose, w) for pose, w, h in zip(best.trial.in_hand, weights, best.trial.held, strict=True) if h and pose is not None]
+def _in_hand(best: _Scored, task: Task, weights: list[float], poses: list[JobPose]) -> InHandView:
+    """D1's in-hand poses over the grasps that held, in every pose, each weighted by its pose's weight."""
+    pooled = _pooled(best.trial.outcomes_by_pose())
+    pooled_weights = [pose.weight * w for pose in poses for w in weights]
+    held = [(pose, w) for pose, w, h in zip(pooled.in_hand, pooled_weights, pooled.held, strict=True) if h and pose is not None]
     return InHandView(
         label=best.trial.label,
-        n_held=sum(best.trial.held),
+        n_held=sum(pooled.held),
         offsets_mm=[offset_mm(pose) for pose, _ in held],
         tilts_deg=[pose[3] for pose, _ in held],
         weights=[w for _, w in held],
@@ -234,7 +282,7 @@ def _in_hand(best: _Scored, task: Task, weights: list[float]) -> InHandView:
 def _failures(
     best: _Scored, grid: OffsetGrid, weights: list[float], job: Job, error: ErrorModel, task: Task, trials: list[Trial]
 ) -> FailureView:
-    centre_missed, by_direction, by_distance = misses(grid, best.success, weights)
+    centre_missed, by_direction, by_distance = _misses(grid, best, weights, job.poses)
     nearest = [g.nearest_miss_mm for g in by_direction if g.nearest_miss_mm is not None]
     first = 0.0 if centre_missed else min(nearest, default=None)
     return FailureView(
@@ -245,6 +293,32 @@ def _failures(
         by_distance=by_distance,
         caveats=caveats(job, error, task, trials),
     )
+
+
+def _misses(
+    grid: OffsetGrid, scored: _Scored, weights: list[float], poses: list[JobPose]
+) -> tuple[bool, list[MissGroup], list[MissDistance]]:
+    """models/results.misses() over every pose: counts summed, the probability lost weighted by each pose's weight, the
+    nearest miss the nearest in any pose."""
+    if len(poses) == 1:
+        return misses(grid, scored.success, weights)
+    each = [misses(grid, success, weights) for success in scored.successes]
+    by_direction = [
+        MissGroup(
+            direction=groups[0].direction,
+            angle_deg=groups[0].angle_deg,
+            missed=sum(g.missed for g in groups),
+            points=sum(g.points for g in groups),
+            lost=sum(pose.weight * g.lost for pose, g in zip(poses, groups, strict=True)),
+            nearest_miss_mm=min((g.nearest_miss_mm for g in groups if g.nearest_miss_mm is not None), default=None),
+        )
+        for groups in zip(*(by_dir for _, by_dir, _ in each), strict=True)
+    ]
+    by_distance = [
+        MissDistance(radius_mm=rings[0].radius_mm, missed=sum(r.missed for r in rings), points=sum(r.points for r in rings))
+        for rings in zip(*(by_dist for _, _, by_dist in each), strict=True)
+    ]
+    return any(centre for centre, _, _ in each), by_direction, by_distance
 
 
 def caveats(job: Job, error: ErrorModel, task: Task, trials: list[Trial]) -> list[str]:
@@ -264,8 +338,16 @@ def caveats(job: Job, error: ErrorModel, task: Task, trials: list[Trial]) -> lis
         out.append(f"the '{preset.label}' camera error ({error.sigma_mm:g} mm) is a placeholder until it's measured on the cell")
     if task.transport and not any(t.held_after_transport is not None for t in trials):
         out.append("this run didn't simulate a transport move, so holding through one isn't checked")
-    if job.part.shape == "mesh":
-        out.append(f"the part is simulated as {len(job.part.pieces)} convex pieces, an approximation of its shape")
+    poses = job.poses
+    mesh = next((pose.part for pose in poses if pose.part.shape == "mesh"), None)
+    if mesh is not None:
+        out.append(f"the part is simulated as {len(mesh.pieces)} convex pieces, an approximation of its shape")
+    if len(poses) > 1:
+        out.append(
+            f"scored over {len(poses)} resting poses, weighted by how often the part comes to rest each way: trimesh's quasi-static "
+            "estimate, not measured on the cell"
+        )
+        out.append("assumes the cell recognises each part's resting pose and runs that pose's grasp")
     return out
 
 
@@ -287,14 +369,14 @@ def _best_finger(result: JobResult) -> BestFinger:
 def _run_details(job: Job, searched: list[Trial], meta: dict, error: ErrorModel, task: Task) -> RunDetails:
     """Each search's progress (best so far at these settings against designs evaluated) and what the run used."""
     grid = job.plan.grid
-    weights = grid.weights(error)
+    weights, poses = grid.weights(error), job.poses
     stopped = {s.get("key"): s.get("stop_reason") for s in meta.get("searches", [])}
     progress = []
     for search in job.plan.searches:
         mine = sorted((t for t in searched if t.search == search.key), key=lambda t: t.number)
         best_so_far, best = [], None
         for t in mine:
-            rate = _score(t, grid, error, task, weights).rate
+            rate = _score(t, grid, error, task, weights, poses).rate
             best = rate if best is None else max(best, rate)
             best_so_far.append(best)
         reason = stopped.get(search.key) or search.stop_reason([t.success_rate for t in mine])
@@ -410,30 +492,66 @@ def grasp_pose(db: DatabaseClient, job_id: str, label: str) -> dict:
 
 def grasp_pose_for(job: Job, gripper: Gripper, design: Design) -> dict:
     """A design's finger settings (approach, fingertip height, jaw positions, TCP) plus the grasp axis and centre chosen
-    in step 5, in the table frame of the chosen resting pose."""
-    pose = stock_grasp_pose(job.part, gripper) if design.kind == "stock" else build_finger(job.part, design, gripper).grasp_pose
-    grasp = job.spec.grasp
-    return {
+    in step 5, in the table frame of the chosen resting pose. A job covering several poses gives these for the primary
+    pose, and adds `poses`: each pose's grasp, fingertip height and jaw position, with its weight."""
+    poses = job.poses
+    primary = poses[0]
+    built = None if design.kind == "stock" else build_finger(primary.part, design, gripper)
+    pose = stock_grasp_pose(primary.part, gripper) if built is None else built.grasp_pose
+    out = {
         **pose,
-        "grasp_angle_deg": grasp.angle_deg,
-        "grasp_centre_mm": list(grasp.centre_mm),
+        "grasp_angle_deg": primary.grasp.angle_deg,
+        "grasp_centre_mm": list(primary.grasp.centre_mm),
         "frame": "table frame of the chosen resting pose: the jaws close along grasp_angle_deg, centred on grasp_centre_mm",
+    }
+    if len(poses) > 1:
+        out["frame"] = "table frame of each resting pose: the jaws close along its grasp_angle_deg, centred on its grasp_centre_mm"
+        out["poses"] = [_pose_grasp(job, gripper, design, each, built) for each in poses]
+    return out
+
+
+def _pose_grasp(job: Job, gripper: Gripper, design: Design, pose: JobPose, built: Finger | None) -> dict:
+    settings = stock_grasp_pose(pose.part, gripper) if design.kind == "stock" else pose_finger(job, gripper, design, pose, built).grasp_pose
+    return {
+        "resting_pose": pose.label or pose.key,
+        "weight": round(pose.weight, 4),
+        "grasp_angle_deg": pose.grasp.angle_deg,
+        "grasp_centre_mm": list(pose.grasp.centre_mm),
+        "tip_height_mm": settings["tip_height_mm"],
+        "jaw_close_mm": settings["jaw_close_mm"],
     }
 
 
-def finger_preview(db: DatabaseClient, job_id: str, label: str = "D1") -> FingerPreview:
-    """Both fingers of a final design (the stock ones are the mock's stand-in) and the part, for the 3D preview."""
+def pose_finger(job: Job, gripper: Gripper, design: Design, pose: JobPose, built: Finger | None = None) -> Finger:
+    """A design's finger, built for the job's primary pose, gripping one of its poses (finger.regrip(): the jaws and
+    fingertips where that pose needs them, at its grasp's grip height if it locks one). The stock fingers' stand-in for
+    the stock design."""
+    if design.kind == "stock":
+        return stock_finger(pose.part, gripper)
+    primary = job.poses[0]
+    lock = None if pose.key == primary.key else pose.grasp.grip_height_mm
+    return regrip(primary.part, pose.part, design, gripper, tip_height_mm=lock, built=built)
+
+
+def finger_preview(db: DatabaseClient, job_id: str, label: str = "D1", pose: str | None = None) -> FingerPreview:
+    """Both fingers of a final design (the stock ones are the mock's stand-in) and the part, for the 3D preview: in the
+    job's primary resting pose, or the one with this key ("p1", ...) for a job covering several."""
     job, trial = final_trial(db, job_id, label)
+    shown = next((p for p in job.poses if p.key == (pose or job.poses[0].key)), None)
+    if shown is None:
+        keys = ", ".join(p.key for p in job.poses)
+        raise DesignNotFoundError(f"{job.experiment_id} has no resting pose {pose!r}; its poses are {keys}")
     gripper = cell_profiles.get_profile(db, job.cell_profile_id).profile.gripper
-    design = Design(kind=trial.kind, params=trial.params)
-    finger = stock_finger(job.part, gripper) if design.kind == "stock" else build_finger(job.part, design, gripper)
+    finger = pose_finger(job, gripper, Design(kind=trial.kind, params=trial.params), shown)
     return FingerPreview(
         label=trial.label,
-        part=job.part,
-        extent_mm=job.part.extent_mm,
+        part=shown.part,
+        extent_mm=shown.part.extent_mm,
         jaw_open_mm=gripper.stroke_mm,
         finger=finger,
         right=mirrored(finger.pieces),
+        pose=shown.key,
+        pose_label=shown.label,
     )
 
 

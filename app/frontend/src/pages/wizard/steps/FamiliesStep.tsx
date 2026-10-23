@@ -27,7 +27,7 @@ const DEFAULT_FAMILIES: FamilyChoice[] = [{ family: "vpad", ranges: {}, locks: {
 /** Step 6: which finger shapes are searched, over which ranges (frontend-plan.md, step 6). The plan is the source of
  *  truth for each parameter's buildable limits and default range; the user narrows or locks them. */
 export function FamiliesStep() {
-  const { draft, update, plan } = useDraft();
+  const { draft, update, plan, spec } = useDraft();
   const meta = useMeta();
   const families = draft.families ?? DEFAULT_FAMILIES;
   const setFamilies = (next: FamilyChoice[]) => update({ families: next });
@@ -85,7 +85,8 @@ export function FamiliesStep() {
           </Banner>
         ))}
         {plan.error && <Banner tone="bad">{plan.error.message}</Banner>}
-        {!data && !plan.error && (draft.grasp ? <Skeleton height={320} /> : <Banner tone="warn">Choose the grasp (step 5) first.</Banner>)}
+        {!data && !plan.error && (spec ? <Skeleton height={320} /> : <Banner tone="warn">Choose the grasp (step 5) first.</Banner>)}
+        {data && data.poses.length > 1 && <p className={styles.note}>Ranges are set for {data.poses[0].label ?? "the likeliest pose"}.</p>}
 
         {data &&
           families.map((choice) => {
@@ -135,8 +136,9 @@ export function FamiliesStep() {
         {data && previewChoice && draft.cell_profile_id != null && (
           <PreviewPanel
             part={data.part}
+            others={data.poses.slice(1).map((pose) => pose.part)}
             cellProfileId={draft.cell_profile_id}
-            gripHeight={draft.grasp?.grip_height_mm ?? null}
+            gripHeight={draft.poses?.[0]?.grasp?.grip_height_mm ?? null}
             choice={previewChoice}
             param={previewParam}
             params={previewParams}
@@ -213,7 +215,7 @@ function Budget({ plan, budget, onBudget }: { plan: Plan; budget: number | null;
         value={budget}
         onChange={(value) => onBudget(value == null ? null : Math.max(1, Math.round(value)))}
         placeholder="Default"
-        hint="Empty: 128 for a Bayesian search, 16 or 32 for a sweep. More free parameters need more designs."
+        hint="Default: 128 for a Bayesian search, 16 or 32 for a sweep."
       />
       <Table<Search>
         label="Searches the plan makes"
@@ -240,6 +242,7 @@ function Budget({ plan, budget, onBudget }: { plan: Plan; budget: number | null;
 /** The finger at the focused parameter's lowest and highest values, the others mid-range, as two ghosts on the part. */
 function PreviewPanel({
   part,
+  others,
   cellProfileId,
   gripHeight,
   choice,
@@ -247,6 +250,7 @@ function PreviewPanel({
   params,
 }: {
   part: Part;
+  others: Part[]; // the job's other resting poses: they bound the slack too
   cellProfileId: number;
   gripHeight: number | null;
   choice: FamilyChoice;
@@ -256,7 +260,7 @@ function PreviewPanel({
   const applicable = params.filter((p) => p.applies);
   const single = applicable.length > 0 && applicable.every((p) => choice.locks[p.name] != null);
   const vary = param && param.applies && choice.locks[param.name] == null ? param.name : null;
-  const request = useDebounced({ part, cell_profile_id: cellProfileId, choice, grip_height_mm: gripHeight, vary, single }, 300);
+  const request = useDebounced({ part, others, cell_profile_id: cellProfileId, choice, grip_height_mm: gripHeight, vary, single }, 300);
   const preview = useQuery({
     queryKey: ["finger-preview", request],
     queryFn: () => {
@@ -286,7 +290,7 @@ function PreviewPanel({
     <div className={styles.panel}>
       <h3 className={styles.panelTitle}>{single ? "The one design" : vary ? `Preview: ${name}` : "Preview"}</h3>
       {!single && !vary && (
-        <p className={styles.note}>Focus a parameter's slider that isn't locked to see the finger at both ends of its range.</p>
+        <p className={styles.note}>Focus a slider to see the finger at both ends of its range.</p>
       )}
       <FingerViewer
         part={part}
@@ -342,6 +346,7 @@ function closedGapText(choice: FamilyChoice, param: Param, part: Part, strokePer
 
 /** The part's size along the jaws' closing direction (x in the grasp frame). */
 function widthAcrossJaws(part: Part): number {
+  if (part.grip_width_mm != null) return part.grip_width_mm; // a section grip closes on the section
   if (part.shape === "box") return part.width_mm;
   if (part.shape === "mesh") {
     const xs = (part.pieces ?? []).flatMap((piece) => piece.points.map((p) => p[0]));
