@@ -56,20 +56,19 @@ dark only), three.js for 3D, and Recharts for every chart.
 
 | Area | Where | Notes |
 | --- | --- | --- |
-| Shell: top bar, demo banner, status bar (GPU, sim) | `components/Page.tsx`, `StatusBar.tsx` | The app is called Auto-Grasp. Nav: Experiments (home), Parts, Validation, Cells. |
-| Experiments list with live cards | `pages/experiments/` | SSE per running card on screen; polls past 6 running. |
+| Shell: sidebar, top bar, main column and right rail | `components/Page.tsx` | The app is called Auto-Grasp. Nav: Overview, Jobs, Part Library, Finger Library, Generate Finger, Cells; the GPU in the sidebar's Compute box (2026-10-26). |
+| Overview and Jobs | `pages/overview/`, `pages/jobs/` | Active and recently finished jobs, then every job with its type (generation or evaluation), filters and batches. |
+| Finger Library and new evaluations | `pages/fingers/`, `pages/evaluate/`, `pages/job/evaluation/` | The library with upload, each finger's parts and real sessions; an evaluation of one part or several, and its ranking. |
 | Wizard, all eight steps | `pages/wizard/` | `draft.tsx` holds the draft (localStorage too) and the debounced plan; each step reports its gate. |
-| Experiment page: progress, then results | `pages/job/` | Re-score bar, curves, held maps (click a dot to pick a clip), in-hand, failures, best finger and downloads, clips, final test with print boxes, review gate, run details. |
+| Experiment page: progress, then results | `pages/job/` | Caveats, summary, best finger and downloads, final test, physical results, and the evidence (curves, held maps, in-hand, failures, clips). The re-score bar, review card and run details were removed on 2026-10-26; the review gate is a Validation stage. |
 | GPU page and help cards | `pages/gpu/`, `gpuHelp.ts`, `components/HelpCard.tsx` | Starting steps, retries as "Retrying", switch-target flow, session log, setup checklist. |
-| Validation, per experiment and across them | `pages/validation/` | The five stages, the spreadsheet round trip, predicted vs measured, the mismatch map, the sim-vs-real scatter. |
-| Quick logger | `pages/log/` | Phone layout; no Undo yet (no API to delete a trial). |
-| Parts library | `pages/parts/` | Upload, size check, 3D view, material and mass. |
+| Validation, per experiment and across them | `pages/validation/` | Six stages: print, record the printed fingers, approve for the robot, plan, predict, log (one trial at a time, or the spreadsheet) and compare. The quick logger is merged into the last. |
+| Part Library | `pages/parts/` | Search and filters, upload of one part, several or a folder, size check, 3D view, material and mass. |
 | Cells | `pages/cells/` | The cells (each cell profile's latest version), the editor with placeholders and version history. |
 
 **Not built:** the design-space cloud (Later), the 3D robot and cell render (no model endpoint), richer provisional
 results and several grasp axes (both need the backend changes in section 13), and one-click sample parts from `cad/`
-(no API path). The old `index.html` is still served at `/` until the switch-over steps in
-[app/README.md, "Frontend"](../../app/README.md#frontend).
+(no API path). The old single-file UI was removed on 2026-10-26: the React app is the page at `/`.
 
 **The rules for adding to it:** [coding-style.md](../../.claude/rules/coding-style.md#frontend) lists the shared
 components. Reuse them, keep API types generated (`npm run gen:api`), and use `unwrapAs` in `src/backend/client.ts`
@@ -79,7 +78,7 @@ when a response holds tuples.
 
 1. Start the backend.
 2. Run `npm run dev` in `app/frontend`.
-3. Open <http://localhost:5173/app.html>.
+3. Open <http://localhost:5173/>.
 
 **Data to build against:** put `DEMO_DATA=true` in `.env`. You get ten experiments in every state, including runs still
 in progress, plus parts, cell profiles, printed fingers and test plans

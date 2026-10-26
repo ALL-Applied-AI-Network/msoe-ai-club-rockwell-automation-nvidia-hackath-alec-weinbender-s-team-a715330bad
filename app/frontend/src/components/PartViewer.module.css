@@ -28,6 +28,20 @@
   cursor: grabbing;
 }
 
+/* A small square still for a table row: the 16:10 render, cropped to the part in the middle */
+.icon {
+  width: var(--thumb-size);
+  min-width: var(--thumb-size);
+  height: var(--thumb-size);
+  flex: none;
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+}
+
+.icon .image {
+  object-fit: cover;
+}
+
 .image {
   display: block;
   width: 100%;

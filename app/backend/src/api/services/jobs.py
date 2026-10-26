@@ -1,6 +1,7 @@
-"""Experiments on the API side: plan, create, list, rename, duplicate, cancel and resume them, and launch the detached
-worker that runs each one (python -m api.worker <job_id>). The API never calls the sim: the worker does
-(services/optimizer.py).
+"""Jobs (experiments) on the API side: plan, create, list, rename, duplicate, cancel and resume them, and launch the
+detached worker that runs each one (python -m api.worker <job_id>). The API never calls the sim: the worker does
+(services/optimizer.py for a generation job, services/evaluator.py for an evaluation job). Planning a generation job is
+here; planning an evaluation job, and its results, are in services/evaluations.py.
 
 Planning never raises for something the user can fix: every problem goes into the plan's blockers, each with the input
 step whose screen fixes it, so the review screen can show them all at once and link back. Creating a blocked job is
@@ -28,8 +29,9 @@ from api.config import AppConfig
 from api.db.tables import JobRow, PartRow, TrialRow
 from api.models import grasp
 from api.models.cell_profile import DEFAULT_PROFILE, CellProfile, CellProfileVersion
+from api.models.evaluation import EvaluationPlan, EvaluationSpec
 from api.models.grasp import GraspChoice
-from api.models.job import ACTIVE_STATUSES, RESUMABLE_STATUSES, Job, JobStatus
+from api.models.job import ACTIVE_STATUSES, RESUMABLE_STATUSES, Job, JobKind, JobStatus
 from api.models.job_pose import JobPose, PoseChoice, pose_weights
 from api.models.job_spec import JobSpec, PoseGrasp, SimBackend
 from api.models.part import Part
@@ -83,6 +85,7 @@ class SpecPlan:
     part: Part | None
     profile: CellProfileVersion | None
     record: PartRecord | None
+    spec: JobSpec  # as given, with the cell profile's grasp accuracy filled in where it had no error model
 
 
 def plan_spec(db: DatabaseClient, config: AppConfig, spec: JobSpec) -> SpecPlan:
@@ -101,6 +104,7 @@ def plan_spec(db: DatabaseClient, config: AppConfig, spec: JobSpec) -> SpecPlan:
     except cell_profiles.CellProfileNotFoundError:
         blockers.append(Blocker(step=4, reason=f"cell profile {spec.cell_profile_id} doesn't exist: choose a cell profile"))
     profile = version.profile if version is not None else DEFAULT_PROFILE
+    spec = spec.with_error(profile.grasp_accuracy)
 
     poses: list[JobPose] = []
     if record is not None:
@@ -119,12 +123,12 @@ def plan_spec(db: DatabaseClient, config: AppConfig, spec: JobSpec) -> SpecPlan:
     plan = plan_job(planned, spec, profile, sim_backend=badge, estimate=estimate, clearance_mm=clearance, poses=poses)
     blockers += [Blocker(step=6, reason=reason) for reason in plan.blocked]
     blockers.sort(key=lambda b: b.step)
-    force, warnings = _grip_force(profile.grip_force_n, record)
+    force, warnings = grip_force(profile.grip_force_n, record)
     plan = plan.model_copy(
         update={"blockers": blockers, "blocked": [b.reason for b in blockers], "grip_force_n": force, "warnings": plan.warnings + warnings}
     )
     usable = record is not None and record.confirmed_mass_g is not None and all(pose.resting is not None for pose in poses)
-    return SpecPlan(plan=plan, part=part if usable else None, profile=version, record=record)
+    return SpecPlan(plan=plan, part=part if usable else None, profile=version, record=record, spec=spec)
 
 
 def _grasps(spec: JobSpec) -> list[GraspChoice]:
@@ -195,7 +199,7 @@ def _grasp_blockers(
     return [Blocker(step=5, reason=f"grasp{where}: {reason}") for reason in reasons]
 
 
-def _grip_force(profile_force: float | None, record: PartRecord | None) -> tuple[float | None, list[str]]:
+def grip_force(profile_force: float | None, record: PartRecord | None) -> tuple[float | None, list[str]]:
     """The per-jaw force sent with every batch: the lesser of the cell's and the part's limit where either is known."""
     part_force = record.max_grip_force_n if record is not None else None
     known = [f for f in (profile_force, part_force) if f is not None]
@@ -225,14 +229,42 @@ def throughput(db: DatabaseClient, config: AppConfig, badge: SimBackend) -> Time
     return TimeEstimate(seconds=None, grasps_per_s=None, source="unknown")
 
 
-def create_job(db: DatabaseClient, config: AppConfig, spec: JobSpec, *, duplicated_from: str | None = None, start: bool = True) -> Job:
+def plan_any(db: DatabaseClient, config: AppConfig, spec: JobSpec | EvaluationSpec) -> JobPlan | EvaluationPlan:
+    """The plan for a spec of either kind, as POST /api/jobs/plan shows it."""
+    if spec.kind == "evaluation":
+        from api.services import evaluations  # here: the evaluations service builds on this one
+
+        return evaluations.plan_evaluation(db, config, spec).plan
+    return plan_spec(db, config, spec).plan
+
+
+def create_job(
+    db: DatabaseClient,
+    config: AppConfig,
+    spec: JobSpec | EvaluationSpec,
+    *,
+    duplicated_from: str | None = None,
+    start: bool = True,
+    batch_id: str | None = None,
+) -> Job:
     """Plan the spec, store the job with everything it runs with, and start its worker (start=False leaves it queued for
-    the caller to run in-process, as the demo data does). Raises JobBlockedError while the plan has blockers, and
-    compute.ComputeNotReadyError when the app manages the GPU and it isn't ready. The experiment number is the next free
-    one, fixed for life."""
+    the caller to run in-process, as the demo data does). A JobSpec makes a generation job, an EvaluationSpec an
+    evaluation job. Raises JobBlockedError while the plan has blockers, and compute.ComputeNotReadyError when the app
+    manages the GPU and it isn't ready. The experiment number is the next free one, fixed for life."""
     if start:
         compute.claim(db, config)
-    planned = plan_spec(db, config, spec)
+    if spec.kind == "evaluation":
+        from api.services import evaluations
+
+        planned = evaluations.plan_evaluation(db, config, spec)
+        plan = planned.plan
+        part = plan.part
+        n_total = plan.totals.simulated + min(plan.finalists + 1, len(plan.fingers)) * len(plan.poses)
+        n_rounds = plan.totals.batches
+    else:
+        planned = plan_spec(db, config, spec)
+        plan, part = planned.plan, planned.part
+        n_total, n_rounds = plan.totals.search_designs + plan.totals.final_designs, plan.totals.rounds
     if planned.plan.blockers:
         raise JobBlockedError(planned.plan.blockers)
     if duplicated_from is not None and not _exists(db, duplicated_from):
@@ -240,22 +272,23 @@ def create_job(db: DatabaseClient, config: AppConfig, spec: JobSpec, *, duplicat
     name = _clean_name(spec.name or "") or default_name(planned.record)
     if len(name) > MAX_NAME:
         raise JobInputError(f"names are at most {MAX_NAME} characters")
-    plan = planned.plan
     job_id = uuid.uuid4().hex[:10]
     values = {
         "id": job_id,
         "name": name,
+        "kind": spec.kind,
         "status": "queued",
         "part_id": spec.part_id,
         "cell_profile_id": planned.profile.id,
         "sim_backend": plan.sim_backend,
-        "spec": spec.model_copy(update={"name": name}),
-        "part": planned.part,
+        "spec": planned.spec.model_copy(update={"name": name}),
+        "part": part,
         "plan": plan,
-        "n_total": plan.totals.search_designs + plan.totals.final_designs,
-        "n_rounds": plan.totals.rounds,
+        "n_total": n_total,
+        "n_rounds": n_rounds,
         "duplicated_from": duplicated_from,
         "print_designs": [],
+        "batch_id": batch_id,
     }
     for attempt in range(1, NUMBER_ATTEMPTS + 1):
         try:
@@ -267,10 +300,36 @@ def create_job(db: DatabaseClient, config: AppConfig, spec: JobSpec, *, duplicat
                 raise
             logger.warning("Job %s: experiment number taken at the same moment; retrying", job_id)
     job = get_job(db, job_id)
-    logger.info("Job %s: created %s %r (%s, %d designs planned)", job_id, job.experiment_id, name, plan.sim_backend, job.n_total)
+    logger.info(
+        "Job %s: created %s %s %r (%s, %d trials planned)", job_id, job.kind, job.experiment_id, name, plan.sim_backend, job.n_total
+    )
     if start:
         spawn_worker(db, config, job_id)
     return job
+
+
+def create_evaluations(
+    db: DatabaseClient, config: AppConfig, spec: EvaluationSpec, part_ids: list[str], *, start: bool = True
+) -> list[Job]:
+    """One evaluation job per part (a new customer order, say), each like `spec` but for its own part, sharing a batch
+    id. Every part's plan is checked first, so a blocked part creates none of them (JobBlockedError, its reasons prefixed
+    with the part). Poses chosen in `spec` must exist for every part; left empty, each part covers its own likely ones."""
+    if not part_ids:
+        raise JobInputError("a batch needs at least one part")
+    if len(set(part_ids)) != len(part_ids):
+        raise JobInputError("each part can be chosen once")
+    from api.services import evaluations
+
+    specs = [spec.model_copy(update={"part_id": part_id, "name": None if len(part_ids) > 1 else spec.name}) for part_id in part_ids]
+    blockers = []
+    for each in specs:
+        planned = evaluations.plan_evaluation(db, config, each)
+        label = planned.record.name if planned.record is not None else each.part_id
+        blockers += [b.model_copy(update={"reason": f"{label}: {b.reason}"}) for b in planned.plan.blockers]
+    if blockers:
+        raise JobBlockedError(blockers)
+    batch_id = uuid.uuid4().hex[:10] if len(part_ids) > 1 else None
+    return [create_job(db, config, each, start=start, batch_id=batch_id) for each in specs]
 
 
 def default_name(record: PartRecord | None) -> str:
@@ -284,10 +343,20 @@ def _max_experiment_number(s) -> int:
 
 
 def list_jobs(
-    db: DatabaseClient, *, part_id: str | None = None, status: JobStatus | None = None, backend: SimBackend | None = None
+    db: DatabaseClient,
+    *,
+    part_id: str | None = None,
+    status: JobStatus | None = None,
+    backend: SimBackend | None = None,
+    kind: JobKind | None = None,
+    batch_id: str | None = None,
 ) -> list[Job]:
-    """Every job, newest first, filtered by part, status or sim badge."""
+    """Every job, newest first, filtered by part, status, sim badge, kind or batch."""
     query = select(JobRow).order_by(JobRow.created.desc(), JobRow.experiment_number.desc())
+    if kind is not None:
+        query = query.where(JobRow.kind == kind)
+    if batch_id is not None:
+        query = query.where(JobRow.batch_id == batch_id)
     if part_id is not None:
         query = query.where(JobRow.part_id == part_id)
     if status is not None:
@@ -313,10 +382,16 @@ def update_job(db: DatabaseClient, job_id: str, **values) -> None:
 
 
 def job_cards(
-    db: DatabaseClient, *, part_id: str | None = None, status: JobStatus | None = None, backend: SimBackend | None = None
+    db: DatabaseClient,
+    *,
+    part_id: str | None = None,
+    status: JobStatus | None = None,
+    backend: SimBackend | None = None,
+    kind: JobKind | None = None,
+    batch_id: str | None = None,
 ) -> list[JobCard]:
     """The job list: one card per job, newest first."""
-    return _cards(db, list_jobs(db, part_id=part_id, status=status, backend=backend))
+    return _cards(db, list_jobs(db, part_id=part_id, status=status, backend=backend, kind=kind, batch_id=batch_id))
 
 
 def job_card(db: DatabaseClient, job_id: str) -> JobCard:
@@ -324,11 +399,12 @@ def job_card(db: DatabaseClient, job_id: str) -> JobCard:
 
 
 def _cards(db: DatabaseClient, found: list[Job]) -> list[JobCard]:
-    """Cards for these jobs: part names in one query, and for finished jobs D1 and STOCK from their final trials."""
+    """Cards for these jobs: part names in one query, and for finished jobs D1 and STOCK from their final trials (an
+    evaluation job: its best finger and its stock fingers)."""
     # Imported here: the results tracker's services read jobs through this module, so a top-level import could cycle.
-    from api.services import physical_trials
+    from api.services import evaluations, physical_trials
 
-    done = [job.id for job in found if job.status == "done"]
+    done = [job.id for job in found if job.status == "done" and job.kind == "generation"]
     with db.session() as s:
         names = dict(s.execute(select(PartRow.id, PartRow.name).where(PartRow.id.in_({job.part_id for job in found}))).all())
         query = select(TrialRow.job_id, TrialRow.label, TrialRow.success_rate, TrialRow.capture_radius_mm).where(
@@ -338,11 +414,19 @@ def _cards(db: DatabaseClient, found: list[Job]) -> list[JobCard]:
             (job_id, label): CardScore(label=label, success=rate, capture_radius_mm=radius)
             for job_id, label, rate, radius in s.execute(query)
         }
+    for job in found:
+        if job.kind == "evaluation" and job.status == "done":
+            best, stock = evaluations.card_scores(db, job)
+            for label, score in (("D1", best), ("STOCK", stock)):
+                if score is not None:
+                    finals[(job.id, label)] = CardScore(label=score[0], success=score[1], capture_radius_mm=score[2])
     return [
         JobCard(
             id=job.id,
             experiment_id=job.experiment_id,
             name=job.name,
+            kind=job.kind,
+            batch_id=job.batch_id,
             part_id=job.part_id,
             part_name=names.get(job.part_id),
             task_kind=job.spec.task.kind,
@@ -382,13 +466,14 @@ def rename_job(db: DatabaseClient, job_id: str, name: str) -> Job:
     return get_job(db, job_id)
 
 
-def duplicate_job(db: DatabaseClient, job_id: str) -> JobSpec:
+def duplicate_job(db: DatabaseClient, job_id: str) -> JobSpec | EvaluationSpec:
     """A copy of the job's spec named "<name> (copy)", for the wizard to edit. Nothing is stored or started. A spec with
     one grasp (from before jobs covered poses) comes back with that grasp on its pose in `poses`, when the pose can still
-    be found among the part's; otherwise as it was."""
+    be found among the part's; otherwise as it was. An evaluation job's copy tries every compatible finger again when
+    it did (finger_ids None), so fingers added to the library since are evaluated too."""
     job = get_job(db, job_id)
     spec = job.spec.model_copy(update={"name": f"{job.name} (copy)"})
-    if spec.grasp is None:
+    if spec.kind == "evaluation" or spec.grasp is None:
         return spec
     try:
         record = parts.get_part(db, job.part_id)

@@ -201,3 +201,43 @@ def test_poses_resolve_from_one_list(db, upload):
 
     assert (lying.label, lying.probability) == ("on its side", pytest.approx(0.8718, abs=1e-3))
     assert authored.source == "as_authored" and parts.resolve_pose(record, 1).label == "standing"
+
+
+def test_many_files_are_stored_each_on_its_own(db, config, cad, shapes, step_file, stl_file):
+    files = [
+        ("orders/cube.step", step_file(shapes["cube"], "cube.step")),
+        ("orders/readme.txt", b"not a part"),
+        ("orders/broken.step", b"not a step file"),
+        ("orders/bar.stl", stl_file(shapes["bar"], "bar.stl")),
+    ]
+
+    intakes = parts.create_parts(db, config, cad, files, "mm")
+
+    assert [(i.filename, i.status) for i in intakes] == [
+        ("cube.step", "needs_properties"),
+        ("readme.txt", "skipped"),
+        ("broken.step", "file_error"),
+        ("bar.stl", "needs_properties"),
+    ]
+    assert intakes[2].reason and intakes[2].part is None
+    assert {p.name for p in parts.list_parts(db)} == {"cube.step", "bar.stl"}
+    ready = parts.update_part(db, intakes[0].part.id, {"material": "pla"})
+    assert ready.intake_status == "ready"
+
+
+def test_a_batch_with_too_many_cad_files_is_refused(db, config, cad, monkeypatch):
+    monkeypatch.setattr(parts, "MAX_BATCH_FILES", 1)
+
+    with pytest.raises(parts.PartFileError, match="at most 1"):
+        parts.create_parts(db, config, cad, [("a.step", b""), ("b.step", b"")], None)
+    assert parts.list_parts(db) == []
+
+
+def test_a_part_can_be_renamed_and_numbered(db, upload):
+    record = upload()
+
+    named = parts.update_part(db, record.id, {"name": "  Vial   cap ", "part_number": " 4471-A "})
+    assert (named.name, named.part_number) == ("Vial cap", "4471-A")
+    assert parts.update_part(db, record.id, {"part_number": " "}).part_number is None
+    with pytest.raises(parts.PartInputError, match="needs a name"):
+        parts.update_part(db, record.id, {"name": "  "})

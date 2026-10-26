@@ -7,13 +7,6 @@
   width: 100%;
 }
 
-.progress {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--faint);
-}
 
 .last {
   display: flex;

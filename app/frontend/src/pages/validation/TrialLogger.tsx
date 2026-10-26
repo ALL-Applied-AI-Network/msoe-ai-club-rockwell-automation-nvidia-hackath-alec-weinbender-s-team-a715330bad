@@ -1,109 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router";
 import type { Schemas } from "../../backend/client";
 import { Banner } from "../../components/Banner";
-import { Button, LinkButton } from "../../components/Button";
+import { Button } from "../../components/Button";
 import { TextInput } from "../../components/Field";
-import { Page } from "../../components/Page";
-import { ProgressBar } from "../../components/ProgressBar";
 import { Segmented } from "../../components/Segmented";
-import { Select } from "../../components/Select";
-import { EmptyState, ErrorState, Skeleton } from "../../components/States";
-import { degrees, mm, of } from "../../format";
+import { EmptyState } from "../../components/States";
+import { degrees, mm } from "../../format";
 import { designLabel } from "../../labels";
-import { useJob, useLogTrial, useTestPlan, useTestPlans } from "./queries";
-import styles from "./QuickLogPage.module.css";
+import { useLogTrial } from "./queries";
+import styles from "./TrialLogger.module.css";
 
 type Row = Schemas["PlannedTrial"];
 type Logged = Schemas["PhysicalTrial"];
 type Outcome = Logged["outcome"];
 
-/** #/jobs/:id/log: the quick logger for a phone or tablet at the robot (docs/notes/frontend-plan.md, 8.4). One trial
- *  at a time from a test plan: the offset to command in large text, then Held, Missed or Skipped, one call each, and
- *  on to the next. The sim's prediction is never shown, so the operator tests blind, as with the spreadsheet. */
-export function QuickLogPage() {
-  const { id = "" } = useParams();
-  const job = useJob(id);
-  const done = job.data?.status === "done";
-  const plans = useTestPlans(id, done);
-  const [planChoice, setPlanChoice] = useState<number | undefined>();
-  const planId = planChoice ?? plans.data?.at(-1)?.id;
-  const plan = useTestPlan(id, planId);
-
-  const title = job.data ? `${job.data.name}, ${job.data.experiment_id}` : "Quick logger";
-  return (
-    <Page title="Quick logger" description={job.data ? title : undefined}>
-      {job.isPending && <Skeleton height={320} />}
-      {job.isError && (
-        <ErrorState title="Couldn't load the experiment" message={job.error.message} onRetry={() => void job.refetch()} />
-      )}
-      {job.data && !done && (
-        <EmptyState title="Not ready for the robot yet">
-          Logging opens once the final test has finished.
-        </EmptyState>
-      )}
-      {done && plans.data?.length === 0 && (
-        <EmptyState
-          title="No test plan yet"
-          action={
-            <LinkButton variant="primary" to={`/jobs/${id}/validation`}>
-              Create a test plan
-            </LinkButton>
-          }
-        >
-          Create one on the validation page, then log it here.
-        </EmptyState>
-      )}
-      {done && job.data && plans.data && plans.data.length > 0 && (
-        <>
-          {job.data.review?.status !== "approved" && (
-            <Banner tone="warn" title="Not approved for the robot yet">
-              Printed fingers go on the real arm only after a named reviewer approves them on the results page.
-            </Banner>
-          )}
-          {plans.data.length > 1 && (
-            <Select
-              label="Test plan"
-              value={String(planId ?? "")}
-              onChange={(event) => setPlanChoice(Number(event.target.value))}
-              options={plans.data.map((p) => ({
-                value: String(p.id),
-                label: `Plan ${p.id}: ${of(p.logged, p.planned)} logged`,
-              }))}
-            />
-          )}
-          {plan.isPending && <Skeleton height={320} />}
-          {plan.isError && (
-            <ErrorState title="Couldn't load the test plan" message={plan.error.message} onRetry={() => void plan.refetch()} />
-          )}
-          {plan.data && (
-            <Logger
-              key={plan.data.id}
-              jobId={id}
-              planId={plan.data.id}
-              rows={plan.data.rows}
-              logged={plan.data.logged_trials}
-              taskKind={job.data.spec.task.kind}
-            />
-          )}
-        </>
-      )}
-    </Page>
-  );
-}
-
-function Logger({
+/** Logging a test plan one trial at a time, at the robot on a phone or tablet (docs/notes/frontend-plan.md, 8.4): the
+ *  offset to command in large text, then Held, Missed or Skipped, one call each, and on to the next. The sim's
+ *  prediction is never shown, so the operator tests blind, as with the spreadsheet. The other way to log is uploading
+ *  the filled-in spreadsheet; both are in the validation page's logging stage. */
+export function TrialLogger({
   jobId,
   planId,
   rows,
   logged,
-  taskKind,
+  tolerance,
 }: {
   jobId: string;
   planId: number;
   rows: Row[];
   logged: Logged[];
-  taskKind: "drop" | "place" | "insert";
+  tolerance: boolean; // place and insert: a held part was also within the task's tolerance, or not
 }) {
   const log = useLogTrial(jobId);
   const outcomes = useMemo(() => new Map(logged.map((t) => [t.trial_id, t])), [logged]);
@@ -112,7 +38,6 @@ function Logger({
   const [last, setLast] = useState<{ trialId: string; outcome: Outcome } | null>(null);
   const [inTolerance, setInTolerance] = useState<"yes" | "no" | "">("");
   const [note, setNote] = useState("");
-  const tolerance = taskKind !== "drop";
 
   const index = rows.findIndex((row) => row.trial_id === cursor);
   const row = index >= 0 ? rows[index] : undefined;
@@ -146,16 +71,8 @@ function Logger({
     );
   };
 
-  const loggedCount = rows.length - pending.length;
   return (
     <div className={styles.logger}>
-      <div className={styles.progress}>
-        <span>
-          {of(loggedCount, rows.length)} trials logged in plan {planId}
-        </span>
-        <ProgressBar value={rows.length ? loggedCount / rows.length : 0} label="Trials logged" />
-      </div>
-
       {last && (
         <div className={styles.last}>
           <span>
@@ -168,14 +85,7 @@ function Logger({
       )}
 
       {!row ? (
-        <EmptyState
-          title={`Every trial in plan ${planId} is logged`}
-          action={
-            <LinkButton variant="primary" to={`/jobs/${jobId}/validation`}>
-              Compare with the sim
-            </LinkButton>
-          }
-        />
+        <EmptyState title={`Every trial in plan ${planId} is logged`}>The comparison with the sim is below.</EmptyState>
       ) : (
         <section className={styles.trial} aria-label={`Trial ${row.trial_id}`}>
           <div className={styles.trialHead}>

@@ -166,6 +166,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/parts/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Parts
+         * @description Store many STEP or STL files at once, each on its own: one row per file, in the order sent. A file that can't be
+         *     read doesn't stop the others. 422 for more than 50 CAD files.
+         */
+        post: operations["upload_parts_api_parts_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/parts/{part_id}": {
         parameters: {
             query?: never;
@@ -282,7 +303,10 @@ export interface paths {
          */
         get: operations["list_cell_profiles_api_cell_profiles_get"];
         put?: never;
-        /** Create Cell Profile */
+        /**
+         * Create Cell Profile
+         * @description A new cell; its stock fingers join the finger library.
+         */
         post: operations["create_cell_profile_api_cell_profiles_post"];
         delete?: never;
         options?: never;
@@ -351,6 +375,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fingers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Fingers
+         * @description The finger library, by finger code. cell_profile: a cell profile's name. archived: false (default) leaves
+         *     archived fingers out, true lists only them; leave it empty for both. part_id: only fingers evaluated on that part;
+         *     min_success: only fingers whose best predicted success reaches it.
+         */
+        get: operations["list_fingers_api_fingers_get"];
+        put?: never;
+        /**
+         * Upload Finger
+         * @description Register a finger the factory owns, from its CAD: placed in the gripper frame automatically (check the preview).
+         *     415 for a format we don't read, 422 for a file that can't be read or an STL without units, 404 for an unknown cell
+         *     profile.
+         */
+        post: operations["upload_finger_api_fingers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fingers/{finger_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Finger */
+        get: operations["get_finger_api_fingers__finger_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Finger
+         * @description Rename, re-family, archive, or change the material, friction, quantity or notes.
+         */
+        patch: operations["update_finger_api_fingers__finger_id__patch"];
+        trace?: never;
+    };
+    "/api/fingers/{finger_id}/geometry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Finger Geometry
+         * @description The finger in the gripper frame (as built for its own part, for a generated finger), for the 3D preview.
+         */
+        get: operations["finger_geometry_api_fingers__finger_id__geometry_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/grids": {
         parameters: {
             query?: never;
@@ -383,8 +476,9 @@ export interface paths {
         put?: never;
         /**
          * Plan Job
-         * @description Steps 6-8: the plan for a spec (searches, totals, time estimate, warnings), stored nowhere. Always 200: what
-         *     blocks the job is in blocked / blockers, each with the input step that fixes it.
+         * @description The plan for a spec of either kind (a generation job's steps 6-8; an evaluation job's review), stored nowhere. A
+         *     spec without "kind" is a generation spec. Always 200: what blocks the job is in blocked / blockers, each with the
+         *     step that fixes it.
          */
         post: operations["plan_job_api_jobs_plan_post"];
         delete?: never;
@@ -402,15 +496,37 @@ export interface paths {
         };
         /**
          * List Jobs
-         * @description The job list: cards, newest first.
+         * @description The job list: cards, newest first, of both kinds unless kind is given.
          */
         get: operations["list_jobs_api_jobs_get"];
         put?: never;
         /**
          * Create Job
-         * @description Step 8: store the experiment and start its run. 422 with the blockers if the spec can't run yet.
+         * @description Store a job of either kind and start its run (a generation job's step 8). 422 with the blockers if the spec can't
+         *     run yet; 409 if the GPU isn't ready.
          */
         post: operations["create_job_api_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Evaluations
+         * @description One evaluation job per part (a customer order's parts, say), sharing a batch id. Every part's plan is checked
+         *     first: if any is blocked, none is created (422, each reason prefixed with its part).
+         */
+        post: operations["create_evaluations_api_jobs_batch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -554,6 +670,90 @@ export interface paths {
          * @description The results page at another error model and/or task, from the stored outcomes: nothing is simulated or stored.
          */
         post: operations["rescore_api_jobs__job_id__rescore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/ranking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ranking
+         * @description An evaluation job's results: its fingers ranked, each with its best grasp per pose, at the job's own grasp
+         *     accuracy and task. Partial (search grid only) while it runs. 409 for a generation job (its results are /results).
+         */
+        get: operations["get_ranking_api_jobs__job_id__ranking_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/ranking/rescore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rescore Ranking
+         * @description The ranking at another grasp accuracy and/or task, from the stored outcomes: nothing is simulated or stored.
+         */
+        post: operations["rescore_ranking_api_jobs__job_id__ranking_rescore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/generate-spec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Spec
+         * @description From an evaluation job: the spec of a generation job for the same part, cell, task, accuracy and poses, each pose
+         *     with finger_id's best grasp (or the pose's best proposal), for the wizard to edit and POST /api/jobs. Nothing is
+         *     stored or started.
+         */
+        post: operations["generate_spec_api_jobs__job_id__generate_spec_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/designs/{label}/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add To Library
+         * @description Add a generation job's final design (D1, D2, ..., IMP) to the finger library, marked simulated until it's
+         *     validated on the robot. 409 for STOCK and for a design added before.
+         */
+        post: operations["add_to_library_api_jobs__job_id__designs__label__library_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -993,6 +1193,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/qualifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Qualifications
+         * @description Every finger-and-part pair, filtered by finger and/or part, most recently updated first.
+         */
+        get: operations["list_qualifications_api_qualifications_get"];
+        put?: never;
+        /**
+         * Create Qualification
+         * @description The pair's qualification, created without a prediction if no evaluation has covered it yet (returned as it is
+         *     if one has).
+         */
+        post: operations["create_qualification_api_qualifications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/qualifications/{qualification_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Qualification */
+        get: operations["get_qualification_api_qualifications__qualification_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/qualifications/{qualification_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Session
+         * @description Log a real-robot session. The pair is validated from its first session; its gap is flagged when the sim's
+         *     prediction falls outside the 95% Wilson interval of what was measured.
+         */
+        post: operations["add_session_api_qualifications__qualification_id__sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/qualifications/{qualification_id}/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Session */
+        delete: operations["delete_session_api_qualifications__qualification_id__sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Session */
+        patch: operations["update_session_api_qualifications__qualification_id__sessions__session_id__patch"];
+        trace?: never;
+    };
     "/api/export/trials.jsonl": {
         parameters: {
             query?: never;
@@ -1017,6 +1298,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AddToLibraryRequest */
+        AddToLibraryRequest: {
+            /** Name */
+            name?: string | null;
+        };
         /** BackendError */
         BackendError: {
             /**
@@ -1265,6 +1551,16 @@ export interface components {
              */
             sim: components["schemas"]["CellSimSettings"];
             /**
+             * @default {
+             *       "preset": "typical",
+             *       "sigma_mm": 3,
+             *       "sigma_deg": 8,
+             *       "bias_mm": 0,
+             *       "bias_direction_deg": 0
+             *     }
+             */
+            grasp_accuracy: components["schemas"]["ErrorModel"];
+            /**
              * To Confirm
              * @default []
              */
@@ -1461,6 +1757,33 @@ export interface components {
             offset: components["schemas"]["ClipOffset"];
         };
         /**
+         * Comparison
+         * @description Sim against robot for a group of sessions: the natural ones pooled, or one commanded session.
+         */
+        Comparison: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "natural" | "commanded";
+            /** Session Ids */
+            session_ids: number[];
+            /** Trials */
+            trials: number;
+            /** Successes */
+            successes: number;
+            /** Measured Success */
+            measured_success: number;
+            /** Wilson Low */
+            wilson_low: number;
+            /** Wilson High */
+            wilson_high: number;
+            /** Predicted Success */
+            predicted_success: number | null;
+            /** Gap Flagged */
+            gap_flagged: boolean;
+        };
+        /**
          * ComputeInstance
          * @description One target a backend offers, as its provider reports it. status is the provider's own word (Brev: RUNNING,
          *     STOPPED, DEPLOYING, ...; the GB10: AVAILABLE, or BUSY with other GPU processes) and state what it means here.
@@ -1549,8 +1872,76 @@ export interface components {
             name: string;
             profile: components["schemas"]["CellProfile"];
         };
+        /**
+         * CreateEvaluationBatchRequest
+         * @description An evaluation spec for many parts: one evaluation job per part in part_ids (part_id is ignored).
+         */
+        CreateEvaluationBatchRequest: {
+            /**
+             * Kind
+             * @default evaluation
+             * @constant
+             */
+            kind: "evaluation";
+            /** Name */
+            name?: string | null;
+            /**
+             * Part Id
+             * @default
+             */
+            part_id: string;
+            /** Cell Profile Id */
+            cell_profile_id: number;
+            /** Poses */
+            poses?: components["schemas"]["EvaluationPose"][];
+            /** Finger Ids */
+            finger_ids?: string[] | null;
+            /**
+             * @default {
+             *       "kind": "drop"
+             *     }
+             */
+            task: components["schemas"]["Task"];
+            error?: components["schemas"]["ErrorModel"] | null;
+            /** Part Ids */
+            part_ids: string[];
+        };
+        /** CreateEvaluationRequest */
+        CreateEvaluationRequest: {
+            /**
+             * Kind
+             * @default evaluation
+             * @constant
+             */
+            kind: "evaluation";
+            /** Name */
+            name?: string | null;
+            /** Part Id */
+            part_id: string;
+            /** Cell Profile Id */
+            cell_profile_id: number;
+            /** Poses */
+            poses?: components["schemas"]["EvaluationPose"][];
+            /** Finger Ids */
+            finger_ids?: string[] | null;
+            /**
+             * @default {
+             *       "kind": "drop"
+             *     }
+             */
+            task: components["schemas"]["Task"];
+            error?: components["schemas"]["ErrorModel"] | null;
+            /** Duplicated From */
+            duplicated_from?: string | null;
+        };
         /** CreateJobRequest */
         CreateJobRequest: {
+            /**
+             * Kind
+             * @default generation
+             * @constant
+             */
+            kind: "generation";
             /** Name */
             name?: string | null;
             /** Part Id */
@@ -1568,16 +1959,7 @@ export interface components {
             poses?: components["schemas"]["PoseGrasp"][];
             /** Families */
             families?: components["schemas"]["FamilyChoice"][];
-            /**
-             * @default {
-             *       "preset": "typical",
-             *       "sigma_mm": 3,
-             *       "sigma_deg": 8,
-             *       "bias_mm": 0,
-             *       "bias_direction_deg": 0
-             *     }
-             */
-            error: components["schemas"]["ErrorModel"];
+            error?: components["schemas"]["ErrorModel"] | null;
             /** Budget */
             budget?: number | null;
             /**
@@ -1596,6 +1978,14 @@ export interface components {
             experiment_id: string;
             /** Name */
             name: string;
+            /**
+             * Kind
+             * @default generation
+             * @enum {string}
+             */
+            kind: "generation" | "evaluation";
+            /** Batch Id */
+            batch_id?: string | null;
         };
         /** CreatePrintedFingerRequest */
         CreatePrintedFingerRequest: {
@@ -1616,6 +2006,13 @@ export interface components {
              * @default
              */
             notes: string;
+        };
+        /** CreateQualificationRequest */
+        CreateQualificationRequest: {
+            /** Finger Id */
+            finger_id: string;
+            /** Part Id */
+            part_id: string;
         };
         /** CreateTestPlanRequest */
         CreateTestPlanRequest: {
@@ -1815,6 +2212,235 @@ export interface components {
             /** Note */
             note: string;
         };
+        /**
+         * EvaluationGrasp
+         * @description A grasp the evaluation tries in one pose, and the part as the gripper meets it there.
+         */
+        EvaluationGrasp: {
+            /** Key */
+            key: string;
+            grasp: components["schemas"]["GraspChoice"];
+            part: components["schemas"]["Part"];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+        };
+        /** EvaluationPlan */
+        EvaluationPlan: {
+            /**
+             * Kind
+             * @default evaluation
+             * @constant
+             */
+            kind: "evaluation";
+            part: components["schemas"]["Part"];
+            /** Poses */
+            poses: components["schemas"]["EvaluationPosePlan"][];
+            /** Fingers */
+            fingers: components["schemas"]["PlannedFinger"][];
+            /**
+             * Rejections
+             * @default []
+             */
+            rejections: components["schemas"]["Rejection"][];
+            grid: components["schemas"]["OffsetGrid"];
+            final_grid: components["schemas"]["OffsetGrid"];
+            /**
+             * Finalists
+             * @default 3
+             */
+            finalists: number;
+            totals: components["schemas"]["EvaluationTotals"];
+            estimate: components["schemas"]["TimeEstimate"];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+            /**
+             * Blocked
+             * @default []
+             */
+            blocked: string[];
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: components["schemas"]["Blocker"][];
+            /**
+             * Sim Backend
+             * @enum {string}
+             */
+            sim_backend: "mock" | "isaac";
+            /** Grip Force N */
+            grip_force_n?: number | null;
+        };
+        /** EvaluationPlanResponse */
+        EvaluationPlanResponse: {
+            /**
+             * Kind
+             * @default evaluation
+             * @constant
+             */
+            kind: "evaluation";
+            part: components["schemas"]["Part"];
+            /** Poses */
+            poses: components["schemas"]["EvaluationPosePlan"][];
+            /** Fingers */
+            fingers: components["schemas"]["PlannedFinger"][];
+            /**
+             * Rejections
+             * @default []
+             */
+            rejections: components["schemas"]["Rejection"][];
+            grid: components["schemas"]["OffsetGrid"];
+            final_grid: components["schemas"]["OffsetGrid"];
+            /**
+             * Finalists
+             * @default 3
+             */
+            finalists: number;
+            totals: components["schemas"]["EvaluationTotals"];
+            estimate: components["schemas"]["TimeEstimate"];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+            /**
+             * Blocked
+             * @default []
+             */
+            blocked: string[];
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: components["schemas"]["Blocker"][];
+            /**
+             * Sim Backend
+             * @enum {string}
+             */
+            sim_backend: "mock" | "isaac";
+            /** Grip Force N */
+            grip_force_n?: number | null;
+            /** Failed Step */
+            failed_step: number | null;
+        };
+        /**
+         * EvaluationPose
+         * @description One resting pose the evaluation covers, and optionally the one grasp the cell must use in it.
+         */
+        EvaluationPose: {
+            /** Pose */
+            pose: number | "as_authored";
+            grasp?: components["schemas"]["GraspChoice"] | null;
+        };
+        /** EvaluationPosePlan */
+        EvaluationPosePlan: {
+            /** Key */
+            key: string;
+            /** Label */
+            label?: string | null;
+            /** Choice */
+            choice?: number | "as_authored" | null;
+            /** Probability */
+            probability?: number | null;
+            /**
+             * Weight
+             * @default 1
+             */
+            weight: number;
+            resting?: components["schemas"]["RestingPose"] | null;
+            /** Grasps */
+            grasps: components["schemas"]["EvaluationGrasp"][];
+        };
+        /** EvaluationResults */
+        EvaluationResults: {
+            /** Job Id */
+            job_id: string;
+            /** Experiment Id */
+            experiment_id: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /**
+             * Sim Backend
+             * @enum {string}
+             */
+            sim_backend: "mock" | "isaac";
+            /** Part Id */
+            part_id: string;
+            /** Part Name */
+            part_name: string | null;
+            /** Cell Profile Id */
+            cell_profile_id: number;
+            error: components["schemas"]["ErrorModel"];
+            task: components["schemas"]["Task"];
+            /** Rescored */
+            rescored: boolean;
+            /** Final */
+            final: boolean;
+            /** Poses */
+            poses: components["schemas"]["RankingPose"][];
+            /** Fingers */
+            fingers: components["schemas"]["RankedFinger"][];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+        };
+        /** EvaluationSpec */
+        EvaluationSpec: {
+            /**
+             * Kind
+             * @default evaluation
+             * @constant
+             */
+            kind: "evaluation";
+            /** Name */
+            name?: string | null;
+            /** Part Id */
+            part_id: string;
+            /** Cell Profile Id */
+            cell_profile_id: number;
+            /** Poses */
+            poses?: components["schemas"]["EvaluationPose"][];
+            /** Finger Ids */
+            finger_ids?: string[] | null;
+            /**
+             * @default {
+             *       "kind": "drop"
+             *     }
+             */
+            task: components["schemas"]["Task"];
+            error?: components["schemas"]["ErrorModel"] | null;
+        };
+        /** EvaluationTotals */
+        EvaluationTotals: {
+            /** Fingers */
+            fingers: number;
+            /** Combinations */
+            combinations: number;
+            /** Simulated */
+            simulated: number;
+            /** Search Offsets */
+            search_offsets: number;
+            /** Final Offsets */
+            final_offsets: number;
+            /** Search Grasps */
+            search_grasps: number;
+            /** Final Grasps */
+            final_grasps: number;
+            /** Total Grasps */
+            total_grasps: number;
+            /** Batches */
+            batches: number;
+        };
         /** ExportCheck */
         ExportCheck: {
             /** Name */
@@ -1974,6 +2600,48 @@ export interface components {
             /** Pad Top Mm */
             pad_top_mm?: number | null;
         };
+        /** FingerGeometryResponse */
+        FingerGeometryResponse: {
+            finger: components["schemas"]["FingerResponse"];
+            geometry: components["schemas"]["Finger"];
+        };
+        /**
+         * FingerGrasp
+         * @description A finger's best grasp in one pose: where the cell has to grip with it.
+         */
+        FingerGrasp: {
+            /** Pose Key */
+            pose_key: string;
+            /** Pose Label */
+            pose_label: string | null;
+            /** Grasp Key */
+            grasp_key: string;
+            /** Angle Deg */
+            angle_deg: number;
+            /** Centre Mm */
+            centre_mm: [
+                number,
+                number
+            ];
+            /** Span Mm */
+            span_mm: [
+                number,
+                number
+            ] | null;
+            /** Tip Height Mm */
+            tip_height_mm: number | null;
+            /** Jaw Close Mm */
+            jaw_close_mm: number | null;
+            /** Success */
+            success: number;
+            /** Capture Radius Mm */
+            capture_radius_mm: number | null;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "search" | "final";
+        };
         /**
          * FingerMount
          * @description How a finger bolts to the jaw, in one of two ways:
@@ -2112,6 +2780,166 @@ export interface components {
             /** Params */
             params: components["schemas"]["ParamSummary"][];
         };
+        /** FingerRecord */
+        FingerRecord: {
+            /** Id */
+            id: string;
+            /** Number */
+            number: number;
+            /** Name */
+            name: string;
+            /** Created */
+            created: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "stock" | "generated" | "uploaded";
+            /** Cell Profile Name */
+            cell_profile_name: string;
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "stock" | "vpad" | "flat" | "imprint" | "other";
+            /**
+             * Material
+             * @default PLA
+             */
+            material: string;
+            /** Pad Friction */
+            pad_friction: [
+                number,
+                number
+            ];
+            /**
+             * Quantity On Hand
+             * @default 0
+             */
+            quantity_on_hand: number;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+            built_for?: components["schemas"]["Part"] | null;
+            design?: components["schemas"]["Design"] | null;
+            /** Cell Profile Id */
+            cell_profile_id?: number | null;
+            /** Origin Job Id */
+            origin_job_id?: string | null;
+            /** Origin Label */
+            origin_label?: string | null;
+            /** Origin Sim Backend */
+            origin_sim_backend?: ("mock" | "isaac") | null;
+            /** File Path */
+            file_path?: string | null;
+            /** Extent Mm */
+            extent_mm?: [
+                number,
+                number,
+                number
+            ] | null;
+            /** Pieces */
+            pieces?: components["schemas"]["Piece"][] | null;
+            /** Code */
+            readonly code: string;
+        };
+        /**
+         * FingerResponse
+         * @description A library finger, and where it has been tried. Lists leave out its geometry (pieces, built_for): GET
+         *     /api/fingers/{id} has it, and /geometry has it in the gripper frame for the 3D preview.
+         */
+        FingerResponse: {
+            /** Id */
+            id: string;
+            /** Number */
+            number: number;
+            /** Name */
+            name: string;
+            /** Created */
+            created: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "stock" | "generated" | "uploaded";
+            /** Cell Profile Name */
+            cell_profile_name: string;
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "stock" | "vpad" | "flat" | "imprint" | "other";
+            /**
+             * Material
+             * @default PLA
+             */
+            material: string;
+            /** Pad Friction */
+            pad_friction: [
+                number,
+                number
+            ];
+            /**
+             * Quantity On Hand
+             * @default 0
+             */
+            quantity_on_hand: number;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+            built_for?: components["schemas"]["Part"] | null;
+            design?: components["schemas"]["Design"] | null;
+            /** Cell Profile Id */
+            cell_profile_id?: number | null;
+            /** Origin Job Id */
+            origin_job_id?: string | null;
+            /** Origin Label */
+            origin_label?: string | null;
+            /** Origin Sim Backend */
+            origin_sim_backend?: ("mock" | "isaac") | null;
+            /** File Path */
+            file_path?: string | null;
+            /** Extent Mm */
+            extent_mm?: [
+                number,
+                number,
+                number
+            ] | null;
+            /** Pieces */
+            pieces?: components["schemas"]["Piece"][] | null;
+            /** Parts Evaluated */
+            parts_evaluated: number;
+            /** Best Success */
+            best_success: number | null;
+            /** Validated Parts */
+            validated_parts: number;
+            /** Code */
+            readonly code: string;
+        };
         /**
          * GraspCandidate
          * @description One grasp axis and how it scored. verdict: "blocked" if the fingers can't reach around it or a jaw would find no
@@ -2227,6 +3055,23 @@ export interface components {
             /** Rejected */
             rejected: string[];
             nothing_fits?: components["schemas"]["NothingFits"] | null;
+        };
+        /**
+         * GraspScore
+         * @description A finger at one grasp: its search-grid success, or None and the reasons where it can't grip there.
+         */
+        GraspScore: {
+            /** Pose Key */
+            pose_key: string;
+            /** Grasp Key */
+            grasp_key: string;
+            /** Success */
+            success: number | null;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: string[];
         };
         /** GridCircle */
         GridCircle: {
@@ -2451,8 +3296,26 @@ export interface components {
             errors: components["schemas"]["BackendError"][];
         };
         /**
+         * IntakeResponse
+         * @description One file of a bulk upload: ready or needs_properties (stored, with its part), file_error or skipped (not stored).
+         */
+        IntakeResponse: {
+            /** Filename */
+            filename: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "needs_properties" | "file_error" | "skipped";
+            part?: components["schemas"]["PartResponse"] | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * JobCard
-         * @description One experiment in the job list, and each server-sent event while it runs.
+         * @description One experiment in the job list, and each server-sent event while it runs. For an evaluation job, winner is its
+         *     best finger (label: the finger code) and stock its stock fingers; n_done counts fingers simulated at a grasp, and
+         *     round / n_rounds sim requests.
          */
         JobCard: {
             /** Id */
@@ -2461,6 +3324,14 @@ export interface components {
             experiment_id: string;
             /** Name */
             name: string;
+            /**
+             * Kind
+             * @default generation
+             * @enum {string}
+             */
+            kind: "generation" | "evaluation";
+            /** Batch Id */
+            batch_id?: string | null;
             /** Part Id */
             part_id: string;
             /** Part Name */
@@ -2520,6 +3391,12 @@ export interface components {
             /** Created */
             created: number;
             /**
+             * Kind
+             * @default generation
+             * @enum {string}
+             */
+            kind: "generation" | "evaluation";
+            /**
              * Status
              * @enum {string}
              */
@@ -2533,9 +3410,11 @@ export interface components {
              * @enum {string}
              */
             sim_backend: "mock" | "isaac";
-            spec: components["schemas"]["JobSpec"];
+            /** Spec */
+            spec: components["schemas"]["JobSpec"] | components["schemas"]["EvaluationSpec"];
             part: components["schemas"]["Part"];
-            plan: components["schemas"]["JobPlan"];
+            /** Plan */
+            plan: components["schemas"]["JobPlan"] | components["schemas"]["EvaluationPlan"];
             /**
              * N Done
              * @default 0
@@ -2582,6 +3461,8 @@ export interface components {
              * @default []
              */
             print_designs: string[];
+            /** Batch Id */
+            batch_id?: string | null;
             card: components["schemas"]["JobCard"];
             review: components["schemas"]["Review"] | null;
             /** Experiment Id */
@@ -2589,6 +3470,12 @@ export interface components {
         };
         /** JobPlan */
         JobPlan: {
+            /**
+             * Kind
+             * @default generation
+             * @constant
+             */
+            kind: "generation";
             part: components["schemas"]["Part"];
             /** Families */
             families: components["schemas"]["FamilySummary"][];
@@ -2653,6 +3540,12 @@ export interface components {
         };
         /** JobSpec */
         JobSpec: {
+            /**
+             * Kind
+             * @default generation
+             * @constant
+             */
+            kind: "generation";
             /** Name */
             name?: string | null;
             /** Part Id */
@@ -2670,16 +3563,7 @@ export interface components {
             poses?: components["schemas"]["PoseGrasp"][];
             /** Families */
             families?: components["schemas"]["FamilyChoice"][];
-            /**
-             * @default {
-             *       "preset": "typical",
-             *       "sigma_mm": 3,
-             *       "sigma_deg": 8,
-             *       "bias_mm": 0,
-             *       "bias_direction_deg": 0
-             *     }
-             */
-            error: components["schemas"]["ErrorModel"];
+            error?: components["schemas"]["ErrorModel"] | null;
             /** Budget */
             budget?: number | null;
             /**
@@ -3135,6 +4019,8 @@ export interface components {
             created: number;
             /** Name */
             name: string;
+            /** Part Number */
+            part_number?: string | null;
             /** File Path */
             file_path: string;
             /**
@@ -3203,6 +4089,12 @@ export interface components {
              * @description The mass the sim uses: the measured one if given, else the computed one.
              */
             readonly confirmed_mass_g: number | null;
+            /**
+             * Intake Status
+             * @description ready: it can be evaluated; needs_properties: choose its material or enter a mass first.
+             * @enum {string}
+             */
+            readonly intake_status: "ready" | "needs_properties";
         };
         /** PhysicalTrial */
         PhysicalTrial: {
@@ -3282,6 +4174,12 @@ export interface components {
         };
         /** PlanResponse */
         PlanResponse: {
+            /**
+             * Kind
+             * @default generation
+             * @constant
+             */
+            kind: "generation";
             part: components["schemas"]["Part"];
             /** Families */
             families: components["schemas"]["FamilySummary"][];
@@ -3346,6 +4244,25 @@ export interface components {
              * @default 1
              */
             poses: number;
+        };
+        /** PlannedFinger */
+        PlannedFinger: {
+            /** Finger Id */
+            finger_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "stock" | "generated" | "uploaded";
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "stock" | "vpad" | "flat" | "imprint" | "other";
         };
         /** PlannedTrial */
         PlannedTrial: {
@@ -3441,6 +4358,36 @@ export interface components {
             capture_radius_mm: number | null;
         };
         /**
+         * Prediction
+         * @description What one evaluation job predicted for the pair.
+         */
+        Prediction: {
+            /** Job Id */
+            job_id: string;
+            /** Experiment Id */
+            experiment_id: string;
+            /** Success */
+            success: number;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "search" | "final";
+            /** N Grasps */
+            n_grasps: number;
+            error: components["schemas"]["ErrorModel"];
+            task: components["schemas"]["Task"];
+            /** Grasps */
+            grasps: components["schemas"]["GraspChoice"][];
+            /**
+             * Sim Backend
+             * @enum {string}
+             */
+            sim_backend: "mock" | "isaac";
+            /** Created */
+            created: number;
+        };
+        /**
          * PrintSelection
          * @description Which of an experiment's designs go to the printer and onto the robot. The baselines are always tested: STOCK on
          *     the aluminium fingers already fitted, IMP printed like the chosen designs.
@@ -3494,6 +4441,159 @@ export interface components {
             cell_profile_id: number;
             /** Pose */
             pose?: number | "as_authored" | null;
+        };
+        /**
+         * QualificationView
+         * @description A qualification with its sessions and what follows from them.
+         */
+        QualificationView: {
+            /** Id */
+            id: number;
+            /** Finger Id */
+            finger_id: string;
+            /** Part Id */
+            part_id: string;
+            prediction?: components["schemas"]["Prediction"] | null;
+            /**
+             * History
+             * @default []
+             */
+            history: components["schemas"]["Prediction"][];
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
+            /** Finger Code */
+            finger_code: string;
+            /** Finger Name */
+            finger_name: string;
+            /** Part Name */
+            part_name: string | null;
+            /** Sessions */
+            sessions: components["schemas"]["RealSession"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "simulated" | "validated";
+            /** Measured Success */
+            measured_success: number | null;
+            /** Real Trials */
+            real_trials: number;
+            /** Comparisons */
+            comparisons: components["schemas"]["Comparison"][];
+            /** Gap Flagged */
+            gap_flagged: boolean;
+        };
+        /** RankedFinger */
+        RankedFinger: {
+            /** Rank */
+            rank: number;
+            /** Finger Id */
+            finger_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "stock" | "generated" | "uploaded";
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "stock" | "vpad" | "flat" | "imprint" | "other";
+            /** Success */
+            success: number;
+            /** Capture Radius Mm */
+            capture_radius_mm: number | null;
+            /** N Grasps */
+            n_grasps: number;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "search" | "final";
+            /** Best */
+            best: components["schemas"]["FingerGrasp"][];
+            /** Grasps */
+            grasps: components["schemas"]["GraspScore"][];
+            /**
+             * Curve
+             * @default {}
+             */
+            curve: {
+                [key: string]: number;
+            };
+            /** Qualification Id */
+            qualification_id?: number | null;
+            /** Measured Success */
+            measured_success?: number | null;
+            /**
+             * Real Trials
+             * @default 0
+             */
+            real_trials: number;
+        };
+        /** RankingPose */
+        RankingPose: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string | null;
+            /** Weight */
+            weight: number;
+            /** Grasps */
+            grasps: components["schemas"]["EvaluationGrasp"][];
+        };
+        /**
+         * RealSession
+         * @description One sitting at the real robot: how many grasps were tried and how many succeeded.
+         */
+        RealSession: {
+            /** Id */
+            id: number;
+            /** Qualification Id */
+            qualification_id: number;
+            /**
+             * Kind
+             * @default natural
+             * @enum {string}
+             */
+            kind: "natural" | "commanded";
+            /** Trials */
+            trials: number;
+            /** Successes */
+            successes: number;
+            /** Predicted Success */
+            predicted_success?: number | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Operator */
+            operator?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Created */
+            created: number;
+        };
+        /**
+         * Rejection
+         * @description A finger that can't grip the part at one grasp, and why (finger.problems): it isn't simulated there.
+         */
+        Rejection: {
+            /** Finger Id */
+            finger_id: string;
+            /** Pose Key */
+            pose_key: string;
+            /** Grasp Key */
+            grasp_key: string;
+            /** Reasons */
+            reasons: string[];
         };
         /** RenameJobRequest */
         RenameJobRequest: {
@@ -3757,6 +4857,35 @@ export interface components {
             /** Stop Reason */
             stop_reason: string | null;
         };
+        /**
+         * SessionRequest
+         * @description A real-robot session: how many grasps were tried, and how many succeeded. natural: the cell running as usual,
+         *     compared with the pair's prediction; commanded: deliberate offsets (our platform runs), compared with
+         *     predicted_success, the sim's rate at those offsets.
+         */
+        SessionRequest: {
+            /**
+             * Kind
+             * @default natural
+             * @enum {string}
+             */
+            kind: "natural" | "commanded";
+            /** Trials */
+            trials: number;
+            /** Successes */
+            successes: number;
+            /** Predicted Success */
+            predicted_success?: number | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Operator */
+            operator?: string | null;
+            /** Date */
+            date?: string | null;
+        };
         /** SimInfo */
         SimInfo: {
             /**
@@ -3921,11 +5050,38 @@ export interface components {
             profile: components["schemas"]["CellProfile"];
         };
         /**
+         * UpdateFingerRequest
+         * @description Only the fields sent change. The geometry, the cell and where the finger came from never do.
+         */
+        UpdateFingerRequest: {
+            /** Name */
+            name?: string | null;
+            /** Family */
+            family?: ("stock" | "vpad" | "flat" | "imprint" | "other") | null;
+            /** Material */
+            material?: string | null;
+            /** Pad Friction */
+            pad_friction?: [
+                number,
+                number
+            ] | null;
+            /** Quantity On Hand */
+            quantity_on_hand?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Archived */
+            archived?: boolean | null;
+        };
+        /**
          * UpdatePartRequest
          * @description Only the fields sent change. mass_g null means "use the computed mass"; density_g_cm3 null, the material's own.
-         *     pose: an index into GET /poses, or "as_authored".
+         *     pose: an index into GET /poses, or "as_authored". part_number null clears it.
          */
         UpdatePartRequest: {
+            /** Name */
+            name?: string | null;
+            /** Part Number */
+            part_number?: string | null;
             /** Material */
             material?: ("glass" | "pla" | "abs" | "aluminium" | "steel" | "rubber" | "other") | null;
             /** Density G Cm3 */
@@ -3945,10 +5101,86 @@ export interface components {
             /** Pose */
             pose?: number | "as_authored" | null;
         };
+        /**
+         * UpdateSessionRequest
+         * @description Only the fields sent change.
+         */
+        UpdateSessionRequest: {
+            /** Kind */
+            kind?: ("natural" | "commanded") | null;
+            /** Trials */
+            trials?: number | null;
+            /** Successes */
+            successes?: number | null;
+            /** Predicted Success */
+            predicted_success?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Operator */
+            operator?: string | null;
+            /** Date */
+            date?: string | null;
+        };
+        /** UploadFingerRequest */
+        UploadFingerRequest: {
+            /** Finger File */
+            finger_file: string;
+            /** Cell Profile Id */
+            cell_profile_id: number;
+            /** Units */
+            units?: ("mm" | "in") | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Family
+             * @default other
+             * @enum {string}
+             */
+            family: "stock" | "vpad" | "flat" | "imprint" | "other";
+            /**
+             * Material
+             * @default PLA
+             */
+            material: string;
+            /** Pad Friction Static */
+            pad_friction_static?: number | null;
+            /** Pad Friction Dynamic */
+            pad_friction_dynamic?: number | null;
+            /**
+             * Quantity On Hand
+             * @default 0
+             */
+            quantity_on_hand: number;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /**
+             * Mirror
+             * @default false
+             */
+            mirror: boolean;
+            /**
+             * Upside Down
+             * @default false
+             */
+            upside_down: boolean;
+        };
         /** UploadPartRequest */
         UploadPartRequest: {
             /** Part File */
             part_file: string;
+            /** Units */
+            units?: ("mm" | "in") | null;
+        };
+        /**
+         * UploadPartsRequest
+         * @description Many files at once: several picked, or every file of a folder (anything that isn't STEP or STL is skipped).
+         */
+        UploadPartsRequest: {
+            /** Files */
+            files: string[];
             /** Units */
             units?: ("mm" | "in") | null;
         };
@@ -4287,6 +5519,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PartResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_parts_api_parts_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["UploadPartsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -4687,6 +5952,172 @@ export interface operations {
             };
         };
     };
+    list_fingers_api_fingers_get: {
+        parameters: {
+            query?: {
+                cell_profile?: string | null;
+                family?: ("stock" | "vpad" | "flat" | "imprint" | "other") | null;
+                source?: ("stock" | "generated" | "uploaded") | null;
+                archived?: boolean | null;
+                part_id?: string | null;
+                min_success?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FingerResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_finger_api_fingers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["UploadFingerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FingerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_finger_api_fingers__finger_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                finger_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FingerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_finger_api_fingers__finger_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                finger_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFingerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FingerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finger_geometry_api_fingers__finger_id__geometry_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                finger_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FingerGeometryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     preview_grid_api_grids_post: {
         parameters: {
             query?: never;
@@ -4729,7 +6160,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["JobSpec"];
+                "application/json": components["schemas"]["JobSpec"] | components["schemas"]["EvaluationSpec"];
             };
         };
         responses: {
@@ -4739,7 +6170,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlanResponse"];
+                    "application/json": components["schemas"]["PlanResponse"] | components["schemas"]["EvaluationPlanResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4759,6 +6190,8 @@ export interface operations {
                 part_id?: string | null;
                 status?: ("queued" | "running" | "finalizing" | "done" | "failed" | "cancelled" | "interrupted") | null;
                 backend?: ("mock" | "isaac") | null;
+                kind?: ("generation" | "evaluation") | null;
+                batch_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -4795,7 +6228,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateJobRequest"];
+                "application/json": components["schemas"]["CreateJobRequest"] | components["schemas"]["CreateEvaluationRequest"];
             };
         };
         responses: {
@@ -4806,6 +6239,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_evaluations_api_jobs_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEvaluationBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateJobResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -4902,7 +6368,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JobSpec"];
+                    "application/json": components["schemas"]["JobSpec"] | components["schemas"]["EvaluationSpec"];
                 };
             };
             /** @description Validation Error */
@@ -5062,6 +6528,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResultsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ranking_api_jobs__job_id__ranking_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationResults"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rescore_ranking_api_jobs__job_id__ranking_rescore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RescoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationResults"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_spec_api_jobs__job_id__generate_spec_post: {
+        parameters: {
+            query?: {
+                finger_id?: string | null;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSpec"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_to_library_api_jobs__job_id__designs__label__library_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AddToLibraryRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FingerRecord"];
                 };
             };
             /** @description Validation Error */
@@ -5914,6 +7515,205 @@ export interface operations {
                 };
                 content: {
                     "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_qualifications_api_qualifications_get: {
+        parameters: {
+            query?: {
+                finger_id?: string | null;
+                part_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_qualification_api_qualifications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateQualificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_qualification_api_qualifications__qualification_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                qualification_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_session_api_qualifications__qualification_id__sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                qualification_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_session_api_qualifications__qualification_id__sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                qualification_id: number;
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_session_api_qualifications__qualification_id__sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                qualification_id: number;
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationView"];
                 };
             };
             /** @description Validation Error */

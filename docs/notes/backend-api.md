@@ -9,7 +9,13 @@ status: current
 
 # Backend API for the input flow and outputs (as built)
 
-**For:** whoever builds the wizard, the job list, the results page and the results tracker.
+**For:** whoever builds the wizard, the job list, the results page and the results tracker, and the finger library,
+evaluation jobs and qualifications ([the last section](#finger-library-evaluation-jobs-and-qualifications)).
+
+**Two kinds of job.** A job is a run the worker does on the sim. A **generation** job is the optimizer designing new
+fingers (the wizard, the results page and the tracker below). An **evaluation** job tries the fingers in the library on
+a part and ranks them. Both share the job list, live progress, cancel, resume and experiment IDs; every card, spec and
+plan has a `kind`. A spec sent without one is a generation spec, so older clients keep working.
 
 **Where the exact shapes are:**
 
@@ -41,8 +47,12 @@ uv run --package backend uvicorn api.main:app --port 8000
 
 - parts: a vial cap, a 10 mm cube, a lying glass tube, an L-bracket (a mesh part) and a steel plate that nothing fits;
 - two cell profiles, one with two versions;
-- ten experiments: done, cancelled, interrupted and failed;
-- two experiments with print selections, printed fingers and test plans, one validated and one in progress.
+- ten generation experiments: done, cancelled, interrupted and failed;
+- two experiments with print selections, printed fingers and test plans, one validated and one in progress;
+- a finger library: the UWM cell's stock fingers, two generated designs and two uploaded fingers (one too wide for the
+  small parts);
+- three evaluation jobs: the vial cap, and a batch of the cube and the L-bracket;
+- made-up real-robot sessions on two finger-and-part pairs, one agreeing with the sim and one flagging a gap.
 
 **Back to real data:** unset `DEMO_DATA`.
 
@@ -89,14 +99,27 @@ job's SSE stream.
 - An STL also needs `units` (`mm` or `in`).
 - A native SolidWorks file gets 415, with the hint "In SolidWorks: File > Save As > STEP." An unreadable file gets 422.
 
+**Many at once:** `POST /api/parts/batch`, multipart with `files` repeated (several picked, or every file of a folder:
+`<input type="file" webkitdirectory>` sends them all) and one `units` for every STL. It returns 201 with one row per file,
+in the order sent: `{filename, status, part, reason}`.
+
+- `status` is `ready` or `needs_properties` (stored; `part` is the record, without pieces), `file_error` (not stored;
+  `reason` says why) or `skipped` (not a STEP or STL, e.g. a readme in the folder).
+- A bad file never stops the others. More than 50 CAD files in one request is a 422.
+
+**Intake status:** every part response has `intake_status`: `ready` once it has a mass (a material or a measured mass),
+else `needs_properties`. Evaluations and generation jobs need it ready.
+
 **Reading parts back:** `GET /api/parts` (newest first) and `GET /api/parts/{id}`.
 
 - Lists leave out the convex pieces (`measured.pieces` is empty there).
 - `measured.extent_mm` is the bounding box. Show it, so a units mistake is caught.
 - `measured.material_hint` pre-selects the material.
 
-**Editing:** `PATCH /api/parts/{id}` (JSON). Only the fields sent change. The fields are material, density_g_cm3,
-surface, mass_g, mass_unit, fragile, max_grip_force_n, clearance_mm and pose.
+**Editing:** `PATCH /api/parts/{id}` (JSON). Only the fields sent change. The fields are name, part_number, material,
+density_g_cm3, surface, mass_g, mass_unit, fragile, max_grip_force_n, clearance_mm and pose.
+
+- `name` starts as the file's name and can't be blank; `part_number: null` (or blank) clears the number.
 
 - `mass_g: null` means "use the computed mass".
 - When the material changes, send `density_g_cm3: null` too, or an earlier density stays.
@@ -154,6 +177,11 @@ The task is part of the job spec; there's no endpoint. Its fields:
 - `gripper`: what the finger geometry uses.
 - `to_confirm`: fields that are still placeholders. Mark them.
 
+**Grasp accuracy:** `profile.grasp_accuracy` is the cell's error model (same shape as a spec's `error`, step 7): how far a
+grasp may land from where it was aimed. It defaults to the "typical" preset. A job spec that leaves `error` out (or
+null) gets the cell's, copied in when the job is created; one that sends its own keeps it (a what-if run). Edit it with
+the usual `PUT`, which saves a new version. Creating a cell also adds its stock fingers to the finger library.
+
 ### Step 5, grasp
 
 One grasp per pose the job covers: ask for each with that pose's index, and draw it on `GET .../mesh?pose=<index>`.
@@ -207,7 +235,8 @@ centre_mm?, span_mm?}`.
 ### Step 7, camera error and grid
 
 **Error model:** the spec's `error` is `{preset, sigma_mm, sigma_range_mm?, sigma_deg, bias_mm, bias_direction_deg}`.
-The presets are in `/api/meta`; the placeholder ones say so.
+The presets are in `/api/meta`; the placeholder ones say so. Left out, it's the cell profile's `grasp_accuracy` (step 4):
+pre-fill the step from the profile, and only send `error` when the user changes it.
 
 **Grid preview:** `POST /api/grids {part, parts?, error, final?}`. For a job over several poses send every pose's part
 (`plan.poses[].part`) as `parts`: they share one grid, with yaw layers unless every pose is round from above.
@@ -281,11 +310,15 @@ prediction waiting. Starting a job, a resume or a prediction restarts the clock.
 
 ## Job list
 
-**Cards:** `GET /api/jobs?part_id=&status=&backend=` returns cards, newest first. A card has:
+**Cards:** `GET /api/jobs?part_id=&status=&backend=&kind=&batch_id=` returns cards of both kinds, newest first. A card
+has:
 
-- `experiment_id`, `name`, `part_name`, `task_kind`, `sim_backend`, `status`;
+- `experiment_id`, `name`, `kind` (`generation` / `evaluation`), `batch_id`, `part_name`, `task_kind`, `sim_backend`,
+  `status`;
 - `round` / `n_rounds`, `n_done` / `n_total`, and `best_value` (best predicted success so far);
-- once done, `winner` and `stock`, each `{label, success, capture_radius_mm}`;
+- once done, `winner` and `stock`, each `{label, success, capture_radius_mm}`. For an evaluation job, `winner` is its
+  best finger (`label` is the finger code, `FNG-0003`) and `stock` the stock fingers; `n_done` counts fingers
+  simulated at a grasp, and `round` / `n_rounds` sim requests;
 - once failed, `failure` (one line) and `failed_step`;
 - `physical_badge`: `none`, `in_progress` or `validated`.
 
@@ -296,8 +329,9 @@ prediction waiting. Starting a job, a resume or a prediction restarts the clock.
 **Other calls**
 
 - `PATCH /api/jobs/{id} {name}` renames.
-- `POST /{id}/duplicate` returns a JobSpec named "… (copy)" for the wizard to edit and re-submit, with
-  `duplicated_from`. It doesn't start a run. An older spec with one `grasp` comes back as `poses` with that grasp on its
+- `POST /{id}/duplicate` returns the job's spec (a JobSpec or an EvaluationSpec, by `kind`) named "… (copy)" for the
+  wizard to edit and re-submit, with `duplicated_from`. It doesn't start a run. An evaluation that tried every
+  compatible finger copies as one that does again, so fingers added since are included. An older spec with one `grasp` comes back as `poses` with that grasp on its
   pose, when the pose is still one of the part's.
 - `POST /{id}/cancel` and `POST /{id}/resume`. Interrupted, cancelled and failed jobs resume from their last round.
 
@@ -474,3 +508,135 @@ returns `finger_id` (e.g. `EXP-0001-D1-L`), the ID engraved on the finger.
 - `curve_points`: measured success to overlay on the results curves.
 
 **Exports:** `GET /api/export/physical.jsonl?job_id=` and `.csv`.
+
+## Finger library, evaluation jobs and qualifications
+
+The plan is [library-evaluation-backend-plan.md](library-evaluation-backend-plan.md); the user stories are
+[Auto-Grasp User Stories](<../Auto-Grasp User Stories.md>). Two libraries, each its own tab: parts (`/api/parts`, above)
+and fingers (`/api/fingers`).
+
+### Finger library (stories 7, 8, 16)
+
+**A library finger** is a physical finger, with a fixed code (`FNG-0001`) and a name that can change. `source` is:
+
+- `stock`: a cell's own fingers. One per cell profile, added by the app (at startup and when a cell is created). No
+  geometry: the sim uses its own model.
+- `generated`: a generation job's final design, added from its results (below). `origin_job_id`, `origin_label` and
+  `origin_sim_backend` say where it came from: a design from the mock sim is geometry only.
+- `uploaded`: a finger the factory owns, from its CAD.
+
+**Browse:** `GET /api/fingers?cell_profile=&family=&source=&archived=&part_id=&min_success=`, by code.
+
+- `archived` defaults to `false` (archived fingers left out); `true` lists only them; leave it empty for both.
+- `part_id`: fingers evaluated on that part; `min_success`: fingers whose best prediction reaches it.
+- Each has `parts_evaluated`, `best_success` and `validated_parts`, from its qualifications. Lists leave out the geometry
+  (`pieces`, `built_for` are null); `GET /api/fingers/{id}` has it.
+
+**Register (story 7):** `POST /api/fingers`, multipart: `finger_file` (one finger, STEP or STL; the sim mirrors it for the
+other jaw), `cell_profile_id`, and optionally `units` (STL), `name`, `family` (`flat`, `vpad`, `imprint`, `other`),
+`material`, `pad_friction_static` with `pad_friction_dynamic` (both or neither; neither: the cell's printed pad),
+`quantity_on_hand`, `notes`, `mirror` and `upside_down`. 201 with the finger; 415 / 422 / 404 as for parts.
+
+- **It's placed automatically:** the fingertips (lowest point) at z = 0, the face nearest the other finger at x = 0,
+  centred across. `mirror` flips it first when its gripping face points +x in the file; `upside_down` when its
+  fingertips point up. `warnings` always asks to check the placement on the preview, and says when the finger reaches
+  past the free space beside the gripper or past the maximum finger length.
+
+**Preview:** `GET /api/fingers/{id}/geometry` returns `{finger, geometry}`: `geometry.pieces` in the gripper frame with
+the jaws closed (as the design previews). A generated finger is shown as built for its own part; the stock fingers are
+the twin's model of the real blades (there is no CAD of them), built for no part.
+
+**Edit:** `PATCH /api/fingers/{id}` with any of name, family, material, pad_friction, quantity_on_hand, notes,
+archived. The geometry and the cell never change. Archiving leaves it out of new evaluations; old results keep it. The
+stock fingers can't be archived: every cell has them, added at startup and when a profile is created.
+
+**Add a generated design (story 16):** `POST /api/jobs/{id}/designs/{label}/library` (optional body `{name}`), for D1,
+D2, ... or IMP of a finished generation job. 201 with the finger; 409 for STOCK (already in the library) or a design
+added before. It doesn't touch the review gate: printing and mounting still need `/review`.
+
+### Evaluation jobs (stories 9, 10, 12)
+
+**Spec** (`kind: "evaluation"`):
+
+- `part_id`, `cell_profile_id`, `task`, optional `name`;
+- `poses`: `[{pose, grasp?}]`. Leave it empty for the part's likely poses (the likeliest if none is). A `grasp` locks
+  that pose to one grasp (story 4: the cell can only grip it that way); otherwise its top 3 grasp proposals that aren't
+  blocked are tried;
+- `finger_ids`: leave null for every unarchived finger for the cell. The cell's stock fingers are always included;
+- `error`: leave null for the cell's grasp accuracy.
+
+**Plan:** `POST /api/jobs/plan` with the spec, always 200, `kind: "evaluation"`:
+
+- `poses`: each `{key, label, choice, probability, weight, resting, grasps}`, each grasp `{key ("g0", ...), grasp, part,
+  warnings}`;
+- `fingers`: `{finger_id, code, name, source, family}`, stock first;
+- `rejections`: `{finger_id, pose_key, grasp_key, reasons}` for each finger that can't grip at a grasp (from the geometry
+  checks): it's never simulated there and scores 0 at it;
+- `totals`: fingers, combinations, simulated, the grids' sizes, search / final / total grasps, and sim requests
+  (`batches`, at most);
+- `estimate`, `warnings` (the placeholder accuracy, a finger that can't grip anywhere, the mock badge, ...);
+- `blockers` and `failed_step`: steps are 1 part, 2 poses, 3 fingers, 4 cell, 5 grasps. A cell with no fingers besides
+  its stock ones blocks at step 3.
+
+**Run:** `POST /api/jobs` with the spec: 201 `{id, experiment_id, name, kind}`, then the job list, events, cancel and
+resume work as for any job. For several parts at once: `POST /api/jobs/batch` with the spec and `part_ids` (its
+`part_id` is ignored): one job per part, sharing a `batch_id`. Every part is checked first; if any is blocked, none is
+created (422, each reason prefixed with the part's name).
+
+**How it scores:**
+
+- Every finger is simulated at every grasp of every pose on the search grid.
+- A finger's score is the sum over poses of the pose's weight times its best grasp's expected success there.
+- The top 3 fingers and stock are then re-tested at their best grasp per pose on the dense grid. The others keep their
+  search-grid score.
+- It assumes the cell recognises the part's pose and runs that finger's grasp for it. There's no pass bar: the
+  manufacturing engineer decides.
+
+**Ranking (story 12):** `GET /api/jobs/{id}/ranking` (409 for a generation job, whose results are `/results`; and
+`/results` is 409 for an evaluation job). Partial while the job runs.
+
+- Top level: `status`, `sim_backend`, `part_name`, `error`, `task`, `rescored`, `final` (the dense test has run), `poses`
+  (with their grasps), `warnings` (the caveats: flat table, top-down, no height error).
+- `fingers`, best first, each with:
+  - `rank`, `code`, `name`, `source`, `family`;
+  - `success`, `capture_radius_mm`, and `n_grasps` (the simulated grasps the score is based on);
+  - `stage` (`final` once re-tested on the dense grid);
+  - `best`: per pose it grips, `{pose_key, grasp_key, angle_deg, centre_mm, span_mm, tip_height_mm, jaw_close_mm,
+    success, capture_radius_mm, stage}`. That's where the cell has to grip with it (tip height and jaw close are null
+    for stock: the sim's own rule);
+  - `grasps`: every grasp's search-grid success, or null with `reasons` where it can't grip;
+  - `curve`: success at 0.5 to 5 mm of error, for the success-vs-accuracy plot;
+  - `qualification_id`, `measured_success`, `real_trials`: real-robot results on this part, if any.
+
+**Re-score:** `POST /api/jobs/{id}/ranking/rescore {error?, task?}`, from the stored outcomes; nothing is simulated or
+stored.
+
+**Not good enough? (story 14):** `POST /api/jobs/{id}/generate-spec?finger_id=` returns a generation JobSpec for the same
+part, cell, task, accuracy and poses, each pose with `finger_id`'s best grasp, or the pose's best proposal without one.
+Open the wizard with it; nothing is stored. To compare the new finger with the library on the same grid and grasps, add
+it to the library once it's done, then run the evaluation again (`/duplicate`).
+
+### Qualifications: one finger on one part (story 17)
+
+**A qualification** is unique per finger and part. It holds the latest sim `prediction` (`{job_id, experiment_id,
+success, stage, n_grasps, error, task, grasps, sim_backend, created}`; earlier ones in `history`) and the real-robot
+`sessions`. Every finished evaluation job updates the predictions of the pairs it covered.
+
+- `GET /api/qualifications?finger_id=&part_id=` (most recently updated first) and `GET /api/qualifications/{id}`.
+- `POST /api/qualifications {finger_id, part_id}` creates one (no prediction) for a pair no evaluation has covered, or
+  returns the existing one.
+- `POST /api/qualifications/{id}/sessions {trials, successes, kind?, predicted_success?, notes?, operator?, date?}` logs a
+  session (201). `PATCH` and `DELETE /api/qualifications/{id}/sessions/{session_id}` correct or remove one. 422 for more
+  successes than trials.
+
+**Each response also has:**
+
+- `status`: `simulated`, or `validated` once a session is logged;
+- `measured_success` and `real_trials`, every session pooled;
+- `comparisons`: each `{kind, session_ids, trials, successes, measured_success, wilson_low, wilson_high,
+  predicted_success, gap_flagged}`:
+  - `natural` sessions (the cell running as usual) are pooled and compared with the prediction;
+  - each `commanded` session (deliberate offsets, as our platform runs command them) is compared with its own
+    `predicted_success`, the sim's rate at those offsets (a generation job's test plan predicts it);
+- `gap_flagged`: a prediction outside the 95% Wilson interval of what was measured;
+- `finger_code`, `finger_name`, `part_name`.

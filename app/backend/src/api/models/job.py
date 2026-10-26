@@ -1,14 +1,20 @@
-"""An experiment (a design job) and what it produces: simulated trials, round by round, and the final result.
+"""A job (an experiment): a run the worker does on the sim, and what it produces. There are two kinds:
 
-An experiment has a name the user can change and an experiment ID that never changes (EXP-0042): printed fingers and
-logged physical trials refer to the ID.
+- generation: the optimizer designs new fingers for a part (simulated trials round by round, then the final result);
+- evaluation: the fingers already in the library are tried on a part and ranked (api/models/evaluation.py).
+
+Both kinds share the job's lifecycle: queued, run by a detached worker, cancelled, resumed, with live progress. A job
+has a name the user can change and an experiment ID that never changes (EXP-0042): printed fingers and logged physical
+trials refer to the ID.
 """
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, Discriminator, Tag, computed_field, model_validator
 
 from api.models.design import DesignKind
+from api.models.error_model import ErrorModel
+from api.models.evaluation import EvaluationPlan, EvaluationSpec
 from api.models.export_check import ExportCheck
 from api.models.family import FamilyParams
 from api.models.job_pose import JobPose
@@ -17,7 +23,18 @@ from api.models.outcome import InHand, Outcomes
 from api.models.part import Part
 from api.models.search_plan import JobPlan
 
+JobKind = Literal["generation", "evaluation"]
 JobStatus = Literal["queued", "running", "finalizing", "done", "failed", "cancelled", "interrupted"]
+
+
+def kind_of(value: Any) -> str:
+    """A spec's or plan's kind: its "kind", or generation for one stored before evaluation jobs existed (it has none)."""
+    kind = value.get("kind") if isinstance(value, dict) else getattr(value, "kind", None)
+    return kind or "generation"
+
+
+AnySpec = Annotated[Annotated[JobSpec, Tag("generation")] | Annotated[EvaluationSpec, Tag("evaluation")], Discriminator(kind_of)]
+AnyPlan = Annotated[Annotated[JobPlan, Tag("generation")] | Annotated[EvaluationPlan, Tag("evaluation")], Discriminator(kind_of)]
 FINISHED_STATUSES = ("done", "failed", "cancelled", "interrupted")
 ACTIVE_STATUSES = ("queued", "running", "finalizing")  # a worker has, or is about to have, the job
 RESUMABLE_STATUSES = ("interrupted", "cancelled", "failed")
@@ -35,13 +52,14 @@ class Job(BaseModel):
     experiment_number: int  # fixed for life; experiment_id shows it as EXP-0042
     name: str  # renamable
     created: float
+    kind: JobKind = "generation"
     status: JobStatus
     part_id: str
     cell_profile_id: int
     sim_backend: SimBackend
-    spec: JobSpec
+    spec: AnySpec  # a JobSpec for a generation job, an EvaluationSpec for an evaluation job
     part: Part  # as the gripper meets it (resting pose and grasp axis applied) in the primary pose, snapshotted at creation
-    plan: JobPlan
+    plan: AnyPlan
     n_done: int = 0  # designs evaluated
     n_total: int = 0  # the plan's designs: every search's budget, the baselines and the final test
     round: int = 0  # rounds done
@@ -56,6 +74,15 @@ class Job(BaseModel):
     finished: float | None = None
     duplicated_from: str | None = None
     print_designs: list[str] = []  # design labels marked "print this" (stock and imprint are always tested too)
+    batch_id: str | None = None  # evaluation jobs created together, one per part
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "Job":
+        if self.spec.kind != self.kind or self.plan.kind != self.kind:
+            raise ValueError(f"a {self.kind} job needs a {self.kind} spec and plan")
+        if self.spec.error is None:  # only a row written by hand: create_job always fills it in from the cell profile
+            self.spec = self.spec.with_error(ErrorModel())
+        return self
 
     @computed_field
     @property
@@ -64,8 +91,10 @@ class Job(BaseModel):
 
     @property
     def poses(self) -> list[JobPose]:
-        """The resting poses the job covers, primary first (api/models/job_pose.py). A job from before jobs covered
-        poses has one: its spec's grasp on its part."""
+        """A generation job's resting poses, primary first (api/models/job_pose.py). A job from before jobs covered
+        poses has one: its spec's grasp on its part. An evaluation job's poses are in its plan (EvaluationPlan.poses)."""
+        if self.kind != "generation":
+            raise ValueError("an evaluation job's poses are in its plan")
         return self.plan.poses or [JobPose(key="p0", grasp=self.spec.grasp, part=self.part)]
 
 

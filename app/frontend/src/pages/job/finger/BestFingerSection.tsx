@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api, unwrapAs, type Schemas } from "../../../backend/client";
 import { Badge } from "../../../components/Badge";
+import { Button } from "../../../components/Button";
 import { Card } from "../../../components/Card";
 import { CopyButton } from "../../../components/CopyButton";
 import { DownloadButton } from "../../../components/DownloadButton";
@@ -177,9 +178,29 @@ function Downloads({ jobId, base, label }: { jobId: string; base: string; label:
         <DownloadButton href={`${base}/cad?format=stl&side=R`} label="STL, right" checksUrl={checksUrl} />
         <DownloadButton href={`${base}/print-sheet.pdf`} label="Print sheet (PDF)" checksUrl={checksUrl} />
       </div>
-      {checks.data && (
+      {checks.data && <CheckList checks={checks.data.checks} />}
+    </section>
+  );
+}
+
+/** The export checks: failures in full, passes as one line that opens to show them. */
+function CheckList({ checks }: { checks: Checks["checks"] }) {
+  const [open, setOpen] = useState(false);
+  const failed = checks.filter((check) => !check.ok);
+  const shown = open ? checks : failed;
+  return (
+    <>
+      {failed.length === 0 && (
+        <div className={styles.passed}>
+          <Badge tone="ok" label={`All ${checks.length} export checks passed`} />
+          <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
+            {open ? "Hide the checks" : "Show the checks"}
+          </Button>
+        </div>
+      )}
+      {shown.length > 0 && (
         <ul className={styles.checks}>
-          {checks.data.checks.map((check) => (
+          {shown.map((check) => (
             <li key={check.name} className={styles.check}>
               <Badge
                 tone={check.ok ? "ok" : check.blocking ? "bad" : "warn"}
@@ -193,7 +214,7 @@ function Downloads({ jobId, base, label }: { jobId: string; base: string; label:
           ))}
         </ul>
       )}
-    </section>
+    </>
   );
 }
 

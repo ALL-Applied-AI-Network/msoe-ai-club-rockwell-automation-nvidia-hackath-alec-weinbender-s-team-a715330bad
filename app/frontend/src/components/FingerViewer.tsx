@@ -1,12 +1,14 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type { Schemas } from "../backend/client";
+import { api, unwrapAs, type Schemas } from "../backend/client";
 import { niceSize, token } from "./PartViewer";
 import styles from "./FingerViewer.module.css";
 
 type Piece = Schemas["Piece"];
 type Part = Schemas["Part"];
+type Geometry = Schemas["FingerGeometryResponse"];
 
 /** One finger's convex pieces, as the API sends them (the same solids the sim runs and the STEP exports). */
 export type FingerShape = {
@@ -113,19 +115,67 @@ export function FingerViewer({ part, fingers, label, height = 360, frameKey = ""
   );
 }
 
+/** A library finger as a small square still, for a table row: the pair with the jaws closed, from the same angle as the
+ *  full view. Rendered once per finger on one shared renderer, so a long list doesn't open a WebGL context per row. */
+export function FingerIcon({ fingerId, label }: { fingerId: string; label: string }) {
+  const image = useQuery({
+    queryKey: ["finger-geometry", fingerId, "icon"],
+    queryFn: async () => {
+      const found = await unwrapAs<Geometry>(api.GET("/api/fingers/{finger_id}/geometry", { params: { path: { finger_id: fingerId } } }));
+      return renderIcon(found.geometry.pieces);
+    },
+    staleTime: Infinity,
+  });
+  return <div className={styles.icon}>{image.data && <img src={image.data} alt={label} className={styles.image} />}</div>;
+}
+
+const ICON_PX = 168; // three times the icon's CSS size, so it stays sharp on high-density screens
+const ICON_REACH_MM = 32; // how far up from the fingertips the icon shows
+let iconRenderer: THREE.WebGLRenderer | null = null;
+
+function renderIcon(pieces: Piece[]): string {
+  iconRenderer ??= new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  iconRenderer.setPixelRatio(1);
+  iconRenderer.setSize(ICON_PX, ICON_PX, false);
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(token("--ink"), token("--bg"), 1.4));
+  const sun = new THREE.DirectionalLight(token("--ink"), 1.6);
+  sun.position.set(1, -1.5, 3);
+  scene.add(sun);
+  const content = new THREE.Group();
+  content.add(fingerObject(pieces, "finger", false), fingerObject(pieces, "finger", true));
+  scene.add(content);
+  const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 10_000);
+  camera.up.set(0, 0, 1);
+  // Framed on the business end: the tips and pads, where designs differ. Above that every finger is the same blade.
+  const box = new THREE.Box3().setFromObject(content);
+  box.max.z = Math.min(box.max.z, box.min.z + ICON_REACH_MM);
+  aim(camera, box, 0.95);
+  iconRenderer.render(scene, camera);
+  const url = iconRenderer.domElement.toDataURL("image/png");
+  clear(content);
+  return url;
+}
+
 type Stage = { content: THREE.Group; camera: THREE.PerspectiveCamera; controls: OrbitControls; render: () => void };
 
 /** Looks at the fingers from in front, a little to the right and above, with the jaws closing left to right. */
 function frameCamera({ camera, controls }: Stage, box: THREE.Box3) {
+  controls.target.copy(aim(camera, box, 1.05));
+  controls.update();
+}
+
+/** Points the camera at the box from the viewers' angle, far enough back to fit it; returns where it looks. */
+function aim(camera: THREE.PerspectiveCamera, box: THREE.Box3, margin: number): THREE.Vector3 {
   const target = box.getCenter(new THREE.Vector3());
   const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 1);
-  const distance = (radius / Math.sin(THREE.MathUtils.degToRad(35 / 2))) * 1.05;
+  const distance = (radius / Math.sin(THREE.MathUtils.degToRad(35 / 2))) * margin;
   camera.near = radius / 100;
   camera.far = radius * 100;
   camera.position.copy(target).add(new THREE.Vector3(0.45, -1.3, 0.75).normalize().multiplyScalar(distance));
+  camera.lookAt(target);
   camera.updateProjectionMatrix();
-  controls.target.copy(target);
-  controls.update();
+  return target;
 }
 
 /** Convex pieces as one solid, flat-shaded. Mirroring negates x and flips each triangle, so its faces still point out. */

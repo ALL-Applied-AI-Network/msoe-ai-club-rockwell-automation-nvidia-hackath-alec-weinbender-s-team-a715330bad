@@ -154,11 +154,8 @@ cd app/frontend
 npm run dev        # serves the UI on http://localhost:5173 and reloads as you edit; API calls go to the backend on :8000
 ```
 
-The dev server has two pages while the new UI is being built:
-
-- <http://localhost:5173/>: the current UI (`app/frontend/index.html`), the same page the backend serves at
-  <http://localhost:8000>.
-- <http://localhost:5173/app.html>: the new React app (`app/frontend/app.html` and `src/`).
+Open <http://localhost:5173/>. To have the backend serve the UI itself (at <http://localhost:8000/>), build it once with
+`npm run build`.
 
 After a backend change, regenerate the API types and check the frontend still matches:
 
@@ -328,7 +325,7 @@ instance and `spark1`. A target that can't be reached is listed under `errors`, 
 #### 4. Use it
 
 1. With the backend running, start the frontend's dev server (`npm run dev` in `app/frontend`) and open
-   <http://localhost:5173/app.html>. The GPU panel is there.
+   <http://localhost:5173/>. The GPU panel opens from the Compute box at the foot of the sidebar.
 2. Choose a target:
    - **Brev:** choose it and press **Start the GPU**. Booting takes a few minutes, plus about a minute for Isaac Sim.
    - **GB10:** choose `spark1` and press **Connect**. It's quick if the team's sim server is running, and about a

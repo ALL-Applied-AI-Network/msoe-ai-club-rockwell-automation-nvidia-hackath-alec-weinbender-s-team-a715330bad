@@ -225,8 +225,7 @@ by the **entrypoint that uses it**, which also closes it:
 app/frontend/
   package.json           Dependencies, pinned to exact versions. Commit it together with package-lock.json.
   vite.config.ts         Dev server (:5173, forwards /api to the backend) and the build
-  index.html             The old single-file UI, served until the new one replaces it. New pages go in src/, not here.
-  app.html               Entry page of the new UI
+  index.html             Entry page of the UI (the React app); `npm run build` writes it and its bundle to dist/
   public/                Static files served as they are, and copied into the build: task-examples/ (the task step's
                          Isaac Sim videos, made by sim/sim_server/scripts/record_task_examples.py)
   src/
@@ -239,17 +238,18 @@ app/frontend/
     format.ts            The one place numbers become text: percentages, mm, degrees, grams
     caveats.ts           The one place the caveats' wording lives (frontend plan, section 10)
     labels.ts            Codes written out for people: wizard steps, design labels
-    gpu.ts               The GPU status in one line (the status bar), the starting steps, the reconnecting check
+    gpu.ts               The GPU status in one line (the sidebar's Compute box), the starting steps, the reconnecting check
     gpuHelp.ts           The help for each GPU error message, matched by substring (frontend plan 4.5)
 ```
 
-Built (2026-10-22): every page in [docs/notes/frontend-plan.md](../../docs/notes/frontend-plan.md) section 1's table.
-The shared components are `Badge` (and its mappings in `Badges`), `Banner`, `Button`/`LinkButton`, `Card`,
-`ConfirmDialog`, `CopyButton`, `DownloadButton`, `Field` with `TextInput`/`NumberInput`/`Checkbox`, `FileDrop`,
-`FingerViewer`, `HelpCard`, `Icon`, `KeyValues`, `Modal`, `Page`, `PartForm`, `PartUpload`, `PartViewer`,
-`ProgressBar`, `RadioCards`, `RangeSlider`/`ValueSlider`, `Segmented`, `Select`, `Stat`, `States`, `StatusBar`,
-`StepLayout`, `Table`, `Tabs`, `VideoPair`, `VideoPlayer`, and the Recharts charts in `components/charts/`. The old `index.html` doesn't need to
-be kept or built on.
+Built (2026-10-22, re-laid out as a dashboard 2026-10-26): every page in
+[docs/notes/frontend-plan.md](../../docs/notes/frontend-plan.md) section 1's table. The shared components are `Badge`
+(and its mappings in `Badges`), `Banner`, `Button`/`LinkButton`, `Card`, `ConfirmDialog`, `CopyButton`,
+`DownloadButton`, `Field` with `TextInput`/`NumberInput`/`Checkbox`, `FileDrop`, `FilterBar` (a library's search,
+chips and filters), `FingerViewer`, `HelpCard`, `Icon`, `JobsTable`, `KeyValues`, `Menu` (a row's actions), `Modal`,
+`Notes` (a page's caveats, the first two shown), `Page`, `PartForm`, `PartUpload`, `PartViewer`, `ProgressBar`,
+`RadioCards`, `RangeSlider`/`ValueSlider`, `Score` (every success rate), `SearchInput`, `Segmented`, `Select`, `Stat`,
+`States`, `StepLayout`, `Table`, `Tabs`, `VideoPair`, `VideoPlayer`, and the Recharts charts in `components/charts/`.
 
 ### Design
 
@@ -259,14 +259,18 @@ be kept or built on.
   tables or badges.
 - **One look across every page.** Colors, fonts, radii, spacing and shadows come only from the variables in
   `styles/tokens.css`: no hex values, font names or one-off sizes inside components. Every page sits in the same page
-  shell (top bar, content width, status bar), every wizard step uses the same step layout, and the same thing always looks
-  the same: a job status is always the same badge, a success rate always goes through `format.ts`.
-- **The look follows NVIDIA Brev's console, dark only:** Brev's `#0c0c0c` page (`--bg`) with barely lifted panels (`--surface`),
-  hairline borders (`--line`) instead of shadows, small radii (`--r-sm`, `--r`; pills only for dots and progress),
-  NVIDIA green (`--acc`, black text) for primary actions and progress, cyan (`--active`) for running and starting. Barlow
-  (a DIN-style sans) for text, JetBrains Mono only for what a machine wrote (hosts, files, IDs, logs) and the status bar,
-  both bundled so the app works offline at the cell. The GPU and sim state live in the status bar along the bottom, like
-  a terminal's. There is no light theme.
+  shell (sidebar, top bar, a main column and an optional right rail), every wizard step uses the same step layout, and
+  the same thing always looks the same: a job status is always the same badge, a success rate is always a `Score`.
+- **Boxes line up.** The main column's first card and the rail's first card start at the same height, and controls in a
+  row share one height (an inline `Select` has no visible label). Tables inside a card use `fixed` widths and truncate,
+  so they never overflow it.
+- **The look follows NVIDIA Brev's console, dark only:** a charcoal page (`--bg`), darker chrome for the sidebar and top
+  bar (`--chrome`), rounded panels (`--surface`, `--r`) with hairline borders (`--line`) instead of shadows, smaller
+  radii for controls and table heads (`--r-md`, `--r-sm`), pills for status badges and filter chips. NVIDIA green
+  (`--acc`, black text) for primary actions and results, cyan (`--active`) for running and starting. Barlow (a DIN-style
+  sans) for text, JetBrains Mono only for what a machine wrote (hosts, files, IDs, logs), both bundled so the app works
+  offline at the cell. The GPU and sim state live in the sidebar's Compute box and the top bar's sim badge. There is no
+  light theme.
 - **Say less.** No page subtitles or paragraphs that explain how the system works; no notes that restate a label or a
   value ("STL file, read in millimetres"). Keep the caveats beside the numbers they qualify, warnings that change a
   result, and errors that say how to fix them. No all-caps labels, eyebrows, or middle-dot joiners.

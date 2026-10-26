@@ -1,4 +1,5 @@
-"""Everything the input steps collect: enough to plan a job, run it, and duplicate it later."""
+"""Everything the input steps collect for a generation job (the optimizer designing new fingers): enough to plan it, run
+it, and duplicate it later. An evaluation job's spec is api/models/evaluation.py: EvaluationSpec."""
 
 from typing import Annotated, Literal
 
@@ -21,6 +22,7 @@ class PoseGrasp(BaseModel):
 
 
 class JobSpec(BaseModel):
+    kind: Literal["generation"] = "generation"  # specs stored before evaluation jobs existed have no kind: generation
     name: str | None = None  # the experiment's name; blank: "<CAD file stem>_<date>", e.g. "vial-cap_2026-10-19"
     part_id: str  # a PartRecord with a material (or measured mass)
     cell_profile_id: int  # a CellProfileVersion: the exact version confirmed in step 4
@@ -30,9 +32,14 @@ class JobSpec(BaseModel):
     grasp: GraspChoice | None = None
     poses: list[PoseGrasp] = Field(default_factory=list, max_length=MAX_POSES)
     families: list[FamilyChoice] = Field(default_factory=lambda: [FamilyChoice()], min_length=1)
-    error: ErrorModel = ErrorModel()
+    # None: the cell profile's grasp accuracy, copied in when the job is planned, so a stored job always has one
+    error: ErrorModel | None = None
     budget: int | None = Field(None, ge=1)  # designs per search; None: the rule in search_plan.py
     seed: int = 0
+
+    def with_error(self, default: ErrorModel) -> "JobSpec":
+        """This spec with its error model filled in: its own, else `default` (the cell profile's grasp accuracy)."""
+        return self if self.error is not None else self.model_copy(update={"error": default})
 
     @model_validator(mode="after")
     def _one_choice_per_family(self) -> "JobSpec":

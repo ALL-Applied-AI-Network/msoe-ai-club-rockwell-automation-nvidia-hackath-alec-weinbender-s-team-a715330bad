@@ -1,5 +1,5 @@
-"""Uploaded parts (input steps 1, 2 and 5): store a CAD file and what it measured, confirm material, mass and resting
-pose, and propose or check grasp axes.
+"""The parts library (input steps 1, 2 and 5): store CAD files (one, or many at once) and what they measured, confirm
+material, mass and resting pose, and propose or check grasp axes.
 
 Each part keeps its file and its surface mesh (mesh.npz: vertices and triangles in the CAD frame, mm) together under
 uploads/part_<id>/, and its record (api/models/part_record.py) in the parts table. The convex pieces are split once, at
@@ -9,6 +9,7 @@ runs outside database sessions, so a slow file never holds one open.
 
 import logging
 import uuid
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -33,8 +34,23 @@ from api.models.resting_pose import resting_poses as stable_poses
 logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_BATCH_FILES = 50
+CAD_SUFFIXES = (".step", ".stp", ".stl")
 MESH_FILE = "mesh.npz"
-EDITABLE = {"material", "density_g_cm3", "surface", "mass_g", "mass_unit", "fragile", "max_grip_force_n", "clearance_mm", "pose"}
+MAX_NAME = 200
+EDITABLE = {
+    "name",
+    "part_number",
+    "material",
+    "density_g_cm3",
+    "surface",
+    "mass_g",
+    "mass_unit",
+    "fragile",
+    "max_grip_force_n",
+    "clearance_mm",
+    "pose",
+}
 
 PoseChoice = int | Literal["as_authored"]  # an index into resting_poses(), or the CAD file's own orientation
 
@@ -58,6 +74,17 @@ class PartInputError(ValueError):
 
 class PoseNotChosenError(RuntimeError):
     """The grasp step works in the table frame, so it needs the resting pose chosen first."""
+
+
+@dataclass(frozen=True)
+class Intake:
+    """What happened to one file of a bulk upload. status: ready or needs_properties (stored: the part's intake status),
+    file_error (not stored: reason says why), skipped (not a CAD file, e.g. a readme in an uploaded folder)."""
+
+    filename: str
+    status: Literal["ready", "needs_properties", "file_error", "skipped"]
+    part: PartRecord | None = None
+    reason: str | None = None
 
 
 def create_part(
@@ -101,6 +128,31 @@ def create_part(
     return record
 
 
+def create_parts(
+    db: DatabaseClient, config: AppConfig, cad: CadClient, files: list[tuple[str, bytes]], units: Literal["mm", "in"] | None
+) -> list[Intake]:
+    """Store many uploaded files at once (several picked, or a folder's), each on its own: a file that can't be read is
+    reported and the others are still stored. Files that aren't STEP or STL are skipped, so a whole folder can be sent.
+    `units` applies to every STL. Raises PartFileError for more than MAX_BATCH_FILES CAD files."""
+    cad_files = [(name, content) for name, content in files if Path(name or "").suffix.lower() in CAD_SUFFIXES]
+    if len(cad_files) > MAX_BATCH_FILES:
+        raise PartFileError(f"{len(cad_files)} CAD files: upload at most {MAX_BATCH_FILES} at a time")
+    out = []
+    for name, content in files:
+        shown = Path(name or "").name
+        if Path(shown).suffix.lower() not in CAD_SUFFIXES:
+            out.append(Intake(shown, "skipped", reason="not a STEP or STL file"))
+            continue
+        try:
+            record = create_part(db, config, cad, shown, content, units)
+        except (PartFileError, UnsupportedPartFormatError) as e:
+            out.append(Intake(shown, "file_error", reason=str(e)))
+            continue
+        out.append(Intake(shown, record.intake_status, part=record))
+    logger.info("Parts: bulk upload of %d files: %d stored", len(files), sum(1 for i in out if i.part is not None))
+    return out
+
+
 def list_parts(db: DatabaseClient) -> list[PartRecord]:
     """Every stored part, newest first."""
     with db.session() as s:
@@ -130,6 +182,14 @@ def update_part(db: DatabaseClient, part_id: str, changes: dict[str, Any]) -> Pa
         raise PartInputError(f"can't change {', '.join(sorted(unknown))}")
     record = get_part(db, part_id)
     values = dict(changes)
+    if "name" in values:
+        values["name"] = " ".join((values["name"] or "").split())
+        if not values["name"]:
+            raise PartInputError("a part needs a name")
+        if len(values["name"]) > MAX_NAME:
+            raise PartInputError(f"names are at most {MAX_NAME} characters")
+    if "part_number" in values:
+        values["part_number"] = " ".join((values["part_number"] or "").split()) or None
     if "pose" in values and values["pose"] is not None:
         values["pose"] = resolve_pose(record, values["pose"])
     try:

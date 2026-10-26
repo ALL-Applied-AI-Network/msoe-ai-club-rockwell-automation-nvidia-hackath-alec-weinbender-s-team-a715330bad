@@ -17,12 +17,13 @@ from api.models.finger import (
     seat_distance,
     section,
     sections,
+    stock_blade,
     stock_finger,
     stock_grasp_pose,
     v_profile,
 )
 from api.models.part import Part
-from api.models.piece import hull_piece
+from api.models.piece import hull_piece, pieces_bounds
 
 CAP, CUBE = Part(), Part(shape="box")
 FLAT = VPadParams(pad_width_mm=20, slack_mm=3, tip_height_mm=4)
@@ -319,3 +320,13 @@ def test_a_flat_side_rests_on_the_most_forward_point_of_the_face_across_it():
 
     assert seat_distance(narrow, v_profile(20, 90, 3)) == pytest.approx(5 - 1)
     assert seat_distance(CUBE, v_profile(20, 180, 0)) == 5
+
+
+def test_the_stock_blade_is_the_real_one_with_its_hooked_tip():
+    pieces = stock_blade()
+    lo, hi = pieces_bounds(pieces)
+    tip = [p for piece in pieces for p in piece.points if p[2] == 0.0]
+
+    assert np.allclose(lo, (0, -3, 0)) and np.allclose(hi, (12, 3, 76))  # the 12 x 6 x 76 mm blade, inner face at x = 0
+    assert min(p[0] for p in tip) == pytest.approx(2.0, abs=0.01)  # the hooked tip: 16 mm apart open, against 12 at the faces
+    assert max(p[0] for p in tip) == pytest.approx(7.5)  # the outer bevel

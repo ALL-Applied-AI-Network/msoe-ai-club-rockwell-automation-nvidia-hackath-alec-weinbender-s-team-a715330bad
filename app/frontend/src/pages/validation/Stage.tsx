@@ -10,7 +10,7 @@ type StageProps = {
   children: ReactNode;
 };
 
-/** One stage of an experiment's validation, numbered, with where it stands. The page shows the five in order. */
+/** One stage of an experiment's validation, numbered, with where it stands. The page shows the six in order. */
 export function Stage({ step, title, status, description, children }: StageProps) {
   return (
     <section className={styles.stage} aria-labelledby={`stage-${step}`}>

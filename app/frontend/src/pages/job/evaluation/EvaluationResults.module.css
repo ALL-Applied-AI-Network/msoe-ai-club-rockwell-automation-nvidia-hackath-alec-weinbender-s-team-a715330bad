@@ -1,0 +1,126 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+}
+
+.id {
+  color: var(--faint);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.badges,
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.text {
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.faint {
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.list li + li {
+  margin-top: var(--space-1);
+}
+
+.poses {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.poses li {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+}
+
+.poses li + li {
+  border-top: 1px solid var(--line);
+}
+
+/* The ranking table's cells: one line each, truncated, the whole text on hover */
+.rank {
+  color: var(--ink);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.main,
+.sub,
+.bad {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+a.main:hover {
+  color: var(--acc-text);
+  text-decoration: none;
+}
+
+.sub {
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+
+.sub code {
+  color: var(--mute);
+}
+
+.bad {
+  color: var(--bad);
+  font-size: var(--text-sm);
+}
+
+.finger {
+  display: flex;
+  min-width: 0;
+}

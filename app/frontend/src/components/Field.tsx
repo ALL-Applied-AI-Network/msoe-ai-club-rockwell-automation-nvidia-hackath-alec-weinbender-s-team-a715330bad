@@ -9,16 +9,17 @@ type FieldProps = {
   error?: string; // what's wrong with the value; replaces the hint
   isPlaceholder?: boolean; // the value isn't measured yet (a cell profile's to_confirm): marks it "Placeholder"
   aside?: ReactNode; // at the right of the label, e.g. a "Clear the placeholder mark" button
+  inline?: boolean; // in a filter bar: the label is for screen readers only, so the control lines up with the chips
   children: (id: string) => ReactNode; // the control, given the id its label points at
 };
 
 /** A labelled form control with its hint or error. Every input, select and number field sits in one, so they all line
  *  up and read the same. */
-export function Field({ label, hint, error, isPlaceholder = false, aside, children }: FieldProps) {
+export function Field({ label, hint, error, isPlaceholder = false, aside, inline = false, children }: FieldProps) {
   const id = useId();
   return (
-    <div className={styles.field}>
-      <div className={styles.top}>
+    <div className={`${styles.field} ${inline ? styles.inline : ""}`}>
+      <div className={inline ? styles.hidden : styles.top}>
         <label className={styles.label} htmlFor={id}>
           {label}
         </label>

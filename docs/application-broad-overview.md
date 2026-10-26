@@ -2,9 +2,9 @@ The application: Auto-Grasp
 
 Auto-Grasp answers one question for a factory before a new part reaches the robot cell: can we grip this reliably, and if not, what finger should we use?
 
-Inputs: the CAD of the incoming part (or a batch of parts), the factory’s existing finger library, the gripper model, and the grasp policy they want to evaluate (for example, their VLM+IK pipeline).
+Inputs: the CAD of the incoming part (or a batch of parts), the factory’s existing finger library, the gripper model, and how accurately their cell grasps (how far a grasp may land from where it was aimed, measured on the cell or picked from presets). Auto-Grasp evaluates the fingers, not a specific grasp policy: its results hold for any pipeline that locates the part and then grasps it, at that accuracy.
 
-1. Finger library evaluation. Every existing finger is simulated against the new part in Isaac Sim using the chosen policy. The output is a ranked success rate per finger.
+1. Finger library evaluation. Every existing finger is simulated against the new part in Isaac Sim, at the part's candidate grasps and across the cell's grasp error. The output is a ranked success rate per finger, at its best grasp.
 
 Why it’s useful: the factory learns whether it can run the part with what’s already on the shelf, without trial and error at the cell, and without buying or printing anything.
 Side benefit: it shows when one finger covers many parts, so the factory can group jobs and swap fingers less often.

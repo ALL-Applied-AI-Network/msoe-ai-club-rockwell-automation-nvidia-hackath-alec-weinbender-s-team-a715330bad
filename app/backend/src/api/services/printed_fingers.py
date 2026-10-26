@@ -48,8 +48,11 @@ def load_job(db: DatabaseClient, job_id: str) -> Job:
 
 
 def done_job(db: DatabaseClient, job_id: str) -> Job:
-    """The job, if its final test is done (status "done")."""
+    """The job, if it's a generation job whose final test is done (status "done"). An evaluation job has no designs to
+    print or test: its real-robot results go on the finger-and-part qualifications."""
     job = load_job(db, job_id)
+    if job.kind != "generation":
+        raise JobNotDoneError(f"{job.experiment_id} is an evaluation job: log real-robot results on its fingers' qualifications")
     if job.status != "done":
         raise JobNotDoneError(f"{job.experiment_id} is {job.status}: designs get their labels (D1, D2, ...) when it's done")
     return job

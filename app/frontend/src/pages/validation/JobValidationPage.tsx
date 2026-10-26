@@ -7,12 +7,13 @@ import { EmptyState, ErrorState, Skeleton } from "../../components/States";
 import { LogStage } from "./LogStage";
 import { PrintedFingersStage } from "./PrintedFingersStage";
 import { PrintSelectionStage } from "./PrintSelectionStage";
+import { ReviewStage } from "./ReviewStage";
 import { usePrintedFingers, usePrintSelection, useResults, useTestPlans, useJob, useValidation } from "./queries";
 import { PredictionStage, TestPlanStage } from "./TestPlanStage";
 import styles from "./JobValidationPage.module.css";
 
-/** #/jobs/:id/validation: one experiment's physical validation, in five stages. Print the chosen designs, record the
- *  printed fingers, plan the trials, let the sim predict them, then log them at the robot and compare. */
+/** #/jobs/:id/validation: one experiment's physical validation, in six stages. Print the chosen designs, record the
+ *  printed fingers, approve them for the robot, plan the trials, let the sim predict them, then log them at the robot and compare. */
 export function JobValidationPage() {
   const { id = "" } = useParams();
   const job = useJob(id);
@@ -101,6 +102,7 @@ export function JobValidationPage() {
             printable={printable}
             fingers={fingers.data ?? []}
           />
+          <ReviewStage jobId={id} experimentId={detail.experiment_id} review={detail.review} />
           <TestPlanStage
             jobId={id}
             designs={[...chosen, ...baselines]}

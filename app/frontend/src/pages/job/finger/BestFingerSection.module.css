@@ -112,3 +112,10 @@
   gap: var(--space-3);
   min-width: 0;
 }
+
+.passed {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
