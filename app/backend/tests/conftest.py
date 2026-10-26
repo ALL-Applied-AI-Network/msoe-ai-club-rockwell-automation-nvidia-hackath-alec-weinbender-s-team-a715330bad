@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import shutil
 from dataclasses import dataclass
@@ -224,6 +225,99 @@ def finished_client(finished_job, cad):
 def two_pose_client(two_pose_job, cad):
     """The API over the two-pose job's database, for read-only route tests."""
     app.dependency_overrides = {get_config: lambda: two_pose_job.config, get_db: lambda: two_pose_job.db, get_cad: lambda: cad}
+    yield TestClient(app)
+    app.dependency_overrides = {}
+
+
+@dataclass(frozen=True)
+class EvaluatedPart:
+    config: AppConfig
+    db: DatabaseClient
+    job_id: str  # the evaluation job, done
+    generation_job_id: str  # the generation job whose D1 is in the library
+    part_id: str  # the 10 mm cube
+    profile_id: int
+    stock_id: str
+    generated_id: str  # D1 of the generation job
+    uploaded_id: str  # a flat 12 x 6 x 76 mm blade, uploaded as a STEP
+
+
+# One finger as authored for an upload: a flat blade with its gripping face 2 mm off the file's origin plane
+FLAT_FINGER = lambda: cq.Workplane("XY").box(12, 6, 76).translate((8, 0, 38))  # noqa: E731
+
+
+def _evaluated(config: AppConfig, cad) -> EvaluatedPart:
+    from api.clients.sim import MockSim
+    from api.models.evaluation import EvaluationSpec
+    from api.services import fingers, parts
+    from api.services.optimizer import run_job
+
+    database = DatabaseClient(config.db)
+    database.migrate()
+    cell_profiles.ensure_default_profile(database)
+    fingers.ensure_stock_fingers(database)
+    profile = cell_profiles.list_profiles(database)[0]
+    path = config.data_dir / "cube.step"
+    cq.exporters.export(SHAPES["cube"](), str(path))
+    record = parts.create_part(database, config, cad, path.name, path.read_bytes(), None)
+    parts.update_part(database, record.id, {"material": "pla", "pose": 0})
+    best = parts.propose_grasps(database, record.id, profile.profile).candidates[0]
+    spec = JobSpec(
+        part_id=record.id, cell_profile_id=profile.id, grasp=GraspChoice(angle_deg=best.angle_deg, centre_mm=best.centre_mm), budget=8
+    )
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(jobs, "spawn_worker", lambda *args: None)
+        generation = jobs.create_job(database, config, spec)
+        run_job(database, generation.id, sim=MockSim(), cad=cad, outputs_dir=config.outputs_dir)
+        generated = fingers.add_from_job(database, generation.id, "D1")
+        flat = config.data_dir / "flat_finger.step"
+        cq.exporters.export(FLAT_FINGER(), str(flat))
+        uploaded = fingers.create_finger(database, config, cad, flat.name, flat.read_bytes(), cell_profile_id=profile.id, family="flat")
+        evaluation = jobs.create_job(database, config, EvaluationSpec(part_id=record.id, cell_profile_id=profile.id))
+        run_job(database, evaluation.id, sim=MockSim(), cad=cad, outputs_dir=config.outputs_dir)
+    assert jobs.get_job(database, evaluation.id).status == "done"
+    stock = next(r for r, _ in fingers.list_fingers(database) if r.source == "stock")
+    return EvaluatedPart(config, database, evaluation.id, generation.id, record.id, profile.id, stock.id, generated.id, uploaded.id)
+
+
+@pytest.fixture(scope="session")
+def evaluated(tmp_path_factory, cad) -> EvaluatedPart:
+    """A 10 mm cube evaluated on the mock sim against a library of three fingers (the stock ones, D1 of a short
+    generation job on the cube, and an uploaded flat blade), in its own database, for tests that only read it. Shared by
+    the whole session: don't change it (evaluated_copy is a copy to change)."""
+    part = _evaluated(AppConfig(data_dir=tmp_path_factory.mktemp("evaluated")), cad)
+    yield part
+    part.db.close()
+
+
+@pytest.fixture
+def evaluated_copy(evaluated, tmp_path) -> EvaluatedPart:
+    """A copy of `evaluated` (its database and files), for tests that change it."""
+    data_dir = tmp_path / "evaluated"
+    shutil.copytree(evaluated.config.data_dir, data_dir)
+    config = AppConfig(data_dir=data_dir)
+    database = DatabaseClient(config.db)
+    yield dataclasses.replace(evaluated, config=config, db=database)
+    database.close()
+
+
+@pytest.fixture
+def evaluated_client(evaluated, cad):
+    """The API over the evaluated part's database, for read-only route tests."""
+    app.dependency_overrides = {get_config: lambda: evaluated.config, get_db: lambda: evaluated.db, get_cad: lambda: cad}
+    yield TestClient(app)
+    app.dependency_overrides = {}
+
+
+@pytest.fixture
+def evaluated_copy_client(evaluated_copy, cad, spawned):
+    """The API over a copy of the evaluated part's database, for route tests that change it."""
+    app.dependency_overrides = {
+        get_config: lambda: evaluated_copy.config,
+        get_db: lambda: evaluated_copy.db,
+        get_cad: lambda: cad,
+        get_compute: lambda: {},
+    }
     yield TestClient(app)
     app.dependency_overrides = {}
 

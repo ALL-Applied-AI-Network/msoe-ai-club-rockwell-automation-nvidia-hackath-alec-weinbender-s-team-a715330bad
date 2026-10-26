@@ -1,5 +1,7 @@
+/* Wraps: in a narrow column (a page's rail) the action drops under the text instead of squeezing it. */
 .banner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
@@ -20,6 +22,7 @@
 
 .text {
   display: flex;
+  flex: 1 1 240px;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-2);
 }

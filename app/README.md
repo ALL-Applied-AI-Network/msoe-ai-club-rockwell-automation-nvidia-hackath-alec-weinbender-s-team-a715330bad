@@ -1,7 +1,17 @@
 # Auto-Grasp (web app)
 
-Web front end + job runner: takes a part, searches finger designs in the simulator, and reports the best one next to the
-stock and imprint baselines.
+Web front end + job runner for [Auto-Grasp](../README.md): tells a factory whether its existing fingers can grip a new
+part, and generates a new finger when they can't ([use case](../docs/application-broad-overview.md),
+[user stories](<../docs/Auto-Grasp User Stories.md>)).
+
+It runs two kinds of **job**, each a detached worker process on the sim:
+- A **generation job** searches finger designs for one part and reports the best next to the stock and imprint
+  baselines ("How a job runs" below).
+- An **evaluation job** tries every finger in the **finger library** on a part, at its candidate grasps, and ranks them
+  ("Evaluation jobs" below).
+
+The API for both, screen by screen, is in [backend-api.md](../docs/notes/backend-api.md). The frontend has the
+generation screens so far.
 
 ```text
 app/
@@ -13,10 +23,9 @@ app/
 │   │                     db/ (SQLAlchemy tables + Alembic migrations)
 │   └── tests/            pytest: routers/, services/, clients/, models/, db/
 ├── frontend/             npm project: Vite + React + TypeScript (see "Frontend" below)
-│   ├── index.html        the old single-file UI: the page at /, from the backend and from the dev server
-│   ├── app.html, src/    the new React UI, at /app.html on the dev server; src/backend/ is the typed API client
+│   ├── index.html, src/  the React UI, at / on the dev server and from the backend's build; src/backend/ is the typed API client
 │   ├── public/           static files: task-examples/, the Isaac Sim video of each task for the wizard's task step
-│   └── dist/             npm run build output (the new UI only), gitignored
+│   └── dist/             npm run build output, served by the backend at /; gitignored
 └── data/                 runtime only, gitignored: app.db, uploads/, outputs/, worker.log
 ```
 
@@ -24,7 +33,7 @@ Run from the repo root:
 
 ```bash
 uv sync --all-packages
-uv run --package backend uvicorn api.main:app --port 8000      # open http://localhost:8000
+uv run --package backend uvicorn api.main:app --port 8000      # the API; the UI: npm run dev (Frontend, below)
 uv run pytest                                                   # backend tests, offline
 ```
 
@@ -106,7 +115,7 @@ the team account (SETUP.md), from any shell:
 
 ```bash
 ssh -N -L 8080:/home/hackathon11/autograsp/app.sock hackathon11@spark1.ai.msoe.edu   # keep it running
-# open http://localhost:8080/app.html (the old UI is at /)
+# open http://localhost:8080/
 ```
 
 It listens on a Unix socket in the team's home folder, not a port, because other teams can reach every `127.0.0.1` port
@@ -116,22 +125,21 @@ manage it. The layout on the GB10 is in `app/deploy/serve.sh`.
 
 ## Frontend
 
-The new UI is a Vite + React + TypeScript app in `frontend/` (setup in [../SETUP.md](../SETUP.md#web-app-app)). It has every
-screen in the plan: the experiments list, the new-experiment wizard, the experiment page (progress, then results), the
-GPU page, validation, the quick logger, parts and settings ([status](../docs/notes/frontend-plan.md#1-where-the-frontend-stands)). The screens and what each one shows are in
-[the frontend plan](../docs/notes/frontend-plan.md); the calls each screen makes are in
+The UI is a Vite + React + TypeScript app in `frontend/` (setup in [../SETUP.md](../SETUP.md#web-app-app)). The screens
+and what each one shows are in [the frontend plan](../docs/notes/frontend-plan.md); the calls each screen makes are in
 [backend-api.md](../docs/notes/backend-api.md).
 
-- `npm run dev` serves both UIs on <http://localhost:5173>, with `/api` forwarded to the backend on :8000 (`API_URL`
-  overrides): the old one at `/`, the new one at `/app.html`. Only the new one is built (`npm run build`); the backend
-  serves the old `index.html` straight from the folder.
+- `npm run dev` serves it on <http://localhost:5173>, with `/api` forwarded to the backend on :8000 (`API_URL`
+  overrides). `npm run build` writes it to `frontend/dist`, which the backend serves at `/` (until it's built, the
+  backend's `/` is a 404).
 - API calls go through `src/backend/client.ts` ([openapi-fetch](https://openapi-ts.dev/openapi-fetch/)), typed by
   `src/backend/schema.d.ts`. That file is generated and committed: after a backend change, `npm run gen:api` with the
   backend running, then `npm run typecheck` lists every call that no longer matches.
 - Routes are hash routes (`#/jobs/...`), so deep links work while the backend serves the build as static files.
 - Other packages: TanStack Query (fetching, caching, polling), React Router, three.js (3D previews).
-- To switch to the new UI: delete the old `index.html`, rename `app.html` to `index.html` (and its entry in
-  `vite.config.ts`), `npm run build`, and point the static mount in `backend/src/api/main.py` at `frontend/dist`.
+- Layout: a sidebar (Overview, Jobs, Part Library, Finger Library, Generate Finger, Cells, and the Compute box), a top
+  bar with the sim badge, and on each page a main column with an optional right rail. A job's Validation tab holds the
+  whole physical validation, the review gate included.
 
 ## How a job runs
 
@@ -154,6 +162,28 @@ The optimizer is `backend/src/api/services/optimizer.py`.
   predicted success; the result page shows the comparison and success at several error levels.
 - Each job is a **detached process** (`python -m api.worker <id>`), so closing the browser or restarting the API doesn't kill
   it. Live progress via Server-Sent Events.
+
+## Evaluation jobs and the finger library
+
+An evaluation job is planned in `services/evaluations.py` and run by `services/evaluator.py`; the same worker command
+starts it (`optimizer.run_job` hands it over).
+
+- **The finger library** (`models/finger_record.py`, `services/fingers.py`) holds physical fingers, each with a code
+  (`FNG-0001`) that never changes:
+  - each cell's **stock** fingers, seeded at startup;
+  - **generated** fingers, a generation job's final design added from its results;
+  - **uploaded** fingers, CAD placed in the gripper frame automatically and split into convex pieces like a part.
+- **On a new part**, a generated finger keeps its pad profile and reseats against the part (`finger.regrip()`). An
+  uploaded one closes until it first touches the part's outline (`finger.seat()`). Either way, the geometry checks rule
+  out a finger that can't grip at a grasp before anything is simulated.
+- **Grasps:** each covered resting pose tries its top 3 grasp proposals, or the one grasp the user locked. A finger's
+  score is its best grasp per pose, weighted over the poses.
+- **Requests:** one sim request per (pose, grasp), carrying every finger, each checkpointed, so a resumed job skips the
+  ones it finished.
+- **Final test:** the top 3 fingers and stock are re-tested at their best grasps on the dense grid.
+- **Finishing** writes each finger's prediction to its **qualification** (one finger on one part,
+  `services/qualifications.py`), where real-robot sessions are logged and compared with it.
+- **Grasp accuracy:** a spec without an error model takes its cell profile's `grasp_accuracy`, for either kind of job.
 
 ## Simulator service
 
@@ -185,6 +215,7 @@ last finished round. A server that has never answered (a wrong `SIM_URL`) fails 
 SQLite at `data/app.db` (relative to `app/`) by default. Tables are in `backend/src/api/db/tables.py`; changes need a
 migration (`uv run --package backend alembic -c app/backend/alembic.ini revision --autogenerate -m "..."` from the repo root),
 which the API applies at startup. Migration 0002 cleared every job made before it (demo data from the old design space).
+Migration 0007 added the job kind, evaluation trials, the finger library and qualifications, and cleared nothing.
 
 ## Training data for the stretch goal
 
@@ -195,3 +226,4 @@ logged physical trials.
 ## Not done yet
 
 CAD/image parsing (part size is entered manually; the file is stored), CadQuery export with the mount holes, auth.
+Failure reasons per grasp and replays of evaluation trials; any run of an evaluation job in Isaac.

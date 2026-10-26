@@ -3,13 +3,23 @@
 Living summary of where the project stands. Keep it short and current. Source documents live in [docs/](docs/README.md);
 this file records what they mean for us. Gotchas and warnings: [docs/notes/things-to-know.md](docs/notes/things-to-know.md). Update it whenever a fact, decision, deadline or open question changes.
 
-*Last updated: 2026-10-22*
+*Last updated: 2026-10-26*
 
 ## One-line pitch
 
-**CAD-to-Fingers:** give it a new part and a task, and it outputs 3D-printable gripper fingers for the existing gripper on the
-FANUC ER-4iA cell. The fingers are optimized in the digital twin to tolerate camera and calibration error, and each design
-comes with a grasp pose and a predicted success rate that we then check in physical trials.
+**Auto-Grasp:** before a new part reaches the robot cell, it tells a factory whether it can grip the part reliably with
+the fingers it already has, and if not, which finger to make. Every finger in the factory's library is simulated against
+the part in the FANUC ER-4iA digital twin, at the part's candidate grasps and across the cell's grasp error, and ranked
+by success rate. It evaluates fingers, not a grasp policy. If none is good
+enough (the manufacturing engineer's call), Bayesian optimization generates a printable finger from a trusted family,
+for one part or several, and it joins the library. Full use case:
+[application-broad-overview.md](docs/application-broad-overview.md); user stories and the suggested first build:
+[Auto-Grasp User Stories](<docs/Auto-Grasp User Stories.md>).
+
+Until 2026-10-25 this was **CAD-to-Fingers** (the [team plan](docs/02-team-plan.md)): generate fingers for one part,
+optimized to tolerate camera and calibration error, against the stock and imprint fingers. The pipeline below is still
+that: it's the generation job. Since 2026-10-26 the backend also has the finger library, evaluation jobs and
+qualifications (decision below), on the mock sim, and the frontend for them; multi-part generation isn't built.
 
 Hackathon: Rockwell Automation + NVIDIA Innovation Lab, Fall 2026, **Dataset 3: Grasping and Sorting**
 ([overview](docs/01-hackathon-overview.md), [dataset](docs/03-dataset-3-grasping-sorting.md),
@@ -72,8 +82,8 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 
 | Component | Path | State |
 | --- | --- | --- |
-| Web app backend (input flow, batch BO, results, tracker, exports) | `app/backend/` | Works end-to-end with the **mock** sim, a geometric capture check (not physics): 466+ tests, plus an end-to-end run against a live server with real worker processes |
-| Web app frontend (Auto-Grasp) | `app/frontend/` | New Vite + React UI in NVIDIA Brev's dark style, on the `frontend-shell` branch (2026-10-22): every screen in the [frontend plan](docs/notes/frontend-plan.md) works against the demo data; not yet served at `/` (the old single-file UI still is) |
+| Web app backend (input flow, batch BO, results, tracker, exports; finger library, evaluation jobs, qualifications) | `app/backend/` | Works end-to-end with the **mock** sim, a geometric capture check (not physics): 1000+ tests, plus an end-to-end run against a live server with real worker processes. Evaluation jobs and the finger library (2026-10-26) have run on the mock only, in tests and the demo seed |
+| Web app frontend (Auto-Grasp) | `app/frontend/` | Vite + React UI in NVIDIA Brev's colors (2026-10-22). The old single-file UI was removed on 2026-10-26: the React app is the page at `/` (the backend serves its build). Re-laid out as a dashboard on 2026-10-26: sidebar, Overview, Jobs, Part and Finger Libraries, new evaluations and their ranking. The quick logger is merged into Validation, and the review gate is now a Validation stage |
 | Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | Contract v2: mesh parts, part friction, grip-force limit, transport, in-hand pose. **Runs in Isaac on Brev and the GB10** (2026-10-20). Stages 0–3 pass on both, and they agree ([Brev](docs/experiments/2026-10-20-brev-sim-server-bringup.md), [GB10](docs/experiments/2026-10-20-gb10-sim-server-bringup.md)). Stages 4–6 ran on the GB10 ([log](docs/experiments/2026-10-20-gb10-stages-4-6.md)): finger swaps, the in-hand readout, mesh parts and transport work. Heavy parts don't (risk 6), and the GPU path is biased (risk 7). 2.75 grasps/s reference, ~5 with CPU copies, 16–28 on the GPU |
 | Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored from the organizers. Host tests and the headless scene build pass on Brev and the GB10 (2026-10-20); the stacking demo needs a Cosmos env and hasn't run. Only edit: the `.sh` files marked executable in git (2026-10-20, contents unchanged) |
 | CAD output | `app/backend/src/api/models/finger_cad.py`, `clients/cad.py` | CadQuery STEP (the pair) + STL per side, the cell profile's mount (default since 2026-10-20: SMC's jaw from its STEP, the root cut back for the jaw's tongue, M3 holes along the jaw travel; **confirm on the real jaw**), engraved IDs, export checks, print sheet. Checked against the STEP's jaw solid: no overlap, faces touching, holes aligned |
@@ -174,17 +184,43 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 | 2026-10-20 | The default finger mount is SMC's jaw from its STEP (`SMC_FLAT_JAW_MOUNT`, face `+x`). The root is cut back to the tongue's inner face for 15.5 mm, with M3 holes along the jaw travel 4 and 11 mm below the root, self-tapping, 6 mm deep. The photo reconstruction stays as `PHOTO_MOUNT`. At startup, a database whose default profile is the old default, unedited, gets the new one as its next version | The STEP is SMC's model of the real gripper (the dashboard says so); the photo mount's 23 mm hole lies past the end of its jaw |
 | 2026-10-20 | Physical validation runs through the organizers' platform with a blind scripted policy: the screw and bin are placed the same way every rollout, and each rollout's prompt carries the test-plan offset to command. Stock run and printed run use the same offsets | The commanded offset is the controlled error the fingers are designed for; the operator's placement error is the same for both; the recording carries the offset ([cell_policy/](cell_policy/README.md)) |
 | 2026-10-22 | A job covers one or more resting poses, each with its own grasp. One physical finger, built for the likeliest (primary) pose, is simulated in every pose (one sim request per pose per round; the sim contract is unchanged) and scored by the poses' likelihoods renormalised over the ones covered; a pose it can't grip scores 0. Migration 0006 adds `trials.pose_outcomes`; one-pose jobs and old rows score exactly as before. Clips, test plans and physical validation stay on the primary pose for now | Parts come off a feeder or out of a bin in more than one pose; a finger that only works in one is worth less than its score said. The likelihoods are trimesh's quasi-static estimate, not measured, and the score assumes the cell knows each part's pose ([backend-api.md](docs/notes/backend-api.md#step-2-resting-pose)) |
+| 2026-10-25 | Renamed CAD-to-Fingers to **Auto-Grasp**, with a broader use case: evaluate the factory's existing finger library against a new part first, let the manufacturing engineer decide (no fixed pass bar), then generate a finger (one part or several) that joins the library. Two users: manufacturing engineer and robotics engineer | Most new parts can run on fingers already on the shelf; generation is the fallback, and a growing library needs it less ([overview](docs/application-broad-overview.md), [user stories](<docs/Auto-Grasp User Stories.md>)) |
+| 2026-10-26 | No grasp policy as an input. A cell is described by its **grasp accuracy** (the error model: spread in position and yaw, plus any consistent offset; presets or measured), and the sim keeps its scripted top-down pick. In library evaluation each finger is tried at the part's candidate grasps and scored at its best | The goal is the fingers' grasping ability. The error grid covers any pipeline that locates the part and then grasps it, which is honest; evaluating a specific VLM pipeline would need it run in the loop. Learned closed-loop policies are out of scope |
+| 2026-10-26 | User stories scoped for the first build: flat table and top-down grasps stay (3, 4); bulk upload by files or a folder, no CSV (5); story 11 skipped; no target success rate in generation (14); real-robot validation is per finger-and-part pair (17). The app has a parts library and a finger library. Grasp accuracy is set on the cell profile and copied into each job. Evaluation is a new job kind | Team review of the stories against the backend ([stories](<docs/Auto-Grasp User Stories.md>), [plan](docs/notes/library-evaluation-backend-plan.md)) |
+| 2026-10-26 | **Two kinds of job** share the jobs table, list, worker, cancel, resume and experiment IDs: generation (the optimizer) and evaluation (library fingers ranked on a part; its own trials table and `/ranking`). A library finger is a physical finger (stock, generated from a job's design, or uploaded CAD placed in the gripper frame automatically), tried on new parts through `regrip()` or `seat()`. Each finger is scored at its best of the top 3 grasp proposals per pose, and the top 3 fingers plus stock are re-tested on the dense grid. A qualification is one finger on one part: the latest prediction and the real-robot sessions, with the gap flagged outside the 95% Wilson interval. Migration 0007 adds the tables and clears nothing | A job is a scheduled run on the compute, whichever kind; evaluation is the new default path and generation the fallback ([plan, as built](docs/notes/library-evaluation-backend-plan.md#as-built-2026-10-26)) |
 
 ## Open questions / action items
 
+- [x] **Backend of the user stories' first build** (2026-10-26, mock sim only;
+      [plan, as built](docs/notes/library-evaluation-backend-plan.md#as-built-2026-10-26),
+      [API](docs/notes/backend-api.md#finger-library-evaluation-jobs-and-qualifications)): grasp accuracy on the cell,
+      bulk part upload, the finger library, evaluation jobs and their ranking, generation started from an evaluation,
+      adding designs to the library, and qualifications per finger and part.
+- [x] **Frontend for it (2026-10-26):** the Finger Library tab, bulk upload on the Part Library, the evaluation flow
+      (part or parts, cell, fingers, review), the ranking page with its "generate a finger" button, and real sessions on
+      a qualification.
+- [ ] **Run one evaluation job end to end on the GB10** (Isaac) and log it in docs/experiments: time against the
+      estimate, and whether the ranking survives a repeat run. Nothing about evaluation has run in Isaac yet.
+- [ ] Second build: failure reasons per grasp and replays (story 13; plan W7), and the pitch metrics (W8).
+- [ ] **Section grasps on the L-bracket have no buildable V-pad** (on `main` before 2026-10-26 too): its best grasp
+      proposal grips one arm, and every V-pad design "would land on the centred part" there, so a generation job on it
+      is blocked. The demo seed now uses its best whole-part grasp instead. Look at the search space's pad limits for
+      section grasps (`models/search_space.py`).
+- [ ] **Add height (z) error to the offset grid**, and probably tilt. The grid has dx, dy and yaw only, and the
+      fingertips close 2.5 mm above the table, so height error is the likeliest real failure the sim never tests.
+- [ ] Measure the real cell's grasp accuracy, to replace the placeholder presets (the default 3 mm sigma; risk 3).
+- [ ] Log time from part upload to a qualified finger, and the share of parts that ran on existing fingers; the pitch's
+      closing line needs those numbers.
 - [ ] **Pick the demo part + task** sized for the jaws. Proposed 2026-10-20: **one M6 × 30 screw into the yellow bin**. It's
       a manufacturing part, the platform's default scene, light, and its Ø6 shank fits the jaws. The table camera
       can't see screws, so position error is large. `cell_policy/` is built for it. Team to confirm.
 - [ ] **Confirm the finger mounting interface on the real jaw**: the STEP's tongue, its holes 4 and 11 mm below the
       shoulder, which way the screws go, and how the stock fingers sit (risk 8). Ask Zhen Zeng (zhenzeng@uwm.edu /
       `#dataset-3-grasping-sorting`), or photograph it at the cell.
-- [ ] Get the **stock finger CAD** (the dataset page lists it; the CAD Models page says "more parts will follow") and confirm
-      it matches `assets/gripper/photo_finger_detail.json`.
+- [ ] **Measure the stock fingers at the cell.** There is no CAD of them: the organizers couldn't find any (Slack,
+      2026-10-26), and both arms have the same gripper and fingers. The app's library shows the twin's model of them
+      (`api/models/finger.py`, `stock_blade`: 76 x 12 x 6 mm, an AA socket 6.97 mm above the tip, soft tips at friction
+      1.5 / 1.3). Check the socket, the tip bevel and the soft tips against it in the first session.
 - [ ] **Submit to the platform**: fill in `cell_policy/submission/submission.yaml` (team letter in `task_id`, contact),
       `uv run run.py --submit`, then book a slot in the dashboard's Calendar. The first real rollouts check the policy's
       jaw measurement (`cad2fingers_rollouts.jsonl`).

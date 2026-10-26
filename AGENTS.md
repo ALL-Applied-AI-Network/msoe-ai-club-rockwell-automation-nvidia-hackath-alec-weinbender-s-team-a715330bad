@@ -7,6 +7,9 @@ User instructions take precedence over this file.
 
 1. [CONTEXT.md](CONTEXT.md): what we're building, current state, hardware facts, open questions.
    Also [docs/notes/things-to-know.md](docs/notes/things-to-know.md): gotchas and mismatches.
+   The product's use case and user stories, which new features should follow:
+   [docs/application-broad-overview.md](docs/application-broad-overview.md) and
+   [docs/Auto-Grasp User Stories.md](<docs/Auto-Grasp User Stories.md>).
 2. [docs/README.md](docs/README.md): index of every source document (event rules, our plan, organizer feedback, references).
 3. Before touching the twin: [sim/fanuc_er4ia_sim/AGENTS.md](sim/fanuc_er4ia_sim/AGENTS.md) and its `docs/`. It has its own
    rules, and they apply inside that directory.
@@ -15,10 +18,10 @@ User instructions take precedence over this file.
 
 ```text
 pyproject.toml          uv workspace root (member list, ruff config, dev tools); uv.lock is the only lockfile
-app/                    Auto-Grasp web app (FastAPI + single-file UI)
+app/                    Auto-Grasp web app (FastAPI backend + React UI)
   backend/              uv member "backend", package src/api/: routers/ -> services/ -> clients/ (LLM, sim, CAD, database),
                         models/ (domain), db/ (SQLAlchemy tables + Alembic migrations); tests/ next to src/
-  frontend/index.html   UI served at /
+  frontend/              UI (Vite + React); the backend serves its build (frontend/dist) at /
 sim/
   fanuc_er4ia_sim/      Organizer-supplied FANUC ER-4iA Isaac Sim twin, starter v0.5 (vendored, not a uv member; see below)
   sim_server/           uv member "sim-server", package src/sim_server/: routers/ -> services/ -> robot/, clients/ (Isaac) -> models/, plus the Isaac scene

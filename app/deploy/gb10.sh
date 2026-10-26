@@ -3,7 +3,7 @@
 # (or any bash), on the MSOE VPN, with your SSH key on the team account (SETUP.md):
 #
 #   app/deploy/gb10.sh deploy            build the new UI, ship HEAD (commit first), install it and restart the app
-#   app/deploy/gb10.sh connect [port]    open the hosted app at http://localhost:<port>/app.html (default 8080)
+#   app/deploy/gb10.sh connect [port]    open the hosted app at http://localhost:<port>/ (default 8080)
 #   app/deploy/gb10.sh status | logs | restart | stop
 #
 # connect is plain ssh, so teammates without the repo run it from any shell (PowerShell too):
@@ -35,7 +35,7 @@ deploy() {
 
 connect() {
     local port="${1:-8080}"
-    echo "The hosted app: http://localhost:$port/app.html (the old UI at /). Keep this running; Ctrl+C closes it."
+    echo "The hosted app: http://localhost:$port/. Keep this running; Ctrl+C closes it."
     exec ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L "$port:$SOCK" "$HOST"
 }
 

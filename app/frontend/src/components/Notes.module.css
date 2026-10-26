@@ -1,0 +1,10 @@
+.list {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.list li + li {
+  margin-top: var(--space-1);
+}

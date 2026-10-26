@@ -1,0 +1,88 @@
+.score {
+  --tone: var(--ok);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 150px;
+}
+
+.ok {
+  --tone: var(--ok);
+}
+
+.warn {
+  --tone: var(--warn);
+}
+
+.bad {
+  --tone: var(--bad);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.value {
+  color: var(--ink);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--tone);
+}
+
+/* Ten segments with a gap between each: lit in the score's tone, unlit as dark wells */
+.meter {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  height: 10px;
+}
+
+.on,
+.off {
+  border-radius: 1px;
+}
+
+.on {
+  background: var(--tone);
+}
+
+.off {
+  background: var(--surface-3);
+}
+
+/* The headline size: a bigger number over a longer, taller meter */
+.lg {
+  gap: var(--space-2);
+  max-width: 260px;
+}
+
+.lg .value {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+}
+
+.lg .meter {
+  gap: 3px;
+  height: 14px;
+}
+
+.sub,
+.none {
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+
+.sub {
+  display: flex;
+  flex-direction: column; /* several facts under the meter, one per line */
+}

@@ -1,6 +1,7 @@
 """The detached process that does a job's sim work, started by the API (services/jobs.py: spawn_worker):
 
-    python -m api.worker <job_id>                     run (or resume) the job: the search, the final test, D1's CAD
+    python -m api.worker <job_id>                     run (or resume) the job: a generation job's search, final test
+                                                      and D1's CAD, or an evaluation job's fingers (services/evaluator.py)
     python -m api.worker <job_id> predict <plan_id>   predict every trial of one of the job's physical test plans
     python -m api.worker <job_id> clip <clip_id>      film one of the job's clips in Isaac Sim
 

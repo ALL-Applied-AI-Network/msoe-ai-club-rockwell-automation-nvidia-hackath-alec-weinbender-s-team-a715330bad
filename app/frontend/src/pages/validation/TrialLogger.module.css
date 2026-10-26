@@ -1,0 +1,143 @@
+/* Made for a phone or tablet at the robot: big text for what to command, big buttons for what happened. */
+.logger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 640px;
+  width: 100%;
+}
+
+
+.last {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.trial {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+
+.trialHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.trialId {
+  font-family: var(--mono);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+}
+
+.design {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.designName {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+}
+
+.finger {
+  font-family: var(--mono);
+  color: var(--mute);
+}
+
+.command {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+
+.commandLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--faint);
+}
+
+/* Wraps rather than overlapping: on a narrow phone, yaw drops to a second row. */
+.offsets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+}
+
+.axis {
+  display: flex;
+  flex-direction: column;
+}
+
+.axisName {
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+/* The number to type into the robot: as large as fits three across a phone. */
+.axisValue {
+  font-family: var(--mono);
+  font-size: clamp(var(--text-xl), 6vw, 32px);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tolerance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* Held and Missed: big touch targets. A Button size="lg" would replace this. */
+.big {
+  height: 64px;
+  font-size: var(--text-xl);
+}
+
+.secondary {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.faint {
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+
+.error {
+  color: var(--bad);
+}
+
+@media (max-width: 520px) {
+  .trial {
+    padding: var(--space-4);
+  }
+}

@@ -1,11 +1,7 @@
+/* A row of chips: each choice its own bordered chip, the chosen one tinted green. */
 .group {
   display: inline-flex;
-  gap: 2px;
-  height: var(--control-height);
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+  gap: var(--space-2);
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
@@ -14,12 +10,13 @@
 .option {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--faint);
+  gap: var(--space-2);
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--field);
+  color: var(--mute);
   font: inherit;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
@@ -27,30 +24,33 @@
   cursor: pointer;
   transition:
     background var(--transition),
+    border-color var(--transition),
     color var(--transition);
 }
 
 .option:hover {
+  border-color: var(--line-strong);
   color: var(--ink);
 }
 
 .option[aria-checked="true"] {
-  background: var(--surface-3);
+  border-color: var(--ok-line);
+  background: var(--acc-soft);
   color: var(--ink);
 }
 
 .count {
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  color: var(--faint);
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--mute);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
 
 .option[aria-checked="true"] .count {
-  background: var(--acc-soft);
-  color: var(--acc-text);
+  background: var(--acc);
+  color: var(--acc-ink);
 }

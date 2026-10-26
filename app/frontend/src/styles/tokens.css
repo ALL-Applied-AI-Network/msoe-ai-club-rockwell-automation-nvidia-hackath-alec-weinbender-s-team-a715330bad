@@ -1,23 +1,25 @@
 /* Design tokens: the only place the UI's colors, fonts, radii, spacing and shadows are set. Components use these
-   variables, never raw values (.claude/rules/coding-style.md, "Frontend"). The look follows NVIDIA Brev's console: Brev's
-   #0c0c0c page, hairline borders instead of shadows, small radii, a DIN-style sans, NVIDIA green only on actions, and a
-   terminal-style status bar along the bottom. Dark only. */
+   variables, never raw values (.claude/rules/coding-style.md, "Frontend"). NVIDIA Brev's colors (its #0c0c0c page,
+   hairline borders instead of shadows, NVIDIA green for actions and results, cyan for what's running) in a dashboard
+   layout: a sidebar, rounded panels in a main column and a right rail, pill-shaped status badges. Dark only. */
 
 :root {
   color-scheme: dark;
 
-  /* Surfaces, darkest first */
-  --bg: #0c0c0c; /* the page: Brev's own background */
-  --surface: #121212; /* panels, the status bar */
-  --surface-2: #1a1a1a; /* inputs, hovered rows, inset panels */
-  --surface-3: #242424; /* pressed, selected */
-  --line: #2a2a2a; /* borders and dividers */
-  --line-strong: #414141; /* hovered borders, input borders */
+  /* Surfaces, as in Brev's console: a charcoal page, darker chrome and fields, panels lifted just above the page */
+  --chrome: #121212; /* the sidebar and the top bar */
+  --field: #141414; /* inputs, search boxes, filter chips */
+  --bg: #1b1b1b; /* the page */
+  --surface: #222222; /* panels */
+  --surface-2: #2a2a2a; /* hovered rows, table heads, inset panels */
+  --surface-3: #343434; /* pressed, selected */
+  --line: #313131; /* borders and dividers */
+  --line-strong: #474747; /* hovered borders, input borders */
 
   /* Text */
   --ink: #f2f2f2;
   --mute: #a3a3a3; /* secondary text */
-  --faint: #7c7c7c; /* captions, units, timestamps: 4.5:1 on --surface */
+  --faint: #8c8c8c; /* captions, units, timestamps: 4.5:1 on --surface */
 
   /* Actions */
   --acc: #76b900; /* NVIDIA green: primary actions and progress */
@@ -41,7 +43,7 @@
   --bad-line: rgba(255, 90, 95, 0.35);
   --neutral: #a3a3a3;
   --neutral-soft: rgba(255, 255, 255, 0.06);
-  --neutral-line: #3d3d3d;
+  --neutral-line: #4a4a4a;
 
   /* Charts */
   --baseline: #ff5a5f; /* stock and imprint fingers */
@@ -55,16 +57,18 @@
   --text-sm: 13px;
   --text-md: 15px;
   --text-lg: 17px;
-  --text-xl: 21px;
+  --text-xl: 20px;
   --text-2xl: 28px;
+  --text-3xl: 32px; /* a page's title */
   --weight-medium: 500;
   --weight-semibold: 600;
   --weight-bold: 700;
 
   /* Shape and space */
-  --r: 6px; /* panels, dialogs */
-  --r-sm: 4px; /* buttons, inputs, badges */
-  --r-pill: 99px; /* only round things: dots, progress tracks */
+  --r: 10px; /* panels, dialogs */
+  --r-md: 8px; /* tiles and rows inside a panel: thumbnails, quick actions, table heads */
+  --r-sm: 6px; /* buttons, inputs */
+  --r-pill: 99px; /* dots, progress tracks, status badges, filter chips */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -72,9 +76,11 @@
   --space-5: 24px;
   --space-6: 32px;
   --gap: 16px; /* between panels, inside a panel */
-  --content-width: 1280px;
-  --topbar-height: 52px;
-  --statusbar-height: 28px;
+  --content-width: 2200px; /* the page fills the window up to this, then sits centred in it */
+  --sidebar-width: 224px;
+  --rail-width: clamp(320px, 19vw, 420px); /* the right-hand column of a page that has one: wider on wide screens */
+  --topbar-height: 56px;
+  --thumb-size: 56px; /* a part's thumbnail in a table row */
   --control-height: 34px; /* buttons, inputs, selects */
   --control-height-sm: 28px;
 

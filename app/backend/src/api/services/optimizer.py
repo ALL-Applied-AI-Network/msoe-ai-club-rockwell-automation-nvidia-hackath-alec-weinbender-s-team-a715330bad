@@ -98,12 +98,18 @@ class _Run:
 
 def run_job(db: DatabaseClient, job_id: str, *, sim: SimClient, cad: CadClient, outputs_dir: Path) -> None:
     """Run or resume a job to completion. A failure is stored on the job (status 'failed', the traceback, a one-line
-    failure and the input step that fixes it), not raised. A job that's already done is left alone."""
+    failure and the input step that fixes it), not raised. A job that's already done is left alone. This is the worker's
+    entry point for every job: an evaluation job is handed to services/evaluator.py."""
     started = time.time()
     try:
         job = get_job(db, job_id)
     except JobNotFoundError:
         logger.error("Job %s: not found", job_id)
+        return
+    if job.kind == "evaluation":
+        from api.services.evaluator import run_evaluation  # here: the evaluator never needs the optimizer's torch stack
+
+        run_evaluation(db, job_id, sim=sim)
         return
     if job.status == "done":
         logger.info("Job %s: already done", job_id)

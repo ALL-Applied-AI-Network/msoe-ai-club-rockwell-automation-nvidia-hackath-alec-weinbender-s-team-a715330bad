@@ -1,28 +1,29 @@
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
+/* The shell: a fixed sidebar on the left, and the page beside it (top bar, then the content). */
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 100vh;
 }
 
-.bar {
+.sidebar {
+  position: sticky;
+  top: 0;
   display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  max-width: var(--content-width);
-  height: var(--topbar-height);
-  margin: 0 auto;
-  padding: 0 var(--space-5);
+  flex-direction: column;
+  gap: var(--space-5);
+  height: 100vh;
+  padding: var(--space-5) var(--space-3) var(--space-4);
+  border-right: 1px solid var(--line);
+  background: var(--chrome);
 }
 
 .brand {
   display: flex;
-  flex: none;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
   color: var(--ink);
-  font-size: var(--text-lg);
+  font-size: var(--text-xl);
   font-weight: var(--weight-bold);
   letter-spacing: 0.01em;
 }
@@ -31,7 +32,6 @@
   text-decoration: none;
 }
 
-/* The gripper drawn in green on its own, no tile behind it */
 .mark {
   display: grid;
   place-items: center;
@@ -39,62 +39,167 @@
 }
 
 .mark svg {
-  width: 22px;
-  height: 22px;
-  stroke-width: 1.6;
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.8;
 }
 
 .nav {
   display: flex;
-  align-self: stretch;
-  gap: var(--space-5);
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .link {
   display: flex;
   align-items: center;
-  border-bottom: 2px solid transparent;
+  gap: var(--space-3);
+  height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
   color: var(--mute);
   font-weight: var(--weight-medium);
   white-space: nowrap;
-  transition: color var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.link svg {
+  width: 18px;
+  height: 18px;
 }
 
 .link:hover {
+  background: var(--surface-2);
   color: var(--ink);
   text-decoration: none;
 }
 
-.current {
+.current,
+.current:hover {
+  border-color: var(--ok-line);
+  background: var(--acc-soft);
   color: var(--ink);
-  border-bottom-color: var(--acc);
+}
+
+.current svg {
+  color: var(--acc);
+}
+
+/* The GPU, at the foot of the sidebar */
+.compute {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding: var(--space-4) var(--space-3) var(--space-2);
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.compute:hover {
+  text-decoration: none;
+}
+
+.compute:hover .computeHead {
+  color: var(--acc-text);
+}
+
+.computeHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--weight-semibold);
+}
+
+.computeHead svg {
+  margin-left: auto;
+  color: var(--faint);
+}
+
+.computeText {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--neutral);
+}
+
+.ok {
+  background: var(--ok);
+}
+
+.active {
+  background: var(--active);
+}
+
+.warn {
+  background: var(--warn);
+}
+
+.bad {
+  background: var(--bad);
+}
+
+/* The page beside the sidebar */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  height: var(--topbar-height);
+  /* Its right edge lines up with the content's, also once the content is centred on a wide screen */
+  padding: 0 max(var(--space-6), calc((100% - var(--content-width)) / 2 + var(--space-6)));
+  border-bottom: 1px solid var(--line);
+  background: var(--chrome);
+}
+
+.url {
+  color: var(--faint);
+  font-size: var(--text-xs);
 }
 
 .content {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  width: 100%;
   max-width: var(--content-width);
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-5) calc(var(--statusbar-height) + var(--space-6));
+  margin-inline: auto; /* past the widest content, the page sits centred rather than against the sidebar */
+  padding: var(--space-5) var(--space-6) var(--space-6);
 }
 
 .heading {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-3) var(--space-4);
-  min-height: var(--control-height);
 }
 
 .title {
-  font-size: var(--text-xl);
-  font-weight: var(--weight-semibold);
-  line-height: 1.2;
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.15;
 }
 
 .description {
@@ -105,24 +210,82 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-/* Narrow screens: the brand on the first row, the navigation on its own row under it. */
+/* Content and rail: two columns whose first panels start at the same height and whose last panels end at the same
+   height, so the page's boxes line up on both edges. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--rail-width);
+  align-items: stretch;
+  gap: var(--space-5);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.stretch > .column > section:last-child {
+  flex: 1; /* the last panel of each column stretches, so both columns end together; loading placeholders don't */
+}
+
+/* A long page's rail: its panels keep their height and it stays in view under the top bar */
+.columns:not(.stretch) {
+  align-items: start;
+}
+
+.sticky {
+  position: sticky;
+  top: calc(var(--topbar-height) + var(--space-5));
+}
+
+/* A narrower window: the rail goes under the content. */
+@media (max-width: 1240px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stretch > .column > section:last-child {
+    flex: none;
+  }
+
+  .sticky {
+    position: static;
+  }
+}
+
+/* Narrow screens: the sidebar becomes a bar along the top, its links in a row. */
 @media (max-width: 860px) {
-  .bar {
-    flex-wrap: wrap;
-    gap: 0 var(--space-3);
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
     height: auto;
-    padding: var(--space-2) var(--space-4) 0;
+    padding: var(--space-2) var(--space-4);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
   }
 
   .nav {
-    width: 100%;
-    height: 40px;
+    flex-direction: row;
+  }
+
+  .compute {
+    display: none;
   }
 
   .content {
-    padding: var(--space-4) var(--space-4) calc(var(--statusbar-height) + var(--space-5));
+    padding: var(--space-4);
   }
 }

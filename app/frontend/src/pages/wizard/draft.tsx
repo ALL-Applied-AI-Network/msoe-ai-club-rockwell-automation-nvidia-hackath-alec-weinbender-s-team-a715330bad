@@ -113,7 +113,8 @@ function complete(draft: Draft): Spec | null {
   const { part_id, cell_profile_id, task, poses, error, seed } = draft;
   if (!part_id || cell_profile_id == null || !task || !error || seed == null) return null;
   if (!poses?.length || poses.some((p) => !p.grasp)) return null;
-  return { ...draft, part_id, cell_profile_id, task, error, seed, poses: poses.map((p) => ({ pose: p.pose, grasp: p.grasp! })) };
+  const chosen = poses.map((p) => ({ pose: p.pose, grasp: p.grasp! }));
+  return { ...draft, kind: "generation", part_id, cell_profile_id, task, error, seed, poses: chosen };
 }
 
 /** A draft as the wizard holds it: a single legacy `grasp` (a stored draft from before poses, or a copied experiment

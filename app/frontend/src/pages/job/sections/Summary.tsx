@@ -1,5 +1,5 @@
 import { Card } from "../../../components/Card";
-import { Stat } from "../../../components/Stat";
+import { Score } from "../../../components/Score";
 import { Table, type Column } from "../../../components/Table";
 import type { Schemas } from "../../../backend/client";
 import { mm, percent, points } from "../../../format";
@@ -10,66 +10,46 @@ import styles from "../JobPage.module.css";
 type Score = Schemas["DesignScore"];
 type PoseScore = Schemas["PoseScore"];
 
-/** The headline: the best design against the stock fingers and the imprint at the target camera error, with how far
- *  off centre each still catches the part. */
+/** The headline: the best design against the stock fingers and the imprint at the target camera error, each as a meter,
+ *  with how far off centre it still catches the part and what it gains. */
 export function Summary({ results }: { results: Results }) {
   const summary = results.summary!;
   const { best, stock, imprint, task_metric_label: metricLabel } = summary;
   const sigma = results.header.error.sigma_mm;
-  const detail = (score: Score) => (
+  const facts = (score: Score, gain?: number | null) => (
     <>
-      {score.capture_radius_mm == null ? "no capture radius" : `capture radius ${mm(score.capture_radius_mm)}`}
+      <span>{score.capture_radius_mm == null ? "No capture radius" : `Capture radius ${mm(score.capture_radius_mm)}`}</span>
       {metricLabel && score.task_metric != null && (
-        <>
-          <br />
+        <span>
           {percent(score.task_metric)} {metricLabel}
-        </>
+        </span>
+      )}
+      {gain != null && (
+        <span>
+          {designLabel(best.label)} gains {points(gain)}
+        </span>
       )}
     </>
   );
 
   return (
-    <Card
-      title={`Share of grasps held at σ ${mm(sigma)}`}
-      aside={<span className={styles.note}>{summary.designs_evaluated} designs evaluated</span>}
-    >
+    <Card title={`Grasps held at a ${mm(sigma)} camera error`} subtitle={`${summary.designs_evaluated} designs evaluated`}>
       <div className={styles.summary}>
-        <Stat size="lg" tone="acc" label={`Best design, ${designLabel(best.label)}`} value={percent(best.success)} detail={detail(best)} />
+        <div className={styles.headline}>
+          <span className={styles.headlineLabel}>Best design, {designLabel(best.label)}</span>
+          <Score value={best.success} size="lg" label={`${designLabel(best.label)} success`} sub={facts(best)} />
+        </div>
         {stock && (
-          <Stat
-            size="lg"
-            label="Stock fingers"
-            value={percent(stock.success)}
-            detail={
-              <>
-                {detail(stock)}
-                {summary.gain_vs_stock != null && (
-                  <>
-                    <br />
-                    {designLabel(best.label)}: {points(summary.gain_vs_stock)}
-                  </>
-                )}
-              </>
-            }
-          />
+          <div className={styles.headline}>
+            <span className={styles.headlineLabel}>Stock fingers</span>
+            <Score value={stock.success} size="lg" label="Stock fingers success" sub={facts(stock, summary.gain_vs_stock)} />
+          </div>
         )}
         {imprint && (
-          <Stat
-            size="lg"
-            label="Imprint"
-            value={percent(imprint.success)}
-            detail={
-              <>
-                {detail(imprint)}
-                {summary.gain_vs_imprint != null && (
-                  <>
-                    <br />
-                    {designLabel(best.label)}: {points(summary.gain_vs_imprint)}
-                  </>
-                )}
-              </>
-            }
-          />
+          <div className={styles.headline}>
+            <span className={styles.headlineLabel}>Imprint</span>
+            <Score value={imprint.success} size="lg" label="Imprint success" sub={facts(imprint, summary.gain_vs_imprint)} />
+          </div>
         )}
       </div>
       {best.poses && best.poses.length > 1 && <PoseTable best={best} stock={stock} imprint={imprint} />}

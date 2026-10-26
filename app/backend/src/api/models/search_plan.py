@@ -132,6 +132,7 @@ class Blocker(BaseModel):
 
 
 class JobPlan(BaseModel):
+    kind: Literal["generation"] = "generation"  # plans stored before evaluation jobs existed have no kind: generation
     part: Part  # as the gripper meets it, in the primary pose
     families: list[FamilySummary]
     searches: list[SearchConfig]
@@ -166,7 +167,9 @@ def plan_job(
     """The plan for this part, spec and cell. `estimate` carries the throughput (seconds is filled in here); clearance_mm
     is the part record's clearance on the table, if set. poses: the resting poses the job covers, primary first (its
     part is `part`); None for one, on `part` with the spec's grasp. Collects every problem in warnings / blocked rather
-    than raising: a blocked plan still has its totals, so the review screen can show both."""
+    than raising: a blocked plan still has its totals, so the review screen can show both. A spec without an error model
+    is planned at the profile's grasp accuracy."""
+    spec = spec.with_error(profile.grasp_accuracy)
     gripper = profile.gripper
     poses = poses or [JobPose(key="p0", grasp=spec.grasp, part=part)]
     grid = OffsetGrid.for_parts([pose.part for pose in poses], spec.error)

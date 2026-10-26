@@ -1,16 +1,19 @@
 import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { api, unwrap, type Schemas } from "../../backend/client";
 import { Banner } from "../../components/Banner";
-import { LinkButton } from "../../components/Button";
 import { DownloadButton } from "../../components/DownloadButton";
 import { FileDrop } from "../../components/FileDrop";
 import { ProgressBar } from "../../components/ProgressBar";
+import { Segmented } from "../../components/Segmented";
+import { ErrorState, Skeleton } from "../../components/States";
 import { Stat } from "../../components/Stat";
 import { Table, type Column } from "../../components/Table";
 import { of } from "../../format";
 import { Comparison } from "./Comparison";
-import { useRefreshJob } from "./queries";
+import { useRefreshJob, useTestPlan } from "./queries";
 import { Stage } from "./Stage";
+import { TrialLogger } from "./TrialLogger";
 import styles from "./JobValidationPage.module.css";
 
 type Plan = Schemas["TestPlanSummaryResponse"];
@@ -30,7 +33,8 @@ const STATUS = {
   validated: { tone: "ok", label: "Validated" },
 } as const;
 
-/** Stage 5: run the plan at the robot, log the outcomes through the spreadsheet, and compare them with the sim. */
+/** Stage 6: run the plan at the robot, log the outcomes (one trial at a time at the robot, or the filled-in spreadsheet),
+ *  and compare them with the sim. */
 export function LogStage({
   jobId,
   experimentId,
@@ -66,13 +70,14 @@ export function LogStage({
   });
   const base = `/api/jobs/${encodeURIComponent(jobId)}/test-plans/${plan?.id}`;
   const approved = review?.status === "approved";
+  const [mode, setMode] = useState<"one" | "sheet">("one");
 
   return (
     <Stage
-      step={5}
+      step={6}
       title="Log the trials and compare"
       status={STATUS[validation?.badge ?? "none"]}
-      description="Run the plan at the robot, fill in the spreadsheet, and upload it."
+      description="Run the plan at the robot and log each trial: one at a time as you go, or in the spreadsheet."
     >
       {!plan ? (
         <p className={styles.note}>Create a test plan first.</p>
@@ -83,49 +88,61 @@ export function LogStage({
               {review?.status === "rejected"
                 ? `A reviewer rejected these fingers${review.reviewer ? ` (${review.reviewer})` : ""}${review.notes ? `: ${review.notes}` : "."} `
                 : "No printed finger goes on the real arm until a named reviewer approves it. "}
-              The review is part of the experiment's results page.
+              Approve them in stage 3 first.
             </Banner>
           )}
 
-          <div className={styles.panel}>
-            <h3 className={styles.panelTitle}>At the robot</h3>
-            <ol className={styles.steps}>
-              <li>Download plan {plan.id}. The spreadsheet's prediction column is hidden, so the operator tests blind.</li>
-              <li>
-                Command each trial's offset on the robot. Don't move the part: it stays where it always is, and the
-                offset is what the fingers are designed to tolerate.
-              </li>
-              <li>
-                Fill in <code>outcome</code> with held, missed or skipped
-                {needsTolerance ? ", and in_tolerance with whether the part landed within the task's tolerance" : ""}.
-                Notes and a video link are optional.
-              </li>
-              <li>Upload the filled-in spreadsheet here.</li>
-            </ol>
-            <div className={styles.actions}>
-              <DownloadButton href={`${base}.xlsx`} label={`Download plan ${plan.id} (.xlsx)`} />
-              <DownloadButton href={`${base}.csv`} label="Download as .csv" />
-              <LinkButton variant="ghost" size="sm" to={`/jobs/${jobId}/log`}>
-                Or log one trial at a time on a phone
-              </LinkButton>
-            </div>
-            <div className={styles.progressRow}>
-              <span className={styles.note}>
-                {of(plan.logged, plan.planned)} trials logged
-                {plan.extras ? `, plus ${plan.extras} extra` : ""}
-              </span>
-              <ProgressBar value={plan.planned ? plan.logged / plan.planned : 0} label="Trials logged" />
-            </div>
+          <div className={styles.progressRow}>
+            <span className={styles.note}>
+              {of(plan.logged, plan.planned)} trials logged in plan {plan.id}
+              {plan.extras ? `, plus ${plan.extras} extra` : ""}
+            </span>
+            <ProgressBar value={plan.planned ? plan.logged / plan.planned : 0} label="Trials logged" />
           </div>
-
-          <FileDrop
-            label={`Drop the filled-in plan ${plan.id} here`}
-            accept=".xlsx,.csv"
-            busy={upload.isPending ? "Reading the spreadsheet" : undefined}
-            error={upload.error?.message}
-            hint="Uploading again keeps earlier outcomes."
-            onFile={(file) => upload.mutate({ planId: plan.id, file })}
+          <Segmented
+            label="How to log"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "one", label: "One trial at a time" },
+              { value: "sheet", label: "Upload the spreadsheet" },
+            ]}
           />
+
+          {mode === "one" ? (
+            <OneAtATime jobId={jobId} planId={plan.id} tolerance={needsTolerance} />
+          ) : (
+            <>
+              <div className={styles.panel}>
+                <ol className={styles.steps}>
+                  <li>Download plan {plan.id}. The spreadsheet's prediction column is hidden, so the operator tests blind.</li>
+                  <li>
+                    Command each trial's offset on the robot. Don't move the part: it stays where it always is, and the
+                    offset is what the fingers are designed to tolerate.
+                  </li>
+                  <li>
+                    Fill in <code>outcome</code> with held, missed or skipped
+                    {needsTolerance ? ", and in_tolerance with whether the part landed within the task's tolerance" : ""}.
+                    Notes and a video link are optional.
+                  </li>
+                  <li>Upload the filled-in spreadsheet here.</li>
+                </ol>
+                <div className={styles.actions}>
+                  <DownloadButton href={`${base}.xlsx`} label={`Download plan ${plan.id} (.xlsx)`} />
+                  <DownloadButton href={`${base}.csv`} label="Download as .csv" />
+                </div>
+              </div>
+
+              <FileDrop
+                label={`Drop the filled-in plan ${plan.id} here`}
+                accept=".xlsx,.csv"
+                busy={upload.isPending ? "Reading the spreadsheet" : undefined}
+                error={upload.error?.message}
+                hint="Uploading again keeps earlier outcomes."
+                onFile={(file) => upload.mutate({ planId: plan.id, file })}
+              />
+            </>
+          )}
 
           {upload.data && (
             <div className={styles.panel} role="status">
@@ -160,4 +177,12 @@ export function LogStage({
       )}
     </Stage>
   );
+}
+
+/** The plan's trials, logged one at a time at the robot. */
+function OneAtATime({ jobId, planId, tolerance }: { jobId: string; planId: number; tolerance: boolean }) {
+  const plan = useTestPlan(jobId, planId);
+  if (plan.isPending) return <Skeleton height={320} />;
+  if (plan.isError) return <ErrorState title="Couldn't load the test plan" message={plan.error.message} onRetry={() => void plan.refetch()} />;
+  return <TrialLogger key={planId} jobId={jobId} planId={planId} rows={plan.data.rows} logged={plan.data.logged_trials} tolerance={tolerance} />;
 }
