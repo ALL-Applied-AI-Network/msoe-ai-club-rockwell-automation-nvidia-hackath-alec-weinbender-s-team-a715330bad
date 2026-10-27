@@ -72,6 +72,12 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
    physical trials are made up: never quote them. Unset it for real work.
 10. **Mock and Isaac badges are part of the data.** A job keeps the badge of the sim it was created on, and a worker with
     the other sim refuses to resume it.
+11. **A finger that lands on the part scores as a miss (since 2026-10-26).**
+    - It counts when the part moved more than 1 mm or 3° before the jaws closed. Results and rankings say how many
+      holds it turned into misses.
+    - Jobs from before have no landing data, keep their old scores, and say it wasn't checked. Don't compare an old
+      job's numbers with a new one's.
+    - On the M6 screw it drops stock from about 88% to 63%.
 
 ## The digital twin (`sim/fanuc_er4ia_sim/`)
 
@@ -104,8 +110,18 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
 
    Results near a design's capture edge aren't repeatable. Custom-finger friction is *averaged* with the part's by
    default (`--friction-combine`).
-9. **It's vendored upstream code.** Prefer wrappers over edits, and log any edits in `CONTEXT.md` (`MANIFEST.json` has the
-   original hashes).
+
+   Since 2026-10-26 the landing readout works: stage 4 passes with the landing rule, and an untouched part moves exactly
+   0 ([log](../experiments/2026-10-26-gb10-landing-check-and-screw-reruns.md)).
+9. **The M6 screw isn't repeatable in the twin** (2026-10-26). Two runs of the same finger agree on only 77–81% of grid
+   points, on either path, because the fingers brush the lying screw differently each run. Scores move 1.4–2.3 points.
+   Treat gaps smaller than about 3 points between fingers on the screw as noise, and repeat a finalist's test before
+   quoting a win.
+10. **The stock fingers have more friction in the twin than a printed finger.** The stock tips are 1.5 / 1.3 in the twin.
+    A printed finger gets the part's estimated friction against PLA (0.4 / 0.3 for steel), averaged with the part's
+    own. Neither number is measured (CONTEXT.md risk 12).
+11. **It's vendored upstream code.** Prefer wrappers over edits, and log any edits in `CONTEXT.md` (`MANIFEST.json` has the
+    original hashes).
 
 ## Rules and process
 
