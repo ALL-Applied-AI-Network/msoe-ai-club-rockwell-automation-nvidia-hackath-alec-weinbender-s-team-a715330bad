@@ -160,6 +160,7 @@ def _simulate(
                 held=outcomes.held,
                 in_hand=[None if p is None else list(p) for p in outcomes.in_hand],
                 held_after_transport=outcomes.held_after_transport,
+                landing=None if outcomes.landing is None else [None if m is None else list(m) for m in outcomes.landing],
                 tip_height_mm=None if finger is None else finger.tip_height_mm,
                 jaw_close_mm=None if finger is None else finger.jaw_close_mm,
                 duration=share,

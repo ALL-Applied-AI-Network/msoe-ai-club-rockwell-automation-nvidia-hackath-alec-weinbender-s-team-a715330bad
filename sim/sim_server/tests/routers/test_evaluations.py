@@ -59,7 +59,8 @@ class ImmediateQueue:
 @pytest.fixture
 def service(monkeypatch):
     """Replaces evaluate_batch; records (cell, batch) and answers a checkerboard of held flags, with an in-hand pose of
-    (offset index mm, -0.5 mm, 0.1 mm, 1 deg, 2 deg) wherever it held."""
+    (offset index mm, -0.5 mm, 0.1 mm, 1 deg, 2 deg) wherever it held, and a landing of (design index mm, 4 deg) at
+    every offset of design 1 (design 0 unmeasured)."""
     calls: list[tuple[object, GraspBatch]] = []
     error: list[Exception] = []
 
@@ -76,6 +77,7 @@ def service(monkeypatch):
             held=tuple(map(tuple, held)),
             in_hand=tuple(map(tuple, in_hand)),
             held_after_transport=None if batch.transport is None else tuple(tuple(False for _ in row) for row in held),
+            landing=tuple(tuple(None if d == 0 else (d * 1e-3, 4.0) for _ in batch.offsets) for d in range(len(batch.designs))),
         )
 
     monkeypatch.setattr(evaluations, "evaluate_batch", fake)
@@ -101,6 +103,7 @@ def test_batch_converts_units_and_answers_one_row_per_design(service, box_piece)
         "held": [[True, False], [False, True]],
         "in_hand": [[[0.0, -0.5, 0.1, 1.0, 2.0], None], [None, [1.0, -0.5, 0.1, 1.0, 2.0]]],
         "held_after_transport": None,  # no transport asked for
+        "landing": [[None, None], [[1.0, 4.0], [1.0, 4.0]]],  # mm and degrees
         "sim": DESCRIPTION,
     }
     ((cell, batch),) = service.calls

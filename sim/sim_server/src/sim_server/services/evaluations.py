@@ -3,9 +3,9 @@
 evaluate_batch does the bookkeeping: each design's grasp settings and warnings, the stock-fit skip, planning every
 design before anything is simulated (so an IK failure fails fast), packing designs x offsets into chunks of one grasp per
 environment, turning each offset into the part's true pose, turning what the cell measured into outcomes (held, the
-in-hand pose, held after transport), and the timing log. Each chunk goes to the cell (clients/isaac.py, the only Isaac
-code), which edits the stage when needed and runs the physics. Tests drive it with a fake cell that satisfies the Cell
-protocol below.
+in-hand pose, held after transport, how far the part moved before the jaws closed), and the timing log. Each chunk goes
+to the cell (clients/isaac.py, the only Isaac code), which edits the stage when needed and runs the physics. Tests drive
+it with a fake cell that satisfies the Cell protocol below.
 """
 
 import logging
@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Protocol
 from sim_server.models.batch import GraspBatch
 from sim_server.models.grasp import EnvGrasp, GraspSettings, Transport
 from sim_server.models.gripper import GripperGeometry
-from sim_server.models.outcome import BatchOutcome, GraspOutcome
+from sim_server.models.outcome import BatchOutcome, GraspOutcome, Landing
 from sim_server.models.part import Part
 from sim_server.models.pose import InHandPose
 from sim_server.models.recording import RecordView
@@ -68,6 +68,7 @@ def evaluate_batch(cell: Cell, batch: GraspBatch) -> BatchOutcome:
     held = [[False] * n_offsets for _ in batch.designs]
     in_hand: list[list[InHandPose | None]] = [[None] * n_offsets for _ in batch.designs]
     after = None if batch.transport is None else [[False] * n_offsets for _ in batch.designs]
+    landing: list[list[Landing | None]] = [[None] * n_offsets for _ in batch.designs]
     settings = [grasp_settings(design, batch.part, geo) for design in batch.designs]
     pairs = []
     for d, (design, setting) in enumerate(zip(batch.designs, settings, strict=True)):
@@ -105,6 +106,7 @@ def evaluate_batch(cell: Cell, batch: GraspBatch) -> BatchOutcome:
             in_hand[d][o] = in_hand_of(outcome, settings[d], batch.part, planner)
             if after is not None:
                 after[d][o] = bool(outcome.held_after_transport)
+            landing[d][o] = outcome.landing
         logger.debug("Chunk %d/%d: %d grasps in %.2f s", n + 1, len(chunks), len(chunk), time.perf_counter() - chunk_started)
 
     elapsed = time.perf_counter() - started
@@ -126,6 +128,7 @@ def evaluate_batch(cell: Cell, batch: GraspBatch) -> BatchOutcome:
         held=tuple(map(tuple, held)),
         in_hand=tuple(map(tuple, in_hand)),
         held_after_transport=None if after is None else tuple(map(tuple, after)),
+        landing=tuple(map(tuple, landing)),
     )
 
 

@@ -101,12 +101,28 @@ def in_hand_pose(
     return InHandPose(dx=rx * gxx + ry * gxy, dy=rx * gyx + ry * gyy, dz=rz - expected_z, tilt_deg=tilt, yaw_deg=yaw)
 
 
-def _axes(quaternion: Sequence[float]) -> tuple[tuple[float, float, float], ...]:
-    """The columns of the rotation matrix of a (w, x, y, z) quaternion, normalised first: the body's x, y and z axes."""
+def landing_motion(
+    start_position: Sequence[float], start_orientation: Sequence[float], end_position: Sequence[float], end_orientation: Sequence[float]
+) -> tuple[float, float]:
+    """How far a part moved between two poses: (its centre's shift in the table plane, metres; the angle of the rotation
+    between the two orientations, degrees, in [0, 180]). Quaternions are (w, x, y, z), any non-zero length; raises
+    ValueError for a zero or non-finite one. A finger that lands on the part on the way down shows up here."""
+    shift = math.hypot(end_position[0] - start_position[0], end_position[1] - start_position[1])
+    a, b = (_unit(q) for q in (start_orientation, end_orientation))
+    dot = min(1.0, abs(sum(p * q for p, q in zip(a, b, strict=True))))  # |cos(half the angle)|: q and -q are one rotation
+    return shift, math.degrees(2 * math.acos(dot))
+
+
+def _unit(quaternion: Sequence[float]) -> tuple[float, ...]:
     norm = math.sqrt(sum(v * v for v in quaternion))
     if not norm > 0 or not math.isfinite(norm):
         raise ValueError(f"not a rotation quaternion: {tuple(quaternion)}")
-    w, x, y, z = (v / norm for v in quaternion)
+    return tuple(v / norm for v in quaternion)
+
+
+def _axes(quaternion: Sequence[float]) -> tuple[tuple[float, float, float], ...]:
+    """The columns of the rotation matrix of a (w, x, y, z) quaternion, normalised first: the body's x, y and z axes."""
+    w, x, y, z = _unit(quaternion)
     x_axis = (1 - 2 * (y * y + z * z), 2 * (x * y + w * z), 2 * (x * z - w * y))
     y_axis = (2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x))
     z_axis = (2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y))

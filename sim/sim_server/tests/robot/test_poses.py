@@ -6,7 +6,16 @@ import pytest
 
 from sim_server.models.offset import Offset
 from sim_server.models.part import Part
-from sim_server.robot.poses import DROP_GAP, NOMINAL_SITE_XY, gripper_axes, in_hand_pose, nominal_pose, true_pose, yaw_quaternion
+from sim_server.robot.poses import (
+    DROP_GAP,
+    NOMINAL_SITE_XY,
+    gripper_axes,
+    in_hand_pose,
+    landing_motion,
+    nominal_pose,
+    true_pose,
+    yaw_quaternion,
+)
 
 CUBE = Part(shape="box", size=(0.010, 0.010, 0.010), mass=0.004)
 SURFACE = -0.0051
@@ -199,3 +208,32 @@ def test_a_box_keeps_the_turn_a_cylinder_would_ignore():
 def test_a_bad_quaternion_is_refused(q):
     with pytest.raises(ValueError):
         in_hand_pose(GRIP, q, GRIP, (0.0, 1.0), EXPECTED_Z)
+
+
+def test_a_part_left_alone_didnt_land():
+    q = yaw_quaternion(30.0)
+    assert landing_motion((0.3, 0.0, 0.005), q, (0.3, 0.0, 0.005), q) == pytest.approx((0.0, 0.0), abs=1e-6)
+
+
+def test_landing_shift_is_in_the_table_plane_only():
+    q = yaw_quaternion(0.0)
+    shift, turn = landing_motion((0.3, 0.0, 0.005), q, (0.303, 0.004, 0.001), q)  # pushed 3 mm, 4 mm and down 4 mm
+    assert shift == pytest.approx(0.005)
+    assert turn == pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.parametrize("turn_deg", [5.0, -5.0, 170.0])
+def test_landing_turn_is_the_angle_turned_either_way(turn_deg):
+    _, turn = landing_motion((0, 0, 0), yaw_quaternion(10.0), (0, 0, 0), yaw_quaternion(10.0 + turn_deg))
+    assert turn == pytest.approx(abs(turn_deg))
+
+
+def test_landing_turn_counts_a_tip_too_and_ignores_quaternion_sign_and_scale():
+    tipped = (math.cos(math.radians(3)), math.sin(math.radians(3)), 0.0, 0.0)  # 6 deg about x: one end pressed down
+    _, turn = landing_motion((0, 0, 0), (2.0, 0.0, 0.0, 0.0), (0, 0, 0), tuple(-v for v in tipped))
+    assert turn == pytest.approx(6.0)
+
+
+def test_landing_refuses_a_bad_quaternion():
+    with pytest.raises(ValueError):
+        landing_motion((0, 0, 0), (0.0, 0.0, 0.0, 0.0), (0, 0, 0), (1.0, 0.0, 0.0, 0.0))

@@ -16,6 +16,7 @@ Contract v2, POST /evaluate_batch (millimetres, grams, degrees, newtons; the twi
     -> {"held": [[bool per offset] per design],
         "in_hand": [[[dx_mm, dy_mm, dz_mm, tilt_deg, yaw_deg] | null per offset] per design],
         "held_after_transport": [[bool per offset] per design] | null,
+        "landing": [[[shift_mm, turn_deg] | null per offset] per design],
         "sim": {"envs", "device", "friction_combine", "physics_dt", "solver_position_iterations",
                 "solver_velocity_iterations", "contact_offset_mm", "rest_offset_mm", ...}}
 
@@ -53,6 +54,11 @@ Contract v2, POST /evaluate_batch (millimetres, grams, degrees, newtons; the twi
   standing, its lean and yaw 0; lying, its axis's angle out of G's xy plane and its turn about G's z, in (-90, 90].
   null where the part wasn't held or the grasp wasn't simulated.
 - held_after_transport: still more than 25 mm up at the end of the settle; null when transport is null.
+- landing: how far the part moved while the gripper came down, from the end of the approach to the end of the descent
+  (the jaws still open): its centre's shift in the table plane in mm, and the angle it turned through in degrees. A
+  finger that lands on the part moves it, and the jaws may still close on it then ("landing capture"); the caller decides
+  what counts. null where the grasp wasn't simulated (a stock design too narrow for the part) or physics blew up.
+  Servers before 2026-10-26 leave it out.
 - sim: the scene's description, for the caller's run metadata: envs, device, friction_combine, physics_dt (seconds),
   the part body's solver_position_iterations and solver_velocity_iterations, the colliders' contact_offset_mm and
   rest_offset_mm (the keys the backend compares with its cell profile), plus extras such as solver_type and
@@ -97,7 +103,7 @@ from sim_server.models.outcome import BatchOutcome
 from sim_server.models.recording import RECORD_FPS, RECORD_VIEWS, RecordView
 from sim_server.recent_batches import RecentBatches
 from sim_server.scene import Scene
-from sim_server.services.batches import design_from_mm, in_hand_to_mm, offset_from_mm, part_from_mm
+from sim_server.services.batches import design_from_mm, in_hand_to_mm, landing_to_mm, offset_from_mm, part_from_mm
 from sim_server.services.evaluations import evaluate_batch
 from sim_server.services.recordings import record_grasp
 from sim_server.sim_queue import SimQueue, SimQueueClosedError
@@ -151,6 +157,7 @@ class EvaluateBatchResponse(BaseModel):
     held: list[list[bool]]
     in_hand: list[list[list[float] | None]]  # [dx_mm, dy_mm, dz_mm, tilt_deg, yaw_deg]
     held_after_transport: list[list[bool]] | None
+    landing: list[list[list[float] | None]] | None  # [shift_mm, turn_deg]
     sim: dict[str, Any]
 
 
@@ -245,6 +252,7 @@ async def post_evaluate_batch(
         held=[list(row) for row in outcome.held],
         in_hand=[[in_hand_to_mm(pose) for pose in row] for row in outcome.in_hand],
         held_after_transport=None if outcome.held_after_transport is None else [list(row) for row in outcome.held_after_transport],
+        landing=None if outcome.landing is None else [[landing_to_mm(landing) for landing in row] for row in outcome.landing],
         sim=scene.describe(),
     )
 

@@ -37,7 +37,8 @@ class FakePlanner:
 class FakeCell:
     """Holds the part when it ended up less than 2 mm off the nominal site along the closing direction, and lifts it
     straight up by the lift height, exactly as it was placed (so its in-hand pose is its offset). Under a transport it
-    keeps it only when that's less than 0.5 mm. blow_up makes every held grasp report no pose."""
+    keeps it only when that's less than 0.5 mm. Its landing reports that offset as the shift, and no turn. blow_up makes
+    every held grasp report no pose."""
 
     def __init__(self, geometry, env_count: int, planner: FakePlanner | None = None, blow_up: bool = False):
         self.geometry, self.env_count = geometry, env_count
@@ -59,6 +60,7 @@ class FakeCell:
                     held=off < 0.002,
                     lift_pose=None if self.blow_up else lifted,
                     held_after_transport=None if transport is None else off < 0.0005,
+                    landing=(off, 0.0),
                 )
             )
         return outcomes
@@ -153,9 +155,18 @@ def test_a_part_too_wide_for_stock_fingers_isnt_simulated(geo, box_piece, caplog
     assert outcome.held[0] == (False, False, False)  # stock: dropped without simulating
     assert outcome.in_hand[0] == (None, None, None)
     assert outcome.held_after_transport[0] == (False, False, False)
+    assert outcome.landing[0] == (None, None, None)  # not simulated: nothing measured
     assert outcome.held[1] == (True, True, False)
     assert {grasp.design.id for _, grasps, _ in cell.chunks for grasp in grasps} == {"pad"}
     assert "open stock tips" in caplog.text
+
+
+def test_landing_is_reported_per_design_and_offset(geo, box_piece):
+    """What the cell measured while the gripper came down, passed through as it is (the fake: the offset, no turn)."""
+    outcome = evaluate_batch(FakeCell(geo, env_count=4), cube_batch(box_piece))
+    for row in outcome.landing:
+        assert [shift for shift, _ in row] == pytest.approx([0.0, 0.001, 0.003])
+        assert [turn for _, turn in row] == [0.0, 0.0, 0.0]
 
 
 def test_a_mesh_part_is_judged_by_its_width_and_centred_at_mid_height(geo, box_piece):

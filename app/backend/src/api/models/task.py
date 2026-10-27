@@ -10,6 +10,10 @@ simulating again.
 In-hand offset is the 3-D distance between where the part's centre sits in the hand after the lift and where a centred
 part would sit (api/models/outcome.py). A held grasp with no reported in-hand pose fails place and insert: there is
 nothing to check the tolerance against.
+
+Every task fails a grasp where a finger landed on the part before the jaws closed (Outcomes.landed), even when the sim
+held it: the twin squeezes such a part into the gap, a real arm may knock it away. Outcomes from before the sim measured
+landings (2026-10-26) have none, and score as they did.
 """
 
 import math
@@ -41,8 +45,9 @@ class Task(BaseModel):
     def success(self, outcomes: Outcomes) -> list[bool]:
         """Per offset: whether the grasp succeeded at this task."""
         after = outcomes.held_after_transport if self.transport else None
+        landed = outcomes.landed()
         return [
-            held and (after is None or after[i]) and self.within_tolerance(outcomes.in_hand[i]) is not False
+            held and not landed[i] and (after is None or after[i]) and self.within_tolerance(outcomes.in_hand[i]) is not False
             for i, held in enumerate(outcomes.held)
         ]
 

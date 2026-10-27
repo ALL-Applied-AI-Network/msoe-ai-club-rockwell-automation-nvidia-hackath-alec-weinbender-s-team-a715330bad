@@ -83,12 +83,23 @@ POST /evaluate_batch
 -> {held: [[bool]],
     in_hand: [[[dx_mm, dy_mm, dz_mm, tilt_deg, yaw_deg] | null]],  end of the lift, vs the commanded gripper frame
     held_after_transport: [[bool]] | null,                         null when transport is null
+    landing: [[[shift_mm, turn_deg] | null]],                      how far the part moved before the jaws closed
     sim: {envs, device, friction_combine, physics_dt, solver_position_iterations, solver_velocity_iterations,
           contact_offset_mm, rest_offset_mm, ...}}                 the keys the backend checks against its cell profile
 ```
 
 Every design is tried at every offset; rows are designs, entries offsets. 422 for a request the twin can't run, 503 while
-shutting down. An optional `Idempotency-Key` header makes a request sent again answer from the first one's run (waiting
+shutting down.
+
+`landing` (since 2026-10-26) is the part's move between the end of the approach and the end of the descent, with the
+jaws still open:
+
+- the shift of its centre in the table plane, in mm;
+- the angle it turned through, in degrees.
+
+A finger that lands on the part moves it (landing capture, CONTEXT.md risk 5). The app scores a grasp that moved it more
+than 1 mm or 3° as a miss (`api/models/outcome.py`). It's null where the grasp wasn't simulated. Servers from before
+2026-10-26 leave it out, and the app scores their answers as before. An optional `Idempotency-Key` header makes a request sent again answer from the first one's run (waiting
 for it if it's still running) instead of running again: the app sends each round under a new key, and again under the
 same key after losing the connection mid-round (the last 32 keys are kept).
 
