@@ -19,7 +19,7 @@ from api.models.export_check import ExportCheck
 from api.models.family import FamilyParams
 from api.models.job_pose import JobPose
 from api.models.job_spec import JobSpec, SimBackend
-from api.models.outcome import InHand, Outcomes
+from api.models.outcome import InHand, Landing, Outcomes
 from api.models.part import Part
 from api.models.search_plan import JobPlan
 
@@ -120,11 +120,12 @@ class Trial(BaseModel):
     held: list[bool]
     in_hand: list[InHand | None]
     held_after_transport: list[bool] | None = None
+    landing: list[Landing | None] | None = None  # None: not measured (a sim server from before 2026-10-26)
     pose_outcomes: list[Outcomes] | None = None
 
     def outcomes(self) -> Outcomes:
         """The primary pose's outcomes."""
-        return Outcomes(held=self.held, in_hand=self.in_hand, held_after_transport=self.held_after_transport)
+        return Outcomes(held=self.held, in_hand=self.in_hand, held_after_transport=self.held_after_transport, landing=self.landing)
 
     def outcomes_by_pose(self) -> list[Outcomes]:
         """Every pose's outcomes, in the job's pose order."""

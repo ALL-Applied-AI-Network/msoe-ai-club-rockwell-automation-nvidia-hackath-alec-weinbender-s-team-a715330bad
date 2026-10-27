@@ -30,7 +30,7 @@ from api.models.grasp import GraspChoice
 from api.models.job_pose import PoseChoice
 from api.models.job_spec import MAX_POSES, SimBackend
 from api.models.offset_grid import OffsetGrid
-from api.models.outcome import InHand, Outcomes
+from api.models.outcome import InHand, Landing, Outcomes
 from api.models.part import Part
 from api.models.resting_pose import RestingPose
 from api.models.search_plan import Blocker, TimeEstimate
@@ -169,12 +169,13 @@ class EvaluationTrial(BaseModel):
     held: list[bool]
     in_hand: list[InHand | None]
     held_after_transport: list[bool] | None = None
+    landing: list[Landing | None] | None = None  # None: not measured (a sim server from before 2026-10-26)
     tip_height_mm: float | None = None  # where the fingertips gripped; None for the stock fingers (the sim's own rule)
     jaw_close_mm: float | None = None
     duration: float  # sim seconds, its share of its batch
 
     def outcomes(self) -> Outcomes:
-        return Outcomes(held=self.held, in_hand=self.in_hand, held_after_transport=self.held_after_transport)
+        return Outcomes(held=self.held, in_hand=self.in_hand, held_after_transport=self.held_after_transport, landing=self.landing)
 
 
 # What the results page shows (services/evaluations.py: ranking)

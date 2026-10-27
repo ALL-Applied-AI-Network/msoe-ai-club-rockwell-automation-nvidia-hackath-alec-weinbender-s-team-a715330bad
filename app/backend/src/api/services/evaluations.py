@@ -47,6 +47,7 @@ from api.models.job import Job
 from api.models.job_pose import pose_weights
 from api.models.job_spec import MAX_POSES, JobSpec, PoseGrasp
 from api.models.offset_grid import OffsetGrid
+from api.models.outcome import landing_caveat
 from api.models.part import Part
 from api.models.part_record import PartRecord
 from api.models.resting_pose import is_likely
@@ -468,8 +469,15 @@ def ranking(db: DatabaseClient, job_id: str, *, error: ErrorModel | None = None,
         final=any(t.stage == "final" for t in trials),
         poses=[RankingPose(key=p.key, label=p.label, weight=p.weight, grasps=p.grasps) for p in plan.poses],
         fingers=out,
-        warnings=plan.warnings + CAVEATS,
+        warnings=plan.warnings + CAVEATS + _landing_warning(job, trials),
     )
+
+
+def _landing_warning(job: Job, trials: list[EvaluationTrial]) -> list[str]:
+    if job.sim_backend == "mock":
+        return []
+    note = landing_caveat([t.outcomes() for t in trials])
+    return [] if note is None else [note]
 
 
 def _curve(plan: EvaluationPlan, score: FingerScore, error: ErrorModel) -> dict[str, float]:

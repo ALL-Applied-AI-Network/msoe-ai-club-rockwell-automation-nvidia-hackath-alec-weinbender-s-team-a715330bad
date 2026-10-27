@@ -153,6 +153,7 @@ class TrialRow(Base):
     held: Mapped[list[bool]]
     in_hand: Mapped[list[Any]]  # [dx, dy, dz, tilt, yaw] or null per grid point
     held_after_transport: Mapped[list[bool] | None]
+    landing: Mapped[list[Any] | None]  # [shift_mm, turn_deg] or null per grid point; NULL: not measured (before 2026-10-26)
     # Every resting pose's outcomes after the primary's (held ... above), in the job's pose order; NULL for one pose
     pose_outcomes: Mapped[list[Outcomes] | None] = mapped_column(PydanticJSON(list[Outcomes]))
     duration: Mapped[float]  # seconds of the round's sim time, per design
@@ -311,6 +312,7 @@ class EvaluationTrialRow(Base):
     held: Mapped[list[bool]]
     in_hand: Mapped[list[Any]]  # [dx, dy, dz, tilt, yaw] or null per grid point
     held_after_transport: Mapped[list[bool] | None]
+    landing: Mapped[list[Any] | None]  # [shift_mm, turn_deg] or null per grid point; NULL: not measured (before 2026-10-26)
     tip_height_mm: Mapped[float | None]
     jaw_close_mm: Mapped[float | None]
     duration: Mapped[float]

@@ -353,6 +353,10 @@ has:
 
 Sections that need the final test are null before it.
 
+**Landing (since 2026-10-26):** a grasp whose finger landed on the part scores as a miss (moved more than 1 mm or 3°
+before the jaws closed). On an Isaac run, `failures.caveats` and the ranking's `warnings` say how many held grasps that
+turned into misses. They say it wasn't checked when the sim server predates it.
+
 **A job over several poses:** every success is weighted over the poses and every capture radius is the smallest over
 them. `summary.best` / `stock` / `imprint` and each `final_table` row add `poses: [{key, label, weight, success,
 capture_radius_mm}]` (null for one pose). `held_maps` come per design and pose, each with `pose` and `pose_label`

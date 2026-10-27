@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from api.config import SimConfig
 from api.models.finger import Finger, Polygon, overlaps, sections, stock_finger, stock_grasp_pose
 from api.models.job_spec import SimBackend
-from api.models.outcome import InHand, Outcomes
+from api.models.outcome import InHand, Landing, Outcomes
 from api.models.part import Part
 from api.models.task import Transport
 
@@ -427,12 +427,14 @@ def _design_payload(i: int, finger: Finger | None, part: Part) -> dict:
 def _outcomes(body: dict, n_designs: int, n_offsets: int, *, transport: bool) -> list[Outcomes]:
     """The server's answer as one Outcomes per design, checked against the batch's shape. A server that doesn't report
     in_hand (v1) leaves every pose None; one held as False has no pose either. held_after_transport is read only when
-    the batch asked for a transport move, and must be there then."""
+    the batch asked for a transport move, and must be there then. landing (how far the part moved before the jaws
+    closed) is None from a server that doesn't report it (before 2026-10-26)."""
     held = _grid(body.get("held"), "held", n_designs, n_offsets)
     if held is None:
         raise SimResponseError("the sim server's answer has no 'held'")
     in_hand = _grid(body.get("in_hand"), "in_hand", n_designs, n_offsets)
     after = _grid(body.get("held_after_transport"), "held_after_transport", n_designs, n_offsets) if transport else None
+    landing = _grid(body.get("landing"), "landing", n_designs, n_offsets)
     out = []
     for d in range(n_designs):
         row = [_flag(v, "held") for v in held[d]]
@@ -442,6 +444,7 @@ def _outcomes(body: dict, n_designs: int, n_offsets: int, *, transport: bool) ->
                 held=row,
                 in_hand=poses,
                 held_after_transport=None if after is None else [_flag(v, "held_after_transport") for v in after[d]],
+                landing=None if landing is None else [_landing(v) for v in landing[d]],
             )
         )
     if transport and after is None:
@@ -468,6 +471,14 @@ def _flag(value: Any, name: str) -> bool:
     if not isinstance(value, bool | int):
         raise SimResponseError(f"the sim server answered {value!r} in {name}, not true or false")
     return bool(value)
+
+
+def _landing(value: Any) -> Landing | None:
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) != 2 or not all(isinstance(v, int | float) and not isinstance(v, bool) for v in value):
+        raise SimResponseError(f"the sim server answered {value!r} as a landing, not [shift_mm, turn_deg]")
+    return float(value[0]), float(value[1])
 
 
 def _pose(value: Any) -> InHand | None:

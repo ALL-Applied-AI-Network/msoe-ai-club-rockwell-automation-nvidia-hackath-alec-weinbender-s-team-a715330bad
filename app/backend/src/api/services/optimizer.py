@@ -353,6 +353,7 @@ def _trial_row(
         held=primary.held,
         in_hand=[None if pose is None else list(pose) for pose in primary.in_hand],
         held_after_transport=primary.held_after_transport,
+        landing=None if primary.landing is None else [None if m is None else list(m) for m in primary.landing],
         pose_outcomes=outcomes[1:] or None,
         duration=seconds,
     )

@@ -31,7 +31,7 @@ from api.models.finger import Finger, build_finger, regrip, stock_finger, stock_
 from api.models.job import Job, JobResult, Trial
 from api.models.job_pose import JobPose, PoseScore, score_poses
 from api.models.offset_grid import OffsetGrid
-from api.models.outcome import Outcomes
+from api.models.outcome import Outcomes, landing_caveat
 from api.models.print_sheet import PrintSheet
 from api.models.printed_finger import finger_id
 from api.models.results import (
@@ -182,10 +182,12 @@ def _score(trial: Trial, grid: OffsetGrid, error: ErrorModel, task: Task, weight
 def _pooled(by_pose: list[Outcomes]) -> Outcomes:
     """Every pose's outcomes as one list of grasps, pose after pose (weigh them by pose weight x grid weight)."""
     after = [out.held_after_transport for out in by_pose]
+    landing = [out.landing for out in by_pose]
     return Outcomes(
         held=[h for out in by_pose for h in out.held],
         in_hand=[pose for out in by_pose for pose in out.in_hand],
         held_after_transport=None if None in after else [h for each in after for h in each],
+        landing=None if None in landing else [m for each in landing for m in each],
     )
 
 
@@ -342,6 +344,8 @@ def caveats(job: Job, error: ErrorModel, task: Task, trials: list[Trial]) -> lis
         out.append(f"the '{preset.label}' camera error ({error.sigma_mm:g} mm) is a placeholder until it's measured on the cell")
     if task.transport and not any(t.held_after_transport is not None for t in trials):
         out.append("this run didn't simulate a transport move, so holding through one isn't checked")
+    if job.sim_backend != "mock" and (note := landing_caveat([out for t in trials for out in t.outcomes_by_pose()])):
+        out.append(note)
     poses = job.poses
     mesh = next((pose.part for pose in poses if pose.part.shape == "mesh"), None)
     if mesh is not None:

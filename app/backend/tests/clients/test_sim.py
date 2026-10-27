@@ -316,6 +316,19 @@ def test_http_client_reads_null_in_hand_and_transport_and_drops_poses_of_grasps_
     assert outcomes.held_after_transport is None
 
 
+def test_http_client_reads_the_landing_per_design_and_none_from_an_older_server():
+    answer = {"held": [[True, True], [False, True]], "landing": [[[0.25, 1], [3, 0.5]], [None, [0, 12.5]]]}
+    with stand_in(lambda payload: answer) as (url, _):
+        sim = HttpSim(url, timeout_s=5)
+        first, second = sim.run_batch(CUBE, [None, None], [CENTRED, FAR], NO_TRANSPORT)
+    with stand_in(lambda payload: {"held": [[True, True]]}) as (url, _):
+        [older] = HttpSim(url, timeout_s=5).run_batch(CUBE, [None], [CENTRED, FAR], NO_TRANSPORT)
+
+    assert first.landing == [(0.25, 1.0), (3.0, 0.5)]
+    assert second.landing == [None, (0.0, 12.5)]
+    assert older.landing is None
+
+
 def test_http_client_ignores_transport_results_it_did_not_ask_for():
     with stand_in(lambda payload: {"held": [[True]], "held_after_transport": [[False]]}) as (url, _):
         [outcomes] = HttpSim(url, timeout_s=5).run_batch(CUBE, [None], [CENTRED], NO_TRANSPORT)
@@ -331,10 +344,11 @@ def test_http_client_ignores_transport_results_it_did_not_ask_for():
         ({"held": [[1], [1]], "in_hand": [[None, None], [None]]}, "in_hand as 2 x 1/2"),
         ({"held": [[1], [1]], "held_after_transport": [[1]]}, "held_after_transport as 1 x 1"),
         ({"held": [[1], [1]], "in_hand": [[[0, 0, 0]], [None]]}, "not \\[dx, dy, dz, tilt, yaw\\]"),
+        ({"held": [[1], [1]], "landing": [[[0.5]], [None]]}, "not \\[shift_mm, turn_deg\\]"),
         ({"held": [["yes"], [1]]}, "'yes' in held"),
         ({"in_hand": [[None], [None]]}, "no 'held'"),
     ],
-    ids=["too few designs", "too many offsets", "in_hand shape", "transport shape", "short pose", "not a flag", "no held"],
+    ids=["too few designs", "too many offsets", "in_hand shape", "transport shape", "short pose", "short landing", "not a flag", "no held"],
 )
 def test_http_client_rejects_an_answer_that_does_not_match_the_batch(answer, message):
     with stand_in(lambda payload: answer) as (url, _):
