@@ -62,6 +62,15 @@ STOCK_TIP_MM = 2.5  # the stock fingertips' height above the table when gripping
 MIN_TIP_MM = 1.0  # fingertips above the table
 MIN_CONTACT_MM = 2.0  # pad face left on the part, between the grip height and the top of the lead-in
 BRIDGE_CLEARANCE_MM = 0.5  # in another pose, the part's top stays at least this far below the bridge
+SEAT_HEIGHTS = 5  # heights (fingertips to the part's top) where seat() looks for the first touch
+SEAT_TOLERANCE_MM = 0.01  # how finely seat() finds where the jaws touch the part
+# The stock blade's tip, as the twin measured the real one (sim/fanuc_er4ia_sim/scene_config.py): stock_blade()
+STOCK_SOCKET_R_MM = 7.25  # the half-round socket in the inner face: an AA cell, Ø14.5
+STOCK_SOCKET_ABOVE_TIP_MM = 6.97  # its centre above the tip
+STOCK_BEVEL_MM = 14.0  # how far up the blade the outer edge's bevel reaches
+STOCK_TIP_WIDTH_MM = 7.5  # the blade's width at the tip, from the inner face
+STOCK_SLABS = 24  # slabs across the socket, for the preview
+STOCK_TIP_FRICTION = (1.5, 1.3)  # the soft contact tips the operator reported, static and dynamic: the twin's own
 
 Polygon = list[tuple[float, float]]
 Profile = list[tuple[float, float]]  # (y, recess) breakpoints across the pad: how far the face is set back at each y
@@ -153,6 +162,53 @@ def regrip(
     )
 
 
+def seat(
+    pieces: list[Piece],
+    part: Part,
+    gripper: Gripper | None = None,
+    *,
+    tip_height_mm: float | None = None,
+    friction: tuple[float, float] | None = None,
+) -> Finger:
+    """A finger given only as convex pieces in G (an uploaded one) gripping `part`: the fingertips go to tip_height_mm,
+    else the stock fingers' STOCK_TIP_MM, and the jaws close to where the finger first touches the part's outline at
+    any of a few heights from the fingertips to the part's top, then SQUEEZE_MM further. A finger that touches the part
+    with the jaws fully open gets jaw_close_mm = the stroke (problems() says it lands on the part); one that never
+    reaches it, even closed, gets -SQUEEZE_MM (problems() says the jaws can't reach the gripping position)."""
+    g = gripper or DEFAULT_GRIPPER
+    tip = tip_height_mm if tip_height_mm is not None else STOCK_TIP_MM
+    finger = Finger(
+        pieces=pieces,
+        tip_height_mm=tip,
+        jaw_close_mm=-SQUEEZE_MM,
+        contact_mm=0.0,
+        friction=friction or g.pad_friction,
+        jaw_open_mm=g.stroke_mm,
+        tcp_mm=g.tcp_mm,
+    )
+    part_top = part.extent_mm[2] - tip
+    if part_top <= 0:
+        return finger
+    heights = [max(1e-6, part_top * k / (SEAT_HEIGHTS - 1)) for k in range(SEAT_HEIGHTS)]
+    centred = {"dx": 0.0, "dy": 0.0, "yaw_deg": 0.0}
+
+    def touches(jaw: float) -> bool:
+        return any(overlaps(p, part, centred) for z in heights for p in sections(finger, z, jaw))
+
+    if touches(g.stroke_mm):
+        contact = g.stroke_mm + SQUEEZE_MM
+    elif not touches(0.0):
+        contact = 0.0
+    else:
+        lo, hi = 0.0, g.stroke_mm  # touches at lo, not at hi
+        while hi - lo > SEAT_TOLERANCE_MM:
+            mid = (lo + hi) / 2
+            lo, hi = (mid, hi) if touches(mid) else (lo, mid)
+        contact = lo
+    top = max(pt[2] for piece in pieces for pt in piece.points)
+    return finger.model_copy(update={"jaw_close_mm": contact - SQUEEZE_MM, "contact_mm": max(0.0, min(part_top, top))})
+
+
 def finger_solids(part: Part, design: Design, gripper: Gripper | None = None) -> list[cq.Solid]:
     """The finger's convex solids, exactly as simulated (one per pad strip, the bridge, the kept blade). The printable
     solid (api/models/finger_cad.py) fuses these and adds the mount features."""
@@ -186,6 +242,32 @@ def stock_grasp_pose(part: Part, gripper: Gripper | None = None) -> dict:
         "jaw_close_mm": round(jaw, 2),
         "tcp_mm": g.tcp_mm,
     }
+
+
+def stock_blade(gripper: Gripper | None = None) -> list[Piece]:
+    """The cell's own aluminium blade, as the twin models the real one, for the library's 3D preview: the organizers have
+    no CAD of it, so this is the twin's measurement (sim/fanuc_er4ia_sim/gripper_geometry.py, finger_profile). Just above
+    the tip, a half-round socket (STOCK_SOCKET_R_MM, an AA cell's) is cut into the inner face, which leaves the hooked tip
+    2 mm back from the face; the outer edge is bevelled toward the tip. Convex slabs across the blade's length, in the
+    gripper frame with the jaws closed (blade at x 0..width, y -thickness/2..thickness/2, z 0..length)."""
+    g = gripper or DEFAULT_GRIPPER
+    width, thick, length = g.blade_mm
+    r, centre = STOCK_SOCKET_R_MM, STOCK_SOCKET_ABOVE_TIP_MM
+    bevel = min(STOCK_BEVEL_MM, length)
+
+    def inner(z: float) -> float:  # the inner face's x at height z: in the socket, its edge
+        return math.sqrt(r * r - (z - centre) ** 2) if abs(z - centre) < r else 0.0
+
+    def outer(z: float) -> float:  # the outer edge's x: bevelled from STOCK_TIP_WIDTH_MM at the tip to the full width
+        return width if z >= bevel else STOCK_TIP_WIDTH_MM + (width - STOCK_TIP_WIDTH_MM) * z / bevel
+
+    socket = np.linspace(0.0, min(centre + r, length), STOCK_SLABS + 1)
+    heights = sorted({0.0, bevel, length, *(float(z) for z in socket)})
+    return [
+        hull_piece([(x, y, z) for z in (lo, hi) for x in (inner(z), outer(z)) for y in (-thick / 2, thick / 2)])
+        for lo, hi in pairwise(heights)
+        if hi - lo > SEAT_TOLERANCE_MM
+    ]
 
 
 def v_profile(width: float, angle_deg: float, depth: float) -> Profile:

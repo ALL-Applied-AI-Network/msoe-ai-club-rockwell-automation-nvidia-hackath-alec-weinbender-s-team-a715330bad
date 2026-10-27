@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Schemas } from "../../backend/client";
 import { isActive } from "../../components/Badges";
 
@@ -27,18 +27,4 @@ export function useJobEvents(id: string, enabled: boolean, onCard?: (card: JobCa
     };
     return () => source.close();
   }, [id, enabled, queryClient]);
-}
-
-/** Whether an element is on screen, so off-screen cards don't hold a stream open. */
-export function useInView<T extends Element>() {
-  const ref = useRef<T>(null);
-  const [inView, setInView] = useState(true);
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { rootMargin: "200px" });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return { ref, inView };
 }

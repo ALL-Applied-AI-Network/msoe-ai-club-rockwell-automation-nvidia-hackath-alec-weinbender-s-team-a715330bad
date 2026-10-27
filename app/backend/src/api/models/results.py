@@ -19,7 +19,7 @@ from api.models.error_model import ErrorModel
 from api.models.export_check import ExportCheck
 from api.models.family import FamilyParams
 from api.models.finger import Finger
-from api.models.job import JobStatus
+from api.models.job import JobKind, JobStatus
 from api.models.job_pose import PoseScore
 from api.models.job_spec import SimBackend
 from api.models.offset_grid import OffsetGrid
@@ -43,11 +43,15 @@ class CardScore(BaseModel):
 
 
 class JobCard(BaseModel):
-    """One experiment in the job list, and each server-sent event while it runs."""
+    """One experiment in the job list, and each server-sent event while it runs. For an evaluation job, winner is its
+    best finger (label: the finger code) and stock its stock fingers; n_done counts fingers simulated at a grasp, and
+    round / n_rounds sim requests."""
 
     id: str
     experiment_id: str
     name: str
+    kind: JobKind = "generation"
+    batch_id: str | None = None  # evaluation jobs created together, one per part
     part_id: str
     part_name: str | None  # the uploaded file's name
     task_kind: TaskKind

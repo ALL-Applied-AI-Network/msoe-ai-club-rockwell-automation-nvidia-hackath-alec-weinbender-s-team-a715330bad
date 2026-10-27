@@ -18,14 +18,17 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from api.models.cell_profile import CellProfile
 from api.models.clip import ClipOutcome, ClipStatus
 from api.models.compute import ComputeBackend, SessionStatus, StopReason
-from api.models.job import JobStatus
-from api.models.job_spec import JobSpec
+from api.models.design import Design
+from api.models.evaluation import EvaluationStage
+from api.models.finger_record import FingerFamily, FingerSource
+from api.models.job import AnyPlan, AnySpec, JobKind, JobStatus
 from api.models.outcome import Outcomes
 from api.models.part import Part
 from api.models.part_cad import PartCad
+from api.models.piece import Piece
+from api.models.qualification import Prediction, SessionKind
 from api.models.resting_pose import RestingPose
 from api.models.review import ReviewStatus
-from api.models.search_plan import JobPlan
 from api.models.test_plan import PlannedTrial
 
 
@@ -67,6 +70,7 @@ class PartRow(Base):
     id: Mapped[str] = mapped_column(primary_key=True)
     created: Mapped[float] = mapped_column(default=time.time)
     name: Mapped[str]
+    part_number: Mapped[str | None]
     file_path: Mapped[str]
     source: Mapped[str]
     units: Mapped[str]
@@ -102,13 +106,14 @@ class JobRow(Base):
     experiment_number: Mapped[int] = mapped_column(unique=True)
     name: Mapped[str]
     created: Mapped[float] = mapped_column(default=time.time)
+    kind: Mapped[JobKind] = mapped_column(default="generation")
     status: Mapped[JobStatus]
     part_id: Mapped[str]
     cell_profile_id: Mapped[int]
     sim_backend: Mapped[str]
-    spec: Mapped[JobSpec] = mapped_column(PydanticJSON(JobSpec))
+    spec: Mapped[Any] = mapped_column(PydanticJSON(AnySpec))  # a JobSpec or an EvaluationSpec, by kind
     part: Mapped[Part] = mapped_column(PydanticJSON(Part))
-    plan: Mapped[JobPlan] = mapped_column(PydanticJSON(JobPlan))
+    plan: Mapped[Any] = mapped_column(PydanticJSON(AnyPlan))  # a JobPlan or an EvaluationPlan, by kind
     n_done: Mapped[int] = mapped_column(default=0)
     n_total: Mapped[int] = mapped_column(default=0)
     round: Mapped[int] = mapped_column(default=0)
@@ -123,6 +128,7 @@ class JobRow(Base):
     finished: Mapped[float | None]
     duplicated_from: Mapped[str | None]
     print_designs: Mapped[list[str]] = mapped_column(default=list)
+    batch_id: Mapped[str | None]
 
 
 class TrialRow(Base):
@@ -255,6 +261,92 @@ class ClipRow(Base):
     pid: Mapped[int | None]  # of its worker (python -m api.worker <job_id> clip <id>)
     created: Mapped[float] = mapped_column(default=time.time)
     recorded: Mapped[float | None]
+
+
+class FingerRow(Base):
+    """A finger in the finger library (api/models/finger_record.py)."""
+
+    __tablename__ = "fingers"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    number: Mapped[int] = mapped_column(unique=True)
+    name: Mapped[str]
+    created: Mapped[float] = mapped_column(default=time.time)
+    source: Mapped[FingerSource]
+    cell_profile_name: Mapped[str]
+    family: Mapped[FingerFamily]
+    material: Mapped[str]
+    pad_friction: Mapped[list[Any]]
+    quantity_on_hand: Mapped[int] = mapped_column(default=0)
+    notes: Mapped[str] = mapped_column(default="")
+    archived: Mapped[bool] = mapped_column(default=False)
+    warnings: Mapped[list[str]] = mapped_column(default=list)
+    built_for: Mapped[Part | None] = mapped_column(PydanticJSON(Part))
+    design: Mapped[Design | None] = mapped_column(PydanticJSON(Design))
+    cell_profile_id: Mapped[int | None]
+    origin_job_id: Mapped[str | None]
+    origin_label: Mapped[str | None]
+    origin_sim_backend: Mapped[str | None]
+    file_path: Mapped[str | None]
+    extent_mm: Mapped[list[Any] | None] = mapped_column(JSON)
+    pieces: Mapped[list[Piece] | None] = mapped_column(PydanticJSON(list[Piece]))
+
+
+class EvaluationTrialRow(Base):
+    """One finger at one grasp of one pose of an evaluation job, on one grid, with the raw outcomes."""
+
+    __tablename__ = "evaluation_trials"
+    __table_args__ = (UniqueConstraint("job_id", "number"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[str]
+    number: Mapped[int]
+    stage: Mapped[EvaluationStage]
+    finger_id: Mapped[str]
+    pose_key: Mapped[str]
+    grasp_key: Mapped[str]
+    success_rate: Mapped[float]
+    capture_radius_mm: Mapped[float | None]
+    n_grasps: Mapped[int]
+    held: Mapped[list[bool]]
+    in_hand: Mapped[list[Any]]  # [dx, dy, dz, tilt, yaw] or null per grid point
+    held_after_transport: Mapped[list[bool] | None]
+    tip_height_mm: Mapped[float | None]
+    jaw_close_mm: Mapped[float | None]
+    duration: Mapped[float]
+    created: Mapped[float] = mapped_column(default=time.time)
+
+
+class QualificationRow(Base):
+    """One library finger on one part (api/models/qualification.py)."""
+
+    __tablename__ = "qualifications"
+    __table_args__ = (UniqueConstraint("finger_id", "part_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    finger_id: Mapped[str]
+    part_id: Mapped[str]
+    prediction: Mapped[Prediction | None] = mapped_column(PydanticJSON(Prediction))
+    history: Mapped[list[Prediction]] = mapped_column(PydanticJSON(list[Prediction]), default=list)
+    created: Mapped[float] = mapped_column(default=time.time)
+    updated: Mapped[float] = mapped_column(default=time.time)
+
+
+class RealSessionRow(Base):
+    """One real-robot session logged against a qualification."""
+
+    __tablename__ = "real_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    qualification_id: Mapped[int]
+    kind: Mapped[SessionKind]
+    trials: Mapped[int]
+    successes: Mapped[int]
+    predicted_success: Mapped[float | None]
+    notes: Mapped[str] = mapped_column(default="")
+    operator: Mapped[str | None]
+    date: Mapped[str | None]
+    created: Mapped[float] = mapped_column(default=time.time)
 
 
 class PhysicalTrialRow(Base):

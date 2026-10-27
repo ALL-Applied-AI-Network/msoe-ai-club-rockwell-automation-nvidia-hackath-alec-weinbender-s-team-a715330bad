@@ -1,4 +1,5 @@
-"""Uploaded parts (input steps 1, 2 and 5): upload, confirm material, mass and pose, propose and check grasps.
+"""The parts library (input steps 1, 2 and 5): upload one part or many, confirm material, mass and pose, propose and
+check grasps.
 
 Lists leave out each part's convex pieces (measured.pieces is [] and n_pieces says how many there are): they run to tens
 of kB a part, and only the 3D preview needs them. GET /api/parts/{id} has them.
@@ -20,7 +21,7 @@ from api.dependencies import CadDep, ConfigDep, DbDep
 from api.models.cell_profile import DEFAULT_PROFILE, CellProfile
 from api.models.grasp import GraspCandidate, GraspChoice, GraspPick, GraspProposals
 from api.models.material import Material, Surface
-from api.models.part_record import MassUnit, PartRecord
+from api.models.part_record import IntakeStatus, MassUnit, PartRecord
 from api.models.resting_pose import RestingPose, is_likely, is_same_pose
 from api.services import cell_profiles, parts
 
@@ -30,6 +31,13 @@ router = APIRouter(prefix="/api/parts", tags=["parts"])
 class UploadPartRequest(BaseModel):
     part_file: UploadFile  # .step, .stp or .stl, up to 50 MB
     units: Literal["mm", "in"] | None = None  # required for an STL; a STEP carries its own
+
+
+class UploadPartsRequest(BaseModel):
+    """Many files at once: several picked, or every file of a folder (anything that isn't STEP or STL is skipped)."""
+
+    files: list[UploadFile]
+    units: Literal["mm", "in"] | None = None  # for every STL among them
 
 
 class PartResponse(PartRecord):
@@ -66,13 +74,30 @@ class PartResponse(PartRecord):
         """The mass the sim uses: the measured one if given, else the computed one."""
         return super().confirmed_mass_g
 
+    @computed_field
+    @property
+    def intake_status(self) -> IntakeStatus:
+        """ready: it can be evaluated; needs_properties: choose its material or enter a mass first."""
+        return super().intake_status
+
+
+class IntakeResponse(BaseModel):
+    """One file of a bulk upload: ready or needs_properties (stored, with its part), file_error or skipped (not stored)."""
+
+    filename: str
+    status: Literal["ready", "needs_properties", "file_error", "skipped"]
+    part: PartResponse | None = None
+    reason: str | None = None
+
 
 class UpdatePartRequest(BaseModel):
     """Only the fields sent change. mass_g null means "use the computed mass"; density_g_cm3 null, the material's own.
-    pose: an index into GET /poses, or "as_authored"."""
+    pose: an index into GET /poses, or "as_authored". part_number null clears it."""
 
     model_config = ConfigDict(extra="forbid")
 
+    name: str | None = Field(None, min_length=1, max_length=parts.MAX_NAME)
+    part_number: str | None = Field(None, max_length=parts.MAX_NAME)
     material: Material | None = None
     density_g_cm3: float | None = Field(None, gt=0)
     surface: Surface | None = None
@@ -85,7 +110,8 @@ class UpdatePartRequest(BaseModel):
 
     @model_validator(mode="after")
     def _no_null_for_required_fields(self) -> "UpdatePartRequest":
-        nulls = [name for name in ("surface", "mass_unit", "fragile") if name in self.model_fields_set and getattr(self, name) is None]
+        required = ("name", "surface", "mass_unit", "fragile")
+        nulls = [name for name in required if name in self.model_fields_set and getattr(self, name) is None]
         if nulls:
             raise ValueError(f"{', '.join(nulls)} can't be null")
         return self
@@ -130,6 +156,24 @@ async def upload_part(form: Annotated[UploadPartRequest, Form()], db: DbDep, con
     with _http_errors():
         record = await run_in_threadpool(parts.create_part, db, config, cad, form.part_file.filename or "", content, form.units)
     return _response(record, DEFAULT_PROFILE)
+
+
+@router.post("/batch", status_code=201)
+async def upload_parts(form: Annotated[UploadPartsRequest, Form()], db: DbDep, config: ConfigDep, cad: CadDep) -> list[IntakeResponse]:
+    """Store many STEP or STL files at once, each on its own: one row per file, in the order sent. A file that can't be
+    read doesn't stop the others. 422 for more than 50 CAD files."""
+    files = [(upload.filename or "", await upload.read(parts.MAX_UPLOAD_BYTES + 1)) for upload in form.files]
+    with _http_errors():
+        intakes = await run_in_threadpool(parts.create_parts, db, config, cad, files, form.units)
+    return [
+        IntakeResponse(
+            filename=i.filename,
+            status=i.status,
+            part=_response(i.part, DEFAULT_PROFILE, pieces=False) if i.part is not None else None,
+            reason=i.reason,
+        )
+        for i in intakes
+    ]
 
 
 @router.get("")

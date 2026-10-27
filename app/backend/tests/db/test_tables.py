@@ -11,10 +11,14 @@ from api.db.tables import (
     Base,
     CellProfileRow,
     ComputeSessionRow,
+    EvaluationTrialRow,
+    FingerRow,
     JobRow,
     PartRow,
     PhysicalTrialRow,
     PrintedFingerRow,
+    QualificationRow,
+    RealSessionRow,
     ResultRow,
     ReviewRow,
     TestPlanRow,
@@ -22,10 +26,13 @@ from api.db.tables import (
 )
 from api.models.cell_profile import CellProfileVersion
 from api.models.compute import ComputeSession
+from api.models.evaluation import EvaluationTrial
+from api.models.finger_record import FingerRecord
 from api.models.job import Job, JobResult, Trial
 from api.models.part_record import PartRecord
 from api.models.physical_trial import PhysicalTrial
 from api.models.printed_finger import PrintedFinger
+from api.models.qualification import Qualification, RealSession
 from api.models.review import Review
 from api.models.test_plan import TestPlan
 
@@ -40,6 +47,10 @@ MODEL_TABLE_PAIRS = [
     (TestPlan, TestPlanRow),
     (PhysicalTrial, PhysicalTrialRow),
     (ComputeSession, ComputeSessionRow),
+    (FingerRecord, FingerRow),
+    (EvaluationTrial, EvaluationTrialRow),
+    (Qualification, QualificationRow),
+    (RealSession, RealSessionRow),
 ]
 
 

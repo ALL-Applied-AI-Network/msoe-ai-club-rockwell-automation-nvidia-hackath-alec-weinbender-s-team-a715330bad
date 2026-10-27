@@ -42,3 +42,25 @@ export function paramLabel(name: string): string {
 export function searchMethodLabel(method: "single" | "sobol" | "bo"): string {
   return { single: "Single evaluation", sobol: "Sweep", bo: "Bayesian search" }[method];
 }
+
+/** A job's kind as people say it: the stage column of the job lists. */
+export const JOB_KINDS = {
+  evaluation: "Finger evaluation",
+  generation: "Finger generation",
+} as const;
+
+/** Where a library finger came from. */
+export const FINGER_SOURCES = {
+  stock: "Stock",
+  generated: "Generated",
+  uploaded: "Uploaded",
+} as const;
+
+/** A finger family as people say it. */
+export const FINGER_FAMILIES: Record<string, string> = {
+  stock: "Stock blade",
+  vpad: "V-pad",
+  flat: "Flat pad",
+  imprint: "Imprint",
+  other: "Other",
+};

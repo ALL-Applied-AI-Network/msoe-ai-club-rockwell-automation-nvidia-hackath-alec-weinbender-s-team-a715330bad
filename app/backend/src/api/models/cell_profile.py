@@ -14,6 +14,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from api.models.error_model import ErrorModel
+
 
 class MountHole(BaseModel):
     """A screw hole for the mount. On a +y or -y mount face it goes through the blade's thickness (along y); on the +x
@@ -209,6 +211,9 @@ class CellProfile(BaseModel):
         Camera(name="wrist", width_px=1280, height_px=720),
     ]
     sim: CellSimSettings = CellSimSettings()
+    # How accurately this cell grasps: how far a grasp may land from where it was aimed (camera, calibration, robot).
+    # Copied into each job's spec when the spec leaves its error model unset; a spec may override it.
+    grasp_accuracy: ErrorModel = ErrorModel()
     to_confirm: list[str] = []  # fields that are still placeholders
 
     @model_validator(mode="after")

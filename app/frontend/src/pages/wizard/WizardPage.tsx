@@ -164,8 +164,9 @@ function WizardStep({ index }: { index: number }) {
   );
 }
 
-/** Starts the draft from the address: a copy of an experiment (`?from=`), a part from the library (`?part=`), or the
- *  stored draft. Fills in the defaults a new draft needs (a seed, the task, the camera error) so the plan can run as soon
+/** Starts the draft from the address: a copy of an experiment (`?from=`), an evaluation job whose fingers weren't good
+ *  enough (`?generate=<job id>`, optionally `&finger=<id>` to start from that finger's grasps), a part from the library
+ *  (`?part=`), or the stored draft. Fills in the defaults a new draft needs (a seed, the task, the camera error) so the plan can run as soon
  *  as there's a grasp. The query parameters are dropped once used, so moving between steps doesn't start again. */
 function useDraftStart(): { loading: boolean; error: Error | null } {
   const [params, setParams] = useSearchParams();
@@ -174,6 +175,8 @@ function useDraftStart(): { loading: boolean; error: Error | null } {
   const meta = useMeta();
   const from = params.get("from");
   const partId = params.get("part");
+  const generate = params.get("generate");
+  const finger = params.get("finger");
 
   const copy = useQuery({
     queryKey: ["duplicate", from],
@@ -182,6 +185,24 @@ function useDraftStart(): { loading: boolean; error: Error | null } {
     staleTime: Infinity,
     gcTime: 0,
   });
+
+  const fromEvaluation = useQuery({
+    queryKey: ["generate-spec", generate, finger],
+    queryFn: () =>
+      unwrapAs<Schemas["JobSpec"]>(
+        api.POST("/api/jobs/{job_id}/generate-spec", { params: { path: { job_id: generate! }, query: { finger_id: finger } } }),
+      ),
+    enabled: generate !== null,
+    staleTime: Infinity,
+    gcTime: 0,
+  });
+
+  useEffect(() => {
+    if (generate && fromEvaluation.data) {
+      reset(fromEvaluation.data); // the part, cell, task, accuracy and each pose's grasp: the families are what's left
+      navigate("/new/families", { replace: true });
+    }
+  }, [generate, fromEvaluation.data, reset, navigate]);
 
   useEffect(() => {
     if (from && copy.data) {
@@ -198,15 +219,18 @@ function useDraftStart(): { loading: boolean; error: Error | null } {
   }, [partId, reset, navigate]);
 
   useEffect(() => {
-    if (!meta.data || from || partId) return;
+    if (!meta.data || from || partId || generate) return;
     const missing: Draft = {};
     if (draft.seed == null) missing.seed = Math.floor(Math.random() * 1_000_000);
     if (!draft.task) missing.task = { kind: "drop" };
     if (!draft.error) missing.error = defaultError(meta.data);
     if (Object.keys(missing).length > 0) update(missing);
-  }, [meta.data, from, partId, draft.seed, draft.task, draft.error, update]);
+  }, [meta.data, from, partId, generate, draft.seed, draft.task, draft.error, update]);
 
-  return { loading: from !== null && copy.isPending, error: copy.error };
+  return {
+    loading: (from !== null && copy.isPending) || (generate !== null && fromEvaluation.isPending),
+    error: copy.error ?? fromEvaluation.error,
+  };
 }
 
 /** The camera-error preset the backend calls its default, as an error model. */

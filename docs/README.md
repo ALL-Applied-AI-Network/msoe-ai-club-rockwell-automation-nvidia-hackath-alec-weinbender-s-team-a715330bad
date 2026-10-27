@@ -14,7 +14,7 @@ To add a new document, use the `add-doc` skill (Claude Code) or follow [Conventi
 | --- | --- | --- | --- |
 | 00 | [Original repo README](00-original-repo-readme.md): organizer template (links, dates, checklist) | event | 2026-10-15 |
 | 01 | [Hackathon overview](01-hackathon-overview.md): schedule, judging, deliverables, contacts | event | 2026-10-15 |
-| 02 | [Team plan + organizer feedback](02-team-plan.md): our CAD-to-Fingers proposal | proposal | 2026-10-15 |
+| 02 | [Team plan + organizer feedback](02-team-plan.md): our CAD-to-Fingers proposal (the project's name until 2026-10-25) | proposal | 2026-10-15 |
 | 03 | [Dataset 3: Grasping and Sorting](03-dataset-3-grasping-sorting.md): our challenge | dataset | 2026-10-15 |
 | 04 | [MSOE GB10 access](04-gb10-access.md): `spark1.ai.msoe.edu` over the VPN, shared (password redacted) | event | 2026-10-20 |
 | 05 | [Brev credits](05-brev-credits.md): $500 for the team, on Alec's account | event | 2026-10-20 |
@@ -50,11 +50,14 @@ Linked from the documents above but not provided yet:
 
 | Location | What |
 | --- | --- |
+| [application-broad-overview.md](application-broad-overview.md) | **The use case:** what Auto-Grasp does for a factory, step by step (evaluate the finger library, decide, generate, the library grows) |
+| [Auto-Grasp User Stories.md](<Auto-Grasp User Stories.md>) | **The 17 user stories** (manufacturing engineer, robotics engineer), their inputs and outputs, and the features with a suggested first build |
 | [../CONTEXT.md](../CONTEXT.md) | Current project state: facts, constraints, decisions, open questions |
 | [notes/things-to-know.md](notes/things-to-know.md) | Gotchas, mismatches and warnings everyone should read |
 | [notes/gpu-test-plan.md](notes/gpu-test-plan.md) | Runbook: bring up the sim server on Brev / the GB10 and validate it step by step |
 | [notes/cadquery-design.md](notes/cadquery-design.md) | CadQuery as the CAD kernel: why fingers are built as convex solids, the finger mount, part import, V-HACD, what's left to do |
 | [notes/input-flow-backend-plan.md](notes/input-flow-backend-plan.md) | The input-flow and outputs backend plan: decisions D1–D17, models, pipeline, sim contract v2, workstreams |
+| [notes/library-evaluation-backend-plan.md](notes/library-evaluation-backend-plan.md) | The plan for the user stories' first build: finger library, evaluation jobs, grasp accuracy on the cell, bulk part upload, qualifications per finger and part (decisions L1–L16, workstreams W1–W9) |
 | [notes/backend-api.md](notes/backend-api.md) | The backend API as built, screen by screen, for the frontend; demo data (`DEMO_DATA=true`) |
 | [notes/frontend-plan.md](notes/frontend-plan.md) | The frontend plan: every screen and user flow, GPU choice and help, caveats, priorities, backend gaps |
 | [experiments/](experiments/) | Simulation and physical trial log (required for measured results) |

@@ -22,11 +22,12 @@ from api.services.jobs import get_job
 
 
 def trial_rows(db: DatabaseClient, job_id: str | None = None) -> list[dict[str, Any]]:
-    """One row per trial (a design on the search or final grid), for one job or every job, oldest job first. Raises
+    """One row per trial (a design on the search or final grid), for one job or every job, oldest job first. Generation
+    jobs only: an evaluation job's trials are library fingers, not designs (none for an evaluation job's id). Raises
     JobNotFoundError for an unknown job_id."""
     if job_id is not None:
         get_job(db, job_id)
-    jobs_query = select(JobRow).order_by(JobRow.experiment_number)
+    jobs_query = select(JobRow).where(JobRow.kind == "generation").order_by(JobRow.experiment_number)
     trials_query = select(TrialRow).order_by(TrialRow.job_id, TrialRow.number)
     results_query = select(ResultRow.job_id, ResultRow.trial_number)
     if job_id is not None:

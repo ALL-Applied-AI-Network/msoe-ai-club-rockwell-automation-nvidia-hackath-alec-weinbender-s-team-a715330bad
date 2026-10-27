@@ -14,6 +14,28 @@
   min-height: 22px;
 }
 
+/* A filter bar's control: no visible label (screen readers still read it), the chips' height, radius and text size */
+.inline {
+  flex: none;
+}
+
+.inline .control {
+  width: auto;
+  max-width: 200px; /* a long option (a cell's name) truncates here; the open menu shows it whole */
+  border-radius: var(--r-md);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .label {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
@@ -30,7 +52,7 @@
   height: var(--control-height);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  background: var(--surface-2);
+  background: var(--field);
   color: var(--ink);
   font: inherit;
   transition: border-color var(--transition);

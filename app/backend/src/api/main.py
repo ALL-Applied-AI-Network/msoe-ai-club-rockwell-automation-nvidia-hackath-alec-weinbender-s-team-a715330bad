@@ -30,10 +30,12 @@ from api.routers import (
     parts,
     physical_trials,
     printed_fingers,
+    qualifications,
     test_plans,
 )
 from api.services import compute as compute_sessions
 from api.services.cell_profiles import ensure_default_profile
+from api.services.fingers import ensure_stock_fingers
 from api.services.jobs import mark_interrupted
 from api.services.parts import list_parts
 from api.services.processes import spawn_detached
@@ -53,6 +55,7 @@ async def lifespan(app: FastAPI):
     if config.db.auto_migrate:
         db.migrate()
     ensure_default_profile(db)
+    ensure_stock_fingers(db)
     mark_interrupted(db)
     compute_sessions.recover(db, config)
     if config.demo_data:
@@ -91,7 +94,11 @@ for module in (
     test_plans,
     printed_fingers,
     physical_trials,
+    qualifications,
     export,
 ):
     app.include_router(module.router)
-app.mount("/", StaticFiles(directory=APP_DIR / "frontend", html=True), name="static")  # last: it matches every path
+# The UI as `npm run build` writes it (app/frontend/dist). Until it's built, / answers 404; in development the Vite dev
+# server serves the UI instead (app/README.md, "Frontend"). check_dir=False, so the API starts either way.
+static = StaticFiles(directory=APP_DIR / "frontend" / "dist", html=True, check_dir=False)
+app.mount("/", static, name="static")  # last: it matches every path

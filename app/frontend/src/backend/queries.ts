@@ -60,3 +60,32 @@ export function meshUrl(id: string, pose?: number | "as_authored"): string {
   const base = `/api/parts/${encodeURIComponent(id)}/mesh`;
   return pose === undefined ? base : `${base}?pose=${pose}`;
 }
+
+type JobCard = Schemas["JobCard"];
+
+/** Every job's card, newest first: every 3 s while one is queued or running, every 15 s otherwise. The overview and the
+ *  job list share it. */
+export function useJobs() {
+  return useQuery({
+    queryKey: ["jobs"],
+    queryFn: () => unwrapAs<JobCard[]>(api.GET("/api/jobs")),
+    refetchInterval: (query) =>
+      query.state.data?.some((job) => ["queued", "running", "finalizing"].includes(job.status)) ? 3_000 : 15_000,
+  });
+}
+
+type Finger = Schemas["FingerResponse"];
+
+/** The finger library, archived fingers last (pages filter them). */
+export function useFingers() {
+  return useQuery({
+    queryKey: ["fingers"],
+    queryFn: async () => {
+      const [current, archived] = await Promise.all([
+        unwrapAs<Finger[]>(api.GET("/api/fingers")),
+        unwrapAs<Finger[]>(api.GET("/api/fingers", { params: { query: { archived: true } } })),
+      ]);
+      return [...current, ...archived];
+    },
+  });
+}

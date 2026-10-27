@@ -1,5 +1,5 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, unwrap } from "../../backend/client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, unwrap, type Schemas } from "../../backend/client";
 
 // One experiment's results-tracker data. Every key starts with ["job", id], so a change invalidates them all at once.
 
@@ -66,4 +66,24 @@ export function useRefreshJob(id: string) {
       queryClient.invalidateQueries({ queryKey: jobKey(id) }),
       queryClient.invalidateQueries({ queryKey: ["jobs"] }),
     ]);
+}
+
+/** One plan with its rows and the trials logged against it. */
+export function useTestPlan(id: string, planId: number | undefined) {
+  return useQuery({
+    queryKey: [...jobKey(id), "test-plan", planId],
+    queryFn: () =>
+      unwrap(api.GET("/api/jobs/{job_id}/test-plans/{plan_id}", { params: { path: { job_id: id, plan_id: planId! } } })),
+    enabled: planId !== undefined,
+  });
+}
+
+/** Logs one trial. Logging a trial again replaces its outcome; the earlier one stays in its history. */
+export function useLogTrial(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Schemas["LogTrialRequest"]) =>
+      unwrap(api.POST("/api/jobs/{job_id}/physical", { params: { path: { job_id: id } }, body })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: jobKey(id) }),
+  });
 }

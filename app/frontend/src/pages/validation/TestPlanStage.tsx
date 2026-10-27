@@ -27,7 +27,7 @@ export const PREDICTION: Record<Plan["prediction_status"], { tone: Tone; label: 
   failed: { tone: "bad", label: "Prediction failed" },
 };
 
-/** Stage 3: the trials to run at the robot. Each design gets the same point-wise offsets, repeated, plus random ones
+/** Stage 4: the trials to run at the robot. Each design gets the same point-wise offsets, repeated, plus random ones
  *  drawn from the experiment's camera-error model, so sim and robot are compared on exactly the same offsets. */
 export function TestPlanStage({
   jobId,
@@ -86,7 +86,7 @@ export function TestPlanStage({
 
   return (
     <Stage
-      step={3}
+      step={4}
       title="Create a test plan"
       status={plans.length ? { tone: "ok", label: count(plans.length, "plan", "plans") } : { tone: "neutral", label: "No plan yet" }}
       description={`The sim and the robot get the same grasps: ${POINTWISE_OFFSETS} point-wise offsets, repeated, plus seeded random ones from the camera-error model.`}
@@ -143,7 +143,7 @@ export function TestPlanStage({
   );
 }
 
-/** Stage 4: the sim predicts every trial in the plan, in a background worker on the GPU. */
+/** Stage 5: the sim predicts every trial in the plan, in a background worker on the GPU. */
 export function PredictionStage({ jobId, plan }: { jobId: string; plan: Plan | undefined }) {
   const refresh = useRefreshJob(jobId);
   const compute = useCompute();
@@ -158,7 +158,7 @@ export function PredictionStage({ jobId, plan }: { jobId: string; plan: Plan | u
 
   return (
     <Stage
-      step={4}
+      step={5}
       title="Wait for the sim's prediction"
       status={plan ? PREDICTION[plan.prediction_status] : { tone: "neutral", label: "Needs a test plan" }}
       description="Runs on the GPU in the background. You can leave this page."

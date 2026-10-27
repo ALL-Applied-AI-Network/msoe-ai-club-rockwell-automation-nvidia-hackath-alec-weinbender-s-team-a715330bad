@@ -74,6 +74,10 @@ class ResultsNotReadyError(RuntimeError):
     """The job hasn't run its final test yet, so there are no labelled designs."""
 
 
+class NotAGenerationJobError(ResultsNotReadyError):
+    """An evaluation job has no designs: its results are its ranking (services/evaluations.py)."""
+
+
 class DesignNotFoundError(LookupError):
     """No final design has this label, or it has no such file."""
 
@@ -121,7 +125,7 @@ class _Scored:
 
 def results(db: DatabaseClient, job_id: str, *, error: ErrorModel | None = None, task: Task | None = None) -> ResultsView:
     """The results view, at the job's own error model and task, or at the ones given (a re-score)."""
-    job = get_job(db, job_id)
+    job = generation_job(db, job_id)
     with db.session() as s:
         trials = [
             Trial.model_validate(row) for row in s.scalars(select(TrialRow).where(TrialRow.job_id == job_id).order_by(TrialRow.number))
@@ -582,7 +586,7 @@ def print_sheet(profile: CellProfileVersion, job: Job, label: str, design: Desig
 
 def final_trial(db: DatabaseClient, job_id: str, label: str) -> tuple[Job, Trial]:
     """The job and its final-grid trial with this label (any case)."""
-    job = get_job(db, job_id)
+    job = generation_job(db, job_id)
     wanted = label.strip().upper()
     with db.session() as s:
         rows = list(s.scalars(select(TrialRow).where(TrialRow.job_id == job_id, TrialRow.grid == "final")))
@@ -594,3 +598,11 @@ def final_trial(db: DatabaseClient, job_id: str, label: str) -> tuple[Job, Trial
             return job, trial
     labels = ", ".join(t.label for t in sorted(trials, key=lambda t: _label_order(t.label)))
     raise DesignNotFoundError(f"{job.experiment_id} has no design {label!r}; its final designs are {labels}")
+
+
+def generation_job(db: DatabaseClient, job_id: str) -> Job:
+    """The job, which must be a generation job: an evaluation job's results are its ranking, and it has no designs."""
+    job = get_job(db, job_id)
+    if job.kind != "generation":
+        raise NotAGenerationJobError(f"{job.experiment_id} is an evaluation job: its results are at /api/jobs/{job_id}/ranking")
+    return job

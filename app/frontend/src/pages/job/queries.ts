@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrapAs, type Schemas } from "../../backend/client";
 import { jobKey } from "../validation/queries";
 import type { Results } from "./types";
@@ -23,19 +23,6 @@ export function useResults(id: string) {
   return useQuery({
     queryKey: [...jobKey(id), "results"],
     queryFn: () => unwrapAs<Results>(api.GET("/api/jobs/{job_id}/results", { params: { path: { job_id: id } } })),
-  });
-}
-
-/** The same view re-scored at another error model or task, from the stored outcomes: nothing is simulated or stored.
- *  Off while `request` is null. The last answer stays on screen while the next one loads, so charts update in place. */
-export function useRescore(id: string, request: Rescore | null) {
-  return useQuery({
-    queryKey: [...jobKey(id), "rescore", request],
-    queryFn: () =>
-      unwrapAs<Results>(api.POST("/api/jobs/{job_id}/rescore", { params: { path: { job_id: id } }, body: request! })),
-    enabled: request !== null,
-    placeholderData: keepPreviousData,
-    staleTime: Infinity,
   });
 }
 

@@ -8,6 +8,8 @@
   color-scheme: light;
 
   /* Surfaces, page first */
+  --chrome: #fffdf8; /* the top bar */
+  --field: #fbf9f2; /* inputs, search boxes, filter chips */
   --bg: #f6f4ee; /* the page */
   --surface: #fffdf8; /* panels, the top and status bars */
   --surface-2: #efece1; /* inputs, hovered rows, inset panels */
@@ -66,7 +68,8 @@
   --text-md: 15px;
   --text-lg: 17px;
   --text-xl: 24px;
-  --text-2xl: 32px;
+  --text-2xl: 28px;
+  --text-3xl: 34px; /* a page's title */
   --weight-medium: 500;
   --weight-semibold: 600;
   --weight-bold: 700;
@@ -74,8 +77,9 @@
 
   /* Shape and space */
   --r: 14px; /* panels, dialogs */
-  --r-sm: 10px; /* buttons, inputs, badges */
-  --r-pill: 99px; /* only round things: dots, progress tracks */
+  --r-md: 12px; /* tiles and rows inside a panel: thumbnails, quick actions, table heads */
+  --r-sm: 10px; /* buttons, inputs */
+  --r-pill: 99px; /* dots, progress tracks, status badges, filter chips */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -83,9 +87,10 @@
   --space-5: 24px;
   --space-6: 32px;
   --gap: 16px; /* between panels, inside a panel */
-  --content-width: 1280px;
+  --content-width: 2200px; /* the page fills the window up to this, then sits centred in it */
+  --rail-width: clamp(320px, 19vw, 420px); /* the right-hand column of a page that has one: wider on wide screens */
   --topbar-height: 56px;
-  --statusbar-height: 28px;
+  --thumb-size: 56px; /* a part's thumbnail in a table row */
   --control-height: 40px; /* buttons, inputs, selects */
   --control-height-sm: 32px;
   --transition: 120ms ease;
@@ -94,6 +99,8 @@
 /* Dark theme: the same warm palette, lit from behind. Written twice (chosen, and followed from the system). */
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --chrome: #181915;
+  --field: #12130f;
   --bg: #141512;
   --surface: #1c1d19;
   --surface-2: #26271f;
@@ -137,6 +144,8 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
+    --chrome: #181915;
+    --field: #12130f;
     --bg: #141512;
     --surface: #1c1d19;
     --surface-2: #26271f;

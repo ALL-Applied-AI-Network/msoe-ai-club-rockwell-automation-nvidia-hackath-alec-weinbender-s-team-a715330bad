@@ -11,6 +11,7 @@ from api.models.part_cad import PartCad
 from api.models.resting_pose import RestingPose
 
 MassUnit = Literal["g", "kg", "oz", "lb"]
+IntakeStatus = Literal["ready", "needs_properties"]
 GRAMS_PER: dict[str, float] = {"g": 1.0, "kg": 1000.0, "oz": 28.349523125, "lb": 453.59237}
 
 
@@ -19,7 +20,8 @@ class PartRecord(BaseModel):
 
     id: str
     created: float
-    name: str  # the uploaded file's name
+    name: str  # the uploaded file's name to start with; renamable
+    part_number: str | None = None  # the factory's own number for it, if given
     file_path: str
     source: Literal["step", "stl"]
     units: Literal["mm", "in"]  # what the file was in; everything stored is mm
@@ -55,6 +57,11 @@ class PartRecord(BaseModel):
     def confirmed_mass_g(self) -> float | None:
         """The mass the sim uses: the measured one if given, else the computed one."""
         return self.mass_g if self.mass_g is not None else self.computed_mass_g
+
+    @property
+    def intake_status(self) -> IntakeStatus:
+        """ready: it can be evaluated; needs_properties: it has no mass yet (choose a material or enter one)."""
+        return "ready" if self.confirmed_mass_g is not None else "needs_properties"
 
     def friction(self, pad_friction: tuple[float, float]) -> tuple[float, float]:
         """(static, dynamic) against the printed pad."""

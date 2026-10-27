@@ -20,11 +20,12 @@ type TableProps<T> = {
   selectLabel?: string; // the tick box column's header, e.g. "Print"
   rowTone?: (row: T) => "bad" | "warn" | undefined; // tints a row, e.g. an upload error
   empty?: ReactNode; // shown in place of the rows when there are none
+  fixed?: boolean; // columns keep the widths given (percentages), and long text truncates, so the table never overflows
 };
 
 /** The app's one table: the session log, the final-test table, upload errors, cell-profile versions. Click a sortable
  *  header to sort by it; click again to reverse. */
-export function Table<T>({ columns, rows, rowKey, label, selected, onSelect, selectLabel = "Select", rowTone, empty }: TableProps<T>) {
+export function Table<T>({ columns, rows, rowKey, label, selected, onSelect, selectLabel = "Select", rowTone, empty, fixed = false }: TableProps<T>) {
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
   const column = sort && columns.find((c) => c.key === sort.key);
   const sorted =
@@ -35,7 +36,7 @@ export function Table<T>({ columns, rows, rowKey, label, selected, onSelect, sel
 
   return (
     <div className={styles.scroll}>
-      <table className={styles.table} aria-label={label}>
+      <table className={`${styles.table} ${fixed ? styles.fixed : ""}`} aria-label={label}>
         <thead>
           <tr>
             {onSelect && <th className={styles.select}>{selectLabel}</th>}

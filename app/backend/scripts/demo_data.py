@@ -22,6 +22,10 @@ What's created:
   and one failed;
 - for two of them, a print selection, printed fingers and a predicted test plan: one fully logged (validated), one
   half logged (in progress);
+- the finger library: the UWM cell's stock fingers, D1 of the vial cap and cube generation jobs, and two uploaded
+  fingers (a flat blade, and a wide pad that can't grip the small parts);
+- evaluation jobs: the vial cap against the library, and a batch of the cube and the L-bracket; with made-up real-robot
+  sessions logged against two finger-and-part pairs (one agreeing with the sim, one flagging a gap);
 - with --live, one more experiment run by a real worker process, so the job list shows queued and running live.
 """
 
@@ -48,11 +52,23 @@ from api.clients.sim import MockSim, SimError
 from api.config import APP_DIR, AppConfig, DbConfig, SimConfig, setup_logging
 from api.models.cell_profile import DEFAULT_PROFILE
 from api.models.error_model import ErrorModel
+from api.models.evaluation import EvaluationSpec
 from api.models.family import FamilyChoice, ParamRange
 from api.models.grasp import GraspChoice
 from api.models.job_spec import JobSpec
 from api.models.task import Task
-from api.services import cell_profiles, jobs, optimizer, parts, physical_trials, printed_fingers, reviews, test_plans
+from api.services import (
+    cell_profiles,
+    fingers,
+    jobs,
+    optimizer,
+    parts,
+    physical_trials,
+    printed_fingers,
+    qualifications,
+    reviews,
+    test_plans,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +85,11 @@ SHAPES: dict[str, Callable[[], cq.Workplane]] = {
     "glass-tube": lambda: cq.Workplane("YZ").circle(8.5).extrude(140),
     "l-bracket": lambda: cq.Workplane("XY").polyline([(0, 0), (30, 0), (30, 6), (6, 6), (6, 20), (0, 20)]).close().extrude(12),
     "steel-plate": lambda: cq.Workplane("XY").box(120, 120, 4),
+}
+# Uploaded fingers, one finger each, roughly as authored: the gripping face near x = 0, the fingertips at the bottom
+FINGER_SHAPES: dict[str, Callable[[], cq.Workplane]] = {
+    "flat-blade": lambda: cq.Workplane("XY").box(12, 6, 76).translate((6, 0, 38)),
+    "wide-pad": lambda: cq.Workplane("XY").box(12, 6, 76).union(cq.Workplane("XY").box(4, 40, 20).translate((-2, 0, 10))),
 }
 
 
@@ -110,6 +131,7 @@ def seed(config: AppConfig, *, live: bool = False) -> list[str]:
         _material(db, bracket, "aluminium", "lying flat")
         _material(db, ids["steel-plate"], "steel", "lying flat")
 
+        fingers.ensure_stock_fingers(db)
         made = []
 
         def run(name: str, part_id: str, profile_id: int, **spec) -> str:
@@ -128,7 +150,7 @@ def seed(config: AppConfig, *, live: bool = False) -> list[str]:
             families=[FamilyChoice(ranges={"slack_mm": ParamRange(lo=0.5, hi=3.0)})],
             budget=40,
         )
-        run(
+        insert = run(
             "10 mm cube - pick and insert",
             cube,
             uwm.id,
@@ -146,6 +168,7 @@ def seed(config: AppConfig, *, live: bool = False) -> list[str]:
         run("L-bracket (mesh part) - pick and drop", bracket, uwm.id, budget=30)
         run("Vial cap - long-stroke cell", cap, long_stroke, budget=24)
         made += _unfinished(db, config, cad, cap, uwm.id)
+        made += _library(db, config, cad, uwm.id, drop, insert, cap, cube, bracket)
 
         _tracker(db, config, drop, logged=1.0, approved=True)
         _tracker(db, config, place, logged=0.55, approved=False)
@@ -193,10 +216,13 @@ def _material(db: DatabaseClient, part_id: str, material: str, pose_label: str, 
 
 
 def _spec(db: DatabaseClient, name: str, part_id: str, profile_id: int, **values) -> JobSpec:
-    """A spec with the part's best proposed grasp on this cell, as the wizard would accept it."""
+    """A spec with the part's best whole-part grasp proposal on this cell (its best proposal if every one grips a
+    section), as the wizard would accept it. Whole-part, because the L-bracket's best proposal grips one arm (a section
+    grasp), and the V-pad family has no buildable design for that section yet (CONTEXT.md, open items)."""
     profile = cell_profiles.get_profile(db, profile_id).profile
-    best = parts.propose_grasps(db, part_id, profile).candidates[0]
-    grasp = GraspChoice(angle_deg=best.angle_deg, centre_mm=best.centre_mm)
+    candidates = parts.propose_grasps(db, part_id, profile).candidates
+    best = next((c for c in candidates if c.span_mm is None), candidates[0])
+    grasp = GraspChoice(angle_deg=best.angle_deg, centre_mm=best.centre_mm, span_mm=best.span_mm)
     return JobSpec(name=PREFIX + name, part_id=part_id, cell_profile_id=profile_id, grasp=grasp, seed=SEED, **values)
 
 
@@ -219,6 +245,39 @@ def _unfinished(db: DatabaseClient, config: AppConfig, cad: CadClient, part_id: 
     failed = jobs.create_job(db, config, _spec(db, "Vial cap - sim server down", part_id, profile_id, budget=40), start=False)
     optimizer.run_job(db, failed.id, sim=_UnreachableSim(), cad=cad, outputs_dir=config.outputs_dir)
     return [cancelled.id, interrupted.id, failed.id]
+
+
+def _library(
+    db: DatabaseClient, config: AppConfig, cad: CadClient, profile_id: int, drop: str, insert: str, cap: str, cube: str, bracket: str
+) -> list[str]:
+    """The finger library (D1 of two generation jobs, two uploads), evaluation jobs against it, and made-up real-robot
+    sessions for two finger-and-part pairs. Returns the evaluation jobs' ids."""
+    cap_d1 = fingers.add_from_job(db, drop, "D1", name=PREFIX + "Vial cap V-pad (EXP D1)")
+    fingers.add_from_job(db, insert, "D1", name=PREFIX + "10 mm cube pad (EXP D1)")
+    for name, make in FINGER_SHAPES.items():
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{name}.step"
+            cq.exporters.export(make(), str(path))
+            fingers.create_finger(
+                db, config, cad, path.name, path.read_bytes(), cell_profile_id=profile_id, name=PREFIX + name, family="flat", notes=NOTE
+            )
+    made = []
+
+    def evaluate(job: jobs.Job) -> str:
+        optimizer.run_job(db, job.id, sim=MockSim(), cad=create_cad_client(), outputs_dir=config.outputs_dir)
+        made.append(job.id)
+        return job.id
+
+    spec = EvaluationSpec(name=PREFIX + "Vial cap vs the finger library", part_id=cap, cell_profile_id=profile_id)
+    evaluate(jobs.create_job(db, config, spec, start=False))
+    batch = EvaluationSpec(part_id=cube, cell_profile_id=profile_id)
+    for job in jobs.create_evaluations(db, config, batch, [cube, bracket], start=False):
+        jobs.rename_job(db, job.id, PREFIX + job.name)
+        evaluate(job)
+    for finger_id, part_id, trials, successes in ((cap_d1.id, cap, 20, 18), (cap_d1.id, cube, 10, 3)):
+        qualification = qualifications.ensure_qualification(db, finger_id, part_id)
+        qualifications.add_session(db, qualification.id, trials=trials, successes=successes, operator=OPERATOR, notes=NOTE)
+    return made
 
 
 def _tracker(db: DatabaseClient, config: AppConfig, job_id: str, *, logged: float, approved: bool) -> None:

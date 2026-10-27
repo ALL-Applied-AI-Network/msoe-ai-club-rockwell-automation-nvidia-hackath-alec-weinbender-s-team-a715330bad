@@ -1,19 +1,20 @@
+/* The top bar: the logo, the pages, and on the right the GPU, the simulator and the light/dark switch. */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--surface);
+  background: var(--chrome);
   border-bottom: 1px solid var(--line);
 }
 
 .bar {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
+  gap: var(--space-5);
   max-width: var(--content-width);
   height: var(--topbar-height);
   margin: 0 auto;
-  padding: 0 var(--space-5);
+  padding: 0 var(--space-6);
 }
 
 .brand {
@@ -70,29 +71,86 @@
   border-bottom-color: var(--acc);
 }
 
+.tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.url {
+  color: var(--faint);
+  font-size: var(--text-xs);
+}
+
+/* The GPU: a dot and a few words, opening the GPU page */
+.compute {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.compute:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.computeText {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--neutral);
+}
+
+.ok {
+  background: var(--ok);
+}
+
+.active {
+  background: var(--active);
+}
+
+.warn {
+  background: var(--warn);
+}
+
+.bad {
+  background: var(--bad);
+}
+
 .content {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  width: 100%;
   max-width: var(--content-width);
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-5) calc(var(--statusbar-height) + var(--space-6));
+  margin-inline: auto; /* past the widest content, the page sits centred */
+  padding: var(--space-5) var(--space-6) var(--space-6);
 }
 
 .heading {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-3) var(--space-4);
-  min-height: var(--control-height);
 }
 
 .title {
-  font-size: var(--text-xl);
+  font-size: var(--text-3xl);
   font-weight: var(--weight-heavy);
   letter-spacing: -0.01em;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .description {
@@ -103,11 +161,57 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-/* Narrow screens: the brand on the first row, the navigation on its own row under it. */
-@media (max-width: 860px) {
+/* Content and rail: two columns whose first panels start at the same height and whose last panels end at the same
+   height, so the page's boxes line up on both edges. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--rail-width);
+  align-items: stretch;
+  gap: var(--space-5);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.stretch > .column > section:last-child {
+  flex: 1; /* the last panel of each column stretches, so both columns end together; loading placeholders don't */
+}
+
+/* A long page's rail: its panels keep their height and it stays in view under the top bar */
+.columns:not(.stretch) {
+  align-items: start;
+}
+
+.sticky {
+  position: sticky;
+  top: calc(var(--topbar-height) + var(--space-5));
+}
+
+/* A narrower window: the rail goes under the content. */
+@media (max-width: 1240px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stretch > .column > section:last-child {
+    flex: none;
+  }
+
+  .sticky {
+    position: static;
+  }
+}
+
+/* Narrow screens: the logo and the tools on the first row, the pages on their own row under it. */
+@media (max-width: 1000px) {
   .bar {
     flex-wrap: wrap;
     gap: 0 var(--space-3);
@@ -115,12 +219,21 @@
     padding: var(--space-2) var(--space-4) 0;
   }
 
+  .tools {
+    margin-left: auto;
+  }
+
   .nav {
+    order: 3;
     width: 100%;
-    height: 40px;
+    height: 44px;
+  }
+
+  .computeText {
+    display: none;
   }
 
   .content {
-    padding: var(--space-4) var(--space-4) calc(var(--statusbar-height) + var(--space-5));
+    padding: var(--space-4);
   }
 }

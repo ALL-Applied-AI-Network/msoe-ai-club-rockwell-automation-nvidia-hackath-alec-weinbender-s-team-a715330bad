@@ -1,32 +1,44 @@
+/* Tables sit inside cards, which draw the border: the table itself has a rounded header band and hairlines between rows. */
 .scroll {
   overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
 }
 
 .table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: var(--text-md);
   font-variant-numeric: tabular-nums;
 }
 
 .table th {
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3);
+  height: 40px;
+  border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--faint);
+  background: var(--surface-2);
+  color: var(--mute);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   text-align: left;
   white-space: nowrap;
 }
 
+.table th:first-child {
+  border-left: 1px solid var(--line);
+  border-radius: var(--r-md) 0 0 var(--r-md);
+}
+
+.table th:last-child {
+  border-right: 1px solid var(--line);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+}
+
 .table td {
-  padding: 10px var(--space-3);
+  padding: var(--space-3);
   border-bottom: 1px solid var(--line);
   color: var(--mute);
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .table tbody tr:last-child td {
@@ -37,6 +49,15 @@
   background: var(--surface-2);
 }
 
+/* Fixed layout: the columns' widths are the ones given, and cells clip what doesn't fit (their content truncates). */
+.fixed {
+  table-layout: fixed;
+}
+
+.fixed td {
+  overflow: hidden;
+}
+
 .right {
   text-align: right !important;
 }
@@ -44,6 +65,11 @@
 .select {
   width: 1%;
   text-align: center !important;
+}
+
+/* In a fixed table 1% is a few pixels: the tick box column gets room for its header instead. */
+.fixed .select {
+  width: 72px;
 }
 
 .select input {

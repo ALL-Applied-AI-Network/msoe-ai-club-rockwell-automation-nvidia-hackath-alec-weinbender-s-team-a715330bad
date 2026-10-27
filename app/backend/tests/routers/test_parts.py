@@ -211,3 +211,32 @@ def test_likely_poses_are_marked_and_grasps_take_a_pose(client, upload, profile_
     assert checked.status_code == 200 and checked.json()["verdict"] == "ok" and checked.json()["width_mm"] == pytest.approx(10)
     assert client.post(f"{url}/grasps", json={"cell_profile_id": profile_id}).status_code == 409  # no chosen pose, none given
     assert client.post(f"{url}/grasps", json={"cell_profile_id": profile_id, "pose": 9}).status_code == 422
+
+
+def test_a_bulk_upload_reports_every_file(client, shapes, step_file):
+    files = [
+        ("files", ("cube.step", step_file(shapes["cube"], "cube.step"))),
+        ("files", ("notes.txt", b"hello")),
+        ("files", ("broken.step", b"not a step")),
+    ]
+
+    response = client.post("/api/parts/batch", files=files)
+
+    assert response.status_code == 201, response.text
+    rows = response.json()
+    assert [(r["filename"], r["status"]) for r in rows] == [
+        ("cube.step", "needs_properties"),
+        ("notes.txt", "skipped"),
+        ("broken.step", "file_error"),
+    ]
+    assert rows[0]["part"]["intake_status"] == "needs_properties" and rows[0]["part"]["measured"]["pieces"] == []
+    assert rows[2]["reason"] and rows[2]["part"] is None
+
+
+def test_a_part_gets_a_name_and_number(client, upload):
+    part = upload()
+
+    response = client.patch(f"/api/parts/{part['id']}", json={"name": "Cube A", "part_number": "P-7"})
+
+    assert response.status_code == 200 and (response.json()["name"], response.json()["part_number"]) == ("Cube A", "P-7")
+    assert client.patch(f"/api/parts/{part['id']}", json={"name": None}).status_code == 422

@@ -9,7 +9,8 @@ import styles from "./PartViewer.module.css";
 type PartViewerProps = {
   url: string; // a binary STL in the table frame (z up, resting on z = 0), e.g. /api/parts/{id}/mesh
   label: string; // the text alternative, e.g. "Vial cap, standing on its end"
-  mode?: "interactive" | "thumbnail"; // thumbnail: a still image, for grids of parts and the wizard's pose choices
+  mode?: "interactive" | "thumbnail" | "icon"; // thumbnail: a still image, for grids of parts and the wizard's pose
+  // choices; icon: a small square still, for a part in a table row
   height?: number; // px, interactive only; a thumbnail is 16:10 at the width it's given
   arrows?: GraspArrow[]; // interactive only: grasp directions drawn over the part
   markers?: { point: readonly [number, number, number] }[]; // interactive only: picked points, e.g. two faces
@@ -35,8 +36,8 @@ const THUMB_HEIGHT = 400;
 /** A part in 3D: orbit it in the interactive mode, or a still in the thumbnail mode. The one viewer for parts; the
  *  wizard's poses, grasp arrows and finger previews build on it. Colours come from the design tokens. */
 export function PartViewer({ url, label, mode = "interactive", height = 360, arrows, markers, onPick }: PartViewerProps) {
-  return mode === "thumbnail" ? (
-    <Thumbnail url={url} label={label} />
+  return mode !== "interactive" ? (
+    <Thumbnail url={url} label={label} icon={mode === "icon"} />
   ) : (
     <Interactive url={url} label={label} height={height} arrows={arrows} markers={markers} onPick={onPick} />
   );
@@ -173,7 +174,7 @@ function Interactive({
   );
 }
 
-function Thumbnail({ url, label }: { url: string; label: string }) {
+function Thumbnail({ url, label, icon }: { url: string; label: string; icon: boolean }) {
   const queryClient = useQueryClient();
   const theme = useTheme();
   const image = useQuery({
@@ -182,11 +183,11 @@ function Thumbnail({ url, label }: { url: string; label: string }) {
     staleTime: Infinity,
   });
   return (
-    <div className={styles.thumb}>
+    <div className={`${styles.thumb} ${icon ? styles.icon : ""}`}>
       {image.data ? (
         <img src={image.data} alt={label} className={styles.image} />
       ) : (
-        <p className={styles.status}>{image.isError ? "No 3D preview" : "Loading the 3D view"}</p>
+        !icon && <p className={styles.status}>{image.isError ? "No 3D preview" : "Loading the 3D view"}</p>
       )}
     </div>
   );

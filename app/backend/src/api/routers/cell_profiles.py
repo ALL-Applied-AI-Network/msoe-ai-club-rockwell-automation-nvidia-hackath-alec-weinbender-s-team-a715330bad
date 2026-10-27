@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from api.dependencies import DbDep
 from api.models.cell_profile import CellProfile, CellProfileVersion, Gripper
-from api.services import cell_profiles
+from api.services import cell_profiles, fingers
 from api.services.cell_profiles import CellProfileConflictError, CellProfileError, CellProfileNotFoundError
 
 router = APIRouter(prefix="/api/cell-profiles", tags=["cell profiles"])
@@ -44,8 +44,11 @@ def list_cell_profiles(db: DbDep) -> list[CellProfileResponse]:
 
 @router.post("", status_code=201)
 def create_cell_profile(req: CreateCellProfileRequest, db: DbDep) -> CellProfileResponse:
+    """A new cell; its stock fingers join the finger library."""
     try:
-        return CellProfileResponse.of(cell_profiles.create_profile(db, req.name, req.profile))
+        saved = cell_profiles.create_profile(db, req.name, req.profile)
+        fingers.ensure_stock_fingers(db)
+        return CellProfileResponse.of(saved)
     except CellProfileConflictError as e:
         raise HTTPException(409, str(e)) from None
     except CellProfileError as e:

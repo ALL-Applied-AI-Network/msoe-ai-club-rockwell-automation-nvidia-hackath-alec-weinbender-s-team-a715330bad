@@ -20,8 +20,8 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-semibold);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
   line-height: 1.2;
 }
 
@@ -151,6 +151,38 @@
 .gain {
   color: var(--acc-text);
   font-weight: var(--weight-bold);
+}
+
+.headline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.headlineLabel {
+  color: var(--mute);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+/* The evidence: a heading with its views as chips, then the chosen view's panel */
+.evidence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.evidenceHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.evidenceTitle {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
 }
 
 .pair {

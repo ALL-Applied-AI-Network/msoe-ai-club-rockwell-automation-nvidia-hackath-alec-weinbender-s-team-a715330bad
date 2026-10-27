@@ -3,7 +3,7 @@ import styles from "./ProgressBar.module.css";
 type ProgressBarProps = {
   value: number; // 0 to 1
   label: string; // what it measures, for screen readers, e.g. "Designs evaluated"
-  tone?: "acc" | "warn"; // warn while the job waits on the GPU connection
+  tone?: "acc" | "active" | "warn"; // acc: results and done; active: work under way; warn: waiting on the GPU connection
 };
 
 /** How far along something is. */

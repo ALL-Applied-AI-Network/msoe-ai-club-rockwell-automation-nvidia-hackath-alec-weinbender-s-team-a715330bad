@@ -1,19 +1,21 @@
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router";
-import { useMeta } from "../backend/queries";
+import { useCompute, useMeta } from "../backend/queries";
 import { CAVEATS } from "../caveats";
+import { gpuSummary } from "../gpu";
 import { Banner } from "./Banner";
+import { SimBadge } from "./Badges";
 import { ErrorState } from "./States";
-import { StatusBar } from "./StatusBar";
 import { ThemeToggle } from "./ThemeToggle";
 import styles from "./Page.module.css";
 
-// The experiments list is home, so the logo and Experiments both go there. New experiment is its main button, not a nav
-// item.
+// Overview is home, so the logo goes there too.
 const NAV = [
-  { to: "/", label: "Experiments", end: true },
-  { to: "/parts", label: "Parts" },
-  { to: "/validation", label: "Validation" },
+  { to: "/", label: "Overview", end: true },
+  { to: "/jobs", label: "Jobs" },
+  { to: "/parts", label: "Part Library" },
+  { to: "/fingers", label: "Finger Library" },
+  { to: "/new", label: "Generate Finger" },
   { to: "/cells", label: "Cells" },
 ];
 
@@ -21,13 +23,19 @@ type PageProps = {
   title?: string;
   description?: ReactNode;
   actions?: ReactNode; // at the right of the title, e.g. the page's main button
+  header?: ReactNode; // a page's own heading, in place of title and actions, across both columns (e.g. a job's)
+  rail?: ReactNode; // a right-hand column of panels beside the content, lined up with it top and bottom
+  // false: the rail's panels keep their own height and the rail stays in view while the content scrolls (a long page)
+  stretch?: boolean;
   children: ReactNode;
 };
 
-/** The page shell every page sits in: the top bar (navigation), the demo-data notice, the page's title, the content
- *  width and the status bar (the GPU and the sim). When the API doesn't answer, it says so instead of an empty page. */
-export function Page({ title, description, actions, children }: PageProps) {
+/** The page shell every page sits in: the top bar (navigation, the GPU, which simulator answers, light or dark), the
+ *  demo-data notice, the page's title, and the content, with an optional right-hand rail. When the API doesn't answer,
+ *  it says so instead of an empty page. */
+export function Page({ title, description, actions, header, rail, stretch = true, children }: PageProps) {
   const meta = useMeta();
+  const sim = meta.data?.sim;
   return (
     <>
       <header className={styles.topbar}>
@@ -51,7 +59,12 @@ export function Page({ title, description, actions, children }: PageProps) {
               </NavLink>
             ))}
           </nav>
-          <ThemeToggle />
+          <div className={styles.tools}>
+            <ComputeLink />
+            {sim && <SimBadge backend={sim.badge} />}
+            {sim?.badge === "isaac" && sim.url && <code className={styles.url}>{sim.url.replace(/^https?:\/\//, "")}</code>}
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       {meta.data?.demo_data && (
@@ -77,11 +90,30 @@ export function Page({ title, description, actions, children }: PageProps) {
                 {actions && <div className={styles.actions}>{actions}</div>}
               </div>
             )}
-            {children}
+            {header}
+            {rail ? (
+              <div className={`${styles.columns} ${stretch ? styles.stretch : ""}`}>
+                <div className={styles.column}>{children}</div>
+                <aside className={`${styles.column} ${stretch ? "" : styles.sticky}`}>{rail}</aside>
+              </div>
+            ) : (
+              children
+            )}
           </>
         )}
       </main>
-      <StatusBar />
     </>
+  );
+}
+
+/** The GPU in the top bar: its state in a word, with a dot; it opens the GPU page. */
+function ComputeLink() {
+  const compute = useCompute();
+  const gpu = compute.data && gpuSummary(compute.data);
+  return (
+    <Link to="/gpu" className={styles.compute} title="GPU">
+      <span className={`${styles.dot} ${styles[gpu?.tone ?? "neutral"]}`} aria-hidden="true" />
+      <span className={styles.computeText}>{gpu?.text ?? "Checking the GPU"}</span>
+    </Link>
   );
 }

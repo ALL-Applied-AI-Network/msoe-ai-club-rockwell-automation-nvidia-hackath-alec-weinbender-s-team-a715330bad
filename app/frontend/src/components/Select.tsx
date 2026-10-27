@@ -8,12 +8,13 @@ type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
   hint?: ReactNode;
   error?: string;
   isPlaceholder?: boolean; // the value isn't measured yet: marks the field "Placeholder"
+  inline?: boolean; // in a filter bar: no visible label, sized like the chips beside it
 };
 
 /** A labelled dropdown. */
-export function Select({ label, options, placeholder, hint, error, isPlaceholder, ...props }: SelectProps) {
+export function Select({ label, options, placeholder, hint, error, isPlaceholder, inline, ...props }: SelectProps) {
   return (
-    <Field label={label} hint={hint} error={error} isPlaceholder={isPlaceholder}>
+    <Field label={label} hint={hint} error={error} isPlaceholder={isPlaceholder} inline={inline}>
       {(id) => (
         <select id={id} className={fieldStyles.control} {...props}>
           {placeholder !== undefined && <option value="">{placeholder}</option>}

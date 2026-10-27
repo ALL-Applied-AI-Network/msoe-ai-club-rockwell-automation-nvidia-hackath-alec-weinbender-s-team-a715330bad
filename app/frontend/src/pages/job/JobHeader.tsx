@@ -152,7 +152,6 @@ export function JobHeader({ job, results }: { job: JobDetail; results: Results |
         tabs={[
           { to: `/jobs/${job.id}`, label: card.status === "done" ? "Results" : "Progress", end: true },
           { to: `/jobs/${job.id}/validation`, label: "Validation" },
-          { to: `/jobs/${job.id}/log`, label: "Quick logger" },
         ]}
       />
 
