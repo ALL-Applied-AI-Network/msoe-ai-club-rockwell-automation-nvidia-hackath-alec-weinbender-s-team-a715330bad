@@ -84,7 +84,7 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 | --- | --- | --- |
 | Web app backend (input flow, batch BO, results, tracker, exports; finger library, evaluation jobs, qualifications) | `app/backend/` | Works end-to-end with the **mock** sim, a geometric capture check (not physics): 1000+ tests, plus an end-to-end run against a live server with real worker processes. Evaluation jobs and the finger library (2026-10-26) have run on the mock only, in tests and the demo seed |
 | Web app frontend (Auto-Grasp) | `app/frontend/` | Vite + React UI in NVIDIA Brev's colors (2026-10-22). The old single-file UI was removed on 2026-10-26: the React app is the page at `/` (the backend serves its build). Re-laid out as a dashboard on 2026-10-26: sidebar, Overview, Jobs, Part and Finger Libraries, new evaluations and their ranking. The quick logger is merged into Validation, and the review gate is now a Validation stage |
-| Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | Contract v2: mesh parts, part friction, grip-force limit, transport, in-hand pose. **Runs in Isaac on Brev and the GB10** (2026-10-20). Stages 0–3 pass on both, and they agree ([Brev](docs/experiments/2026-10-20-brev-sim-server-bringup.md), [GB10](docs/experiments/2026-10-20-gb10-sim-server-bringup.md)). Stages 4–6 ran on the GB10 ([log](docs/experiments/2026-10-20-gb10-stages-4-6.md)): finger swaps, the in-hand readout, mesh parts and transport work. Heavy parts don't (risk 6), and the GPU path is biased (risk 7). 2.75 grasps/s reference, ~5 with CPU copies, 16–28 on the GPU. **Since 2026-10-26 the GB10 runs `main` (`4c9269f`) on `--envs 64 --device cpu`** (6.4 grasps/s on the screw). The first screw runs: a generation job and an evaluation job, plus 5 clips ([generation](docs/experiments/2026-10-26-gb10-m6-screw-generation.md), [evaluation](docs/experiments/2026-10-26-gb10-m6-screw-evaluation.md)) |
+| Sim service (HTTP bridge to Isaac Sim) | `sim/sim_server/` | Contract v2: mesh parts, part friction, grip-force limit, transport, in-hand pose. **Runs in Isaac on Brev and the GB10** (2026-10-20). Stages 0–3 pass on both, and they agree ([Brev](docs/experiments/2026-10-20-brev-sim-server-bringup.md), [GB10](docs/experiments/2026-10-20-gb10-sim-server-bringup.md)). Stages 4–6 ran on the GB10 ([log](docs/experiments/2026-10-20-gb10-stages-4-6.md)): finger swaps, the in-hand readout, mesh parts and transport work. Heavy parts don't (risk 6), and the GPU path is biased (risk 7). 2.75 grasps/s reference, ~5 with CPU copies, 16–28 on the GPU. **Since 2026-10-26 the GB10 runs `main` (`121b55d`, with the landing readout) on `--envs 64 --device cpu`** (6.4 grasps/s on the screw). The screw has two generation jobs, two evaluation jobs, a reference-path repeatability check and 5 clips ([first runs](docs/experiments/2026-10-26-gb10-m6-screw-generation.md), [evaluation](docs/experiments/2026-10-26-gb10-m6-screw-evaluation.md), [landing check and reruns](docs/experiments/2026-10-26-gb10-landing-check-and-screw-reruns.md)) |
 | Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored from the organizers. Host tests and the headless scene build pass on Brev and the GB10 (2026-10-20); the stacking demo needs a Cosmos env and hasn't run. Only edit: the `.sh` files marked executable in git (2026-10-20, contents unchanged) |
 | CAD output | `app/backend/src/api/models/finger_cad.py`, `clients/cad.py` | CadQuery STEP (the pair) + STL per side, the cell profile's mount (default since 2026-10-20: SMC's jaw from its STEP, the root cut back for the jaw's tongue, M3 holes along the jaw travel; **confirm on the real jaw**), engraved IDs, export checks, print sheet. Checked against the STEP's jaw solid: no overlap, faces touching, holes aligned |
 | Organizers' CAD of the cell | `cad/` | Gripper STEP, M6 screw, bin, 10/16 mm cubes, vial, cap, table texture; unchanged, with SHA-256s ([page](docs/07-cad-models.md)). All import through the app's part upload |
@@ -157,18 +157,38 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 9. **Finger length moves the real fingertips.** "tcp" actions command the stock fingertip (UTOOL1, 293 mm), and the cell
    rejects TCP z below −334 mm, about 1 mm above the surface. Printed fingers must end where the stock ones do (the app
    keeps the tips at z = 0 with the root against the jaw's shoulder), or `cell_policy` must offset them.
-10. **The screw's sim results flip a lot between runs** (GB10, `--envs 64 --device cpu`, 2026-10-26). Two runs of the
-    stock fingers on the same 963-point grid agree on only 77.5% of points (the cube: 91–95%). Near the centre only 3%
-    of points flip, beyond 6.5 mm 40%. Scores move 1.4–2.1 points between runs, which is as big as the gap between
-    the generated D1 and stock. So in the twin, on the screw, no finger beats stock yet
-    ([log](docs/experiments/2026-10-26-gb10-m6-screw-evaluation.md),
-    [chart](docs/experiments/2026-10-26-screw-success-vs-sigma.png)).
+10. **The screw's sim results flip a lot between runs, because the fingers brush it** (GB10, 2026-10-26). Two runs of
+    the stock fingers on the same 963-point grid agree on only 77–81% of points (the cube: 91–95%), with most flips
+    past 4.5 mm. Scores move 1.4–2.3 points between runs, as much as the gap between the generated D1 and stock.
+    - It's the part, not the vectorised path: the reference path (`--envs 1`) agrees with itself on 81.1%.
+    - An untouched screw moves exactly 0. But the stock fingers move it in about 37% of grasps, differently each run
+      (correlation 0.33). The shank sits snugly in the blades' round socket as they come down.
+    - Scoring those landings as misses doesn't make the screw repeatable (78.5% agreement).
+    - So gaps of a few points between fingers on the screw aren't real
+      ([log](docs/experiments/2026-10-26-gb10-landing-check-and-screw-reruns.md),
+      [first runs](docs/experiments/2026-10-26-gb10-m6-screw-evaluation.md)).
 11. **The stock fingers grip past SMC's limit.** SMC's catalog limits the MHZ□2-16's gripping point L (with no
     overhang) to about 34 mm at 0.5 MPa and about 56 mm at 0.3 MPa or less. The stock blades grip about 70 mm out.
     Past the limit SMC says the gripper's life suffers; it doesn't say the grip fails. Grip force per finger,
     external: about 34 N at 0.5 MPa and 21 N at 0.3
     ([catalog](https://ca01.smcworld.com/catalog/en/rotary_airchuck/MHZ_2-E/6-3-p0381-0463-mhz_en/data/6-3-p0381-0463-mhz_en.pdf),
     pp. 387 and 395). A `max_finger_length_mm` from SMC would fail the stock fingers' own length.
+12. **The twin gives the stock fingers more friction than a printed finger.**
+    - The stock tips keep the twin's soft material: 1.5 static, 1.3 sliding.
+    - A custom finger is sent with the part's estimated friction against printed PLA: 0.4 / 0.3 for the steel screw.
+    - The server averages the two materials in contact, so on the screw stock grips at about 0.95 and a printed finger
+      at 0.4. That's enough to hold a 7.5 g part either way, but it may help stock pull a part into a centred grip.
+    - Neither number is measured: tilt-test the printed material, and check the real stock tips.
+13. **For a part that fits the stock fingers, there's little left for a custom finger to win** (2026-10-26, the screw).
+    - The Ø6 shank sits in the stock blades' sweet spot: 3–5 mm of room each side with the jaws open, and hooked tips that
+      funnel it in.
+    - The 6 mm stroke per jaw caps any finger's slack. Every good generated design pushed slack to its maximum (5.4–5.5 mm),
+      the same wall the stock blades sit against.
+    - A custom finger can only win on details, such as not brushing the part on the way down.
+    - **Parts the stock fingers can't open around do show a generated finger's value.** On the 16 mm cube (2026-10-27),
+      stock scores 0% and the best library finger 17.6%, while a generated D1 scores 92.3%, holding every grasp out to
+      4.5 mm. Its results repeat within 0.03 points
+      ([log](docs/experiments/2026-10-27-gb10-cube16-library-and-generation.md)).
 
 ## Decisions
 
@@ -200,7 +220,7 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 | 2026-10-26 | No grasp policy as an input. A cell is described by its **grasp accuracy** (the error model: spread in position and yaw, plus any consistent offset; presets or measured), and the sim keeps its scripted top-down pick. In library evaluation each finger is tried at the part's candidate grasps and scored at its best | The goal is the fingers' grasping ability. The error grid covers any pipeline that locates the part and then grasps it, which is honest; evaluating a specific VLM pipeline would need it run in the loop. Learned closed-loop policies are out of scope |
 | 2026-10-26 | User stories scoped for the first build: flat table and top-down grasps stay (3, 4); bulk upload by files or a folder, no CSV (5); story 11 skipped; no target success rate in generation (14); real-robot validation is per finger-and-part pair (17). The app has a parts library and a finger library. Grasp accuracy is set on the cell profile and copied into each job. Evaluation is a new job kind | Team review of the stories against the backend ([stories](<docs/Auto-Grasp User Stories.md>), [plan](docs/notes/library-evaluation-backend-plan.md)) |
 | 2026-10-26 | **Two kinds of job** share the jobs table, list, worker, cancel, resume and experiment IDs: generation (the optimizer) and evaluation (library fingers ranked on a part; its own trials table and `/ranking`). A library finger is a physical finger (stock, generated from a job's design, or uploaded CAD placed in the gripper frame automatically), tried on new parts through `regrip()` or `seat()`. Each finger is scored at its best of the top 3 grasp proposals per pose, and the top 3 fingers plus stock are re-tested on the dense grid. A qualification is one finger on one part: the latest prediction and the real-robot sessions, with the gap flagged outside the 95% Wilson interval. Migration 0007 adds the tables and clears nothing | A job is a scheduled run on the compute, whichever kind; evaluation is the new default path and generation the fallback ([plan, as built](docs/notes/library-evaluation-backend-plan.md#as-built-2026-10-26)) |
-| 2026-10-26 | **A finger that lands on the part scores as a miss** (risk 5). The sim server reports `landing` per grasp: the part's shift in the table plane (mm) and its turn (degrees) from the end of the approach to the end of the descent, with the jaws still open. A grasp that moved the part more than 1 mm or 3° fails every task, even when the sim held it (`Outcomes.landed`, `Task.success`). Results and rankings say how many held grasps that turned into misses, or that it wasn't checked. Migration 0008 adds a nullable `landing` to both trial tables; old rows are unmeasured and keep their scores | The twin squeezes a part a finger landed on into the gap and calls it held, while a real arm may knock it away. Two runs of the stock fingers on the screw agree on only 77.5% of points, most flips at the outer offsets where the open fingers come down on the part (risk 10). A miss is the conservative choice, and the count shows how much it changes. The 1 mm / 3° thresholds are a guess until the GPU run shows how far an untouched part moves |
+| 2026-10-26 | **A finger that lands on the part scores as a miss** (risk 5). The sim server reports `landing` per grasp: the part's shift in the table plane (mm) and its turn (degrees) from the end of the approach to the end of the descent, with the jaws still open. A grasp that moved the part more than 1 mm or 3° fails every task, even when the sim held it (`Outcomes.landed`, `Task.success`). Results and rankings say how many held grasps that turned into misses, or that it wasn't checked. Migration 0008 adds a nullable `landing` to both trial tables; old rows are unmeasured and keep their scores | The twin squeezes a part a finger landed on into the gap and calls it held, while a real arm may knock it away. Two runs of the stock fingers on the screw agree on only 77.5% of points, most flips at the outer offsets where the open fingers come down on the part (risk 10). A miss is the conservative choice, and the count shows how much it changes. An untouched part moves exactly 0 in Isaac (2026-10-26), so any motion is contact; whether a 1 mm / 3° brush knocks a real part away is still to check on the arm |
 
 ## Open questions / action items
 
@@ -218,9 +238,20 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
       was found.
 - [x] **Fix the BO search's patience** (2026-10-26, `SearchPlan.stop_reason`). The Sobol start now only sets the best
       to beat, and BO gets `patience` designs of its own. EXP-0001 had stopped after 16 of 128 designs.
-  - [ ] Rerun the screw's generation job, about 2 h at 6.4 grasps/s if it runs its full budget.
-- [ ] **Measure the screw's repeatability on the reference path** (`--envs 1`, the stock grid twice), to tell
-      whether risk 10 comes from the vectorised path or from the part.
+  - [x] Reran the screw's generation job (EXP-0004, 2026-10-26, landing rule on): 32 designs, stopped on patience.
+        On the final grid stock scores 66.9% and D1 62.9%. D1 only matches or leads stock past 4.5 mm of error, by no
+        more than the noise. **On the screw, the stock fingers stay**
+        ([log](docs/experiments/2026-10-26-gb10-landing-check-and-screw-reruns.md),
+        [chart](docs/experiments/2026-10-26-screw-success-vs-sigma-landing.png)).
+- [x] **Measured the screw's repeatability on the reference path** (2026-10-26): 81.1% agreement on `--envs 1`, so
+      risk 10 comes from the part, not the vectorised path.
+- [ ] **Repeat the finalists' dense-grid test** (D1 and stock, two or three times) before claiming any gap on the screw
+      smaller than about 3 points.
+- [x] **Tried a part the stock fingers can't take** (2026-10-27, the 16 mm cube, EXP-0005 and EXP-0006):
+      stock 0%, the library's best 17.6%, generated D1 92.3% (risk 13).
+  - [ ] Measure the cube's material and mass at the cell. PLA (5 g) was assumed.
+  - [ ] To validate it on the arm, add the cube to `cell_policy` (built for the screw now), and print D1 after the review
+        gate.
 - [ ] Second build: failure reasons per grasp and replays (story 13; plan W7), and the pitch metrics (W8).
 - [ ] **Section grasps on the L-bracket have no buildable V-pad** (on `main` before 2026-10-26 too): its best grasp
       proposal grips one arm, and every V-pad design "would land on the centred part" there, so a generation job on it
@@ -234,6 +265,10 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 - [ ] **Pick the demo part + task** sized for the jaws. Proposed 2026-10-20: **one M6 × 30 screw into the yellow bin**. It's
       a manufacturing part, the platform's default scene, light, and its Ø6 shank fits the jaws. The table camera
       can't see screws, so position error is large. `cell_policy/` is built for it. Team to confirm.
+  - Since 2026-10-27 the simulations suggest showing **two parts**:
+    - the screw, where the stock fingers are good enough and Auto-Grasp says not to print anything;
+    - the 16 mm cube, where the library fails and a generated finger reaches 92%.
+  - Only the screw is in `cell_policy` so far.
 - [ ] **Confirm the finger mounting interface on the real jaw**: the STEP's tongue, its holes 4 and 11 mm below the
       shoulder, which way the screws go, and how the stock fingers sit (risk 8). Ask Zhen Zeng (zhenzeng@uwm.edu /
       `#dataset-3-grasping-sorting`), or photograph it at the cell.
@@ -249,11 +284,12 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 - [x] Run the sim server on a GPU ([docs/notes/gpu-test-plan.md](docs/notes/gpu-test-plan.md)): stages 0–3 on Brev and
       the GB10, stages 4–6 on the GB10, and stage 7 (end to end with the app, plus the first Isaac Sim clips) on the GB10
       (2026-10-20, [log](docs/experiments/2026-10-20-gb10-app-end-to-end-and-clips.md)).
-- [ ] **Landing flag (risk 5): built 2026-10-26, host tests only, not yet run in Isaac.**
-  - Uncommitted on Oliver's laptop. The GB10 still runs `4c9269f`, without it.
-  - The sim server reports each grasp's `landing` (decision below).
-  - Still to do: deploy it to the GB10 (a sim server restart), then rerun GPU test plan stage 4 (`pad_x0` should drop
-    from about 1.5 mm) and the screw's two jobs. Their old outcomes have no landing and keep their scores.
+- [x] **Landing flag (risk 5): runs in Isaac** (GB10, `121b55d`, 2026-10-26).
+  - Stage 4 passes: the flat pads push the cube by exactly the offset minus their slack, and the rule stops counting
+    `pad_x0` from 3 mm and `pad_x2` from 5 mm.
+  - An untouched part moves exactly 0, so the 1 mm / 3° thresholds sit well above the floor.
+  - On the screw, the rule drops stock from 88.6% to 63.4% and the imprint from 76.0% to 49.1% (EXP-0003).
+  - [ ] Whether a brush of that size knocks a real screw away: check it in the first real-arm session.
 - [ ] **Find why the twin grips at about 2.5 N per jaw** (risk 6), then rerun GPU test plan 5.3–5.5. Meanwhile, pick a
       light demo part (under about 100 g).
 - [ ] **Find the GPU-with-copies bias** (risk 7), starting with CCD; then rerun stage 6. Also run the L-bracket's
