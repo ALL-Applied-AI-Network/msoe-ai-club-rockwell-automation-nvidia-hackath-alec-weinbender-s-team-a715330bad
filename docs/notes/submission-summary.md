@@ -13,59 +13,63 @@ Rockwell Automation + NVIDIA Innovation Lab, Fall 2026, Dataset 3 (Grasping and 
 
 ## The problem
 
-A new part is coming to a robot cell. The question on the floor is simple: **can the fingers we already have grip it
-reliably, and if not, which finger should we make?** Today that is answered by printing or machining fingers and trying
-them on the robot, which takes days, ties up the cell, and tests each finger only at the few positions anyone thought
-of. The real risk is somewhere else: no camera, calibration or robot puts a grasp exactly where it was aimed, and a
-finger that works at the centre can drop the part a few millimetres off.
+A new part is coming to a robot cell: **can the fingers we already have grip it reliably, and if not, which finger
+should we make?** Today the answer comes from making fingers and trying them on the robot. That takes days, ties up the
+cell, and only tests the positions someone thought of. But no camera or robot grasps exactly where it aims, and a finger
+that works at the centre can drop the part a few millimetres off.
 
 ## The business case
 
-Most new parts can run on fingers already on the shelf. Auto-Grasp **tries the library first** and **generates a new
+Most new parts can run on fingers already on the shelf, so Auto-Grasp **tries the library first** and **generates a
 finger only as the fallback**:
 
-1. Every finger in the factory's library is simulated against the new part, at its candidate grasps, across the
-   cell's grasp error, and ranked by predicted success.
-2. The manufacturing engineer decides whether the best one is good enough. There is no fixed pass bar.
-3. If none is, Bayesian optimisation designs a printable finger for the part. It goes through a review gate before it
-   is printed, and then joins the library, so the next part is more likely to need nothing new.
+1. **Rank the library.** Every finger is simulated against the new part, at its candidate grasps and across the cell's
+   grasp error, and ranked by predicted success.
+2. **The engineer decides.** The manufacturing engineer judges whether the best is good enough. There's no fixed pass
+   bar.
+3. **Generate if needed.** If none is good enough, Bayesian optimisation designs a printable finger. It passes a review
+   gate, then joins the library.
 
-For another manufacturer this means fewer custom fingers, less time on the cell before a new part runs, and a number
-to decide with instead of a trial-and-error loop. Inputs are a STEP or STL file, the cell's gripper, and how
-accurately the cell grasps.
+For a manufacturer that means fewer custom fingers, less cell time, and a number to decide with. The inputs are a STEP
+or STL file, the gripper, and how accurately the cell grasps.
 
 ## The method
 
-- **Digital twin.** NVIDIA Isaac Sim with the organizers' FANUC ER-4iA cell and the SMC MHZL2-16D2 gripper (6 mm per
-  jaw). Each grasp is a scripted top-down pick: approach, close, lift.
-- **Error grid.** Each finger is tested at a fixed grid of position and yaw offsets around the aimed grasp, not at
-  random draws. One run then scores any grasp-accuracy level by re-weighting, with no new simulation, which gives a
-  success-vs-error curve per finger.
-- **Batch BO.** The fallback searches one V-pad finger family (pad width, slack, tip height, lead-in) with BoTorch
-  (qLogNEI), several designs per Isaac request. The stock fingers and an imprint of the part are simulated in the same
-  requests as baselines. The winner is exported as STEP and STL with the gripper's mount holes and an engraved ID.
-- **Validation.** Printed fingers are run on the real arm through the organizers' platform, at the same commanded
-  offsets as the stock fingers, and measured success is compared with the prediction (95% Wilson interval).
+- **Digital twin:** NVIDIA Isaac Sim with the organizers' FANUC ER-4iA cell and SMC MHZL2-16D2 gripper, running a
+  scripted top-down pick.
+- **Error grid:** each finger is tried at a fixed grid of position and yaw offsets. One run re-scores at any grasp
+  accuracy with no new simulation, which gives a success-vs-error curve.
+- **Honest holds:** a grasp where a finger knocked the part before the jaws closed counts as a miss, even if the
+  simulator held it.
+- **Batch BO:** BoTorch searches a V-pad finger family, several designs per Isaac request, with the stock fingers and an
+  imprint of the part as baselines. The winner is exported as STEP and STL with the mount holes and an engraved ID.
+- **Validation:** printed and stock fingers run on the real arm at the same commanded offsets, and measured success is
+  compared with the prediction (95% Wilson interval).
 
 ## Results (M6 × 30 countersunk screw, dropped into a bin)
 
 | | Stock fingers | Imprint | Generated (D1) |
 | --- | --- | --- | --- |
-| Predicted success at 3 mm, 8° (Isaac, GB10) | TBD | TBD | TBD |
-| Capture radius (Isaac) | TBD | TBD | TBD |
+| Predicted success at 3 mm, 8° (Isaac) | TBD | TBD | TBD |
 | Measured on the real arm (n, 95% interval) | TBD | not run | TBD |
 
-- Success vs grasp error, 0.5 to 6 mm: chart TBD. The custom finger starts to win at TBD mm.
-- Library evaluation: TBD fingers ranked in TBD min. Generation: TBD min for TBD designs.
+- **Success vs grasp error, 0.5 to 6 mm:** chart TBD.
+- **Timing:** TBD fingers ranked in TBD min; TBD designs generated in TBD min.
+- **What the screw taught us:** its Ø6 shank sits in the stock fingers' sweet spot. The gripper's 6 mm stroke per jaw
+  caps every finger's slack, and every good generated design hit that cap. So for this part, stock is close to the best
+  this gripper can do, and Auto-Grasp says so before anyone prints a finger.
+- **Where generation pays off: the cell's 16 mm cube** (Isaac, 3 mm / 8°). It's as wide as the stock tips open, so stock
+  scores 0% and the best library finger 17.6%. A generated finger reaches **92.3%** and holds every grasp out to 4.5 mm,
+  found in 33 minutes of simulation.
 
 ## Limitations
 
-- **No height error.** The grid varies position and yaw only. The fingertips close 2.5 mm above the table, so height
-  error is a likely real failure that the sim never tests.
-- **Landing capture.** A finger that lands on the part can push it into the gap and still count as a hold. A real
-  arm may knock the part away instead, so near a design's edge the sim can flatter it, the stock baseline included.
-- **Weak grip in the twin.** The simulated jaws grip at about 2.5 N, far below the gripper's rated force. Heavy or
-  slippery parts score as drops for every finger. The 7.5 g screw is well inside what the twin holds.
-- **Unmeasured grasp accuracy.** The 3 mm, 8° default is a placeholder until it is measured on the cell. The curves
-  show every level, but the headline number depends on it.
-- The sim's predictions are unvalidated until the real-arm trials are logged.
+- **No height error:** the grid varies position and yaw only.
+- **Contact noise:** the fingers brush a small lying part differently each run. Two runs of one finger on the screw
+  agree on about 80% of offsets and move 1–2 points, so smaller gaps aren't real.
+- **Unmeasured inputs:**
+  - **Grasp accuracy:** 3 mm and 8° is a placeholder.
+  - **Friction:** the twin's stock tips are 1.5, our printed-finger estimate is 0.4.
+  - **Knocks:** whether a real arm survives the size of knock we count as a miss.
+- **Weak simulated grip:** about 2.5 N per jaw, fine for the 7.5 g screw but not for heavy parts.
+- **Unvalidated:** the predictions stand unconfirmed until the real-arm trials are logged.
