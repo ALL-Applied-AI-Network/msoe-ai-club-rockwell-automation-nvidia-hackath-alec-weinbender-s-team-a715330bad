@@ -54,18 +54,21 @@ export function FinalTest({ jobId, results }: { jobId: string; results: Results 
     {
       key: "print",
       header: "Print",
+      width: "130px",
       render: (r) =>
         r.kind === "search" || r.kind === "locked" ? (
-          <Checkbox
-            label="Print this"
-            checked={chosen.has(r.label)}
-            disabled={save.isPending}
-            onChange={(on) =>
-              save.mutate(printable.map((p) => p.label).filter((l) => (l === r.label ? on : chosen.has(l))))
-            }
-          />
+          <span className={styles.nowrap}>
+            <Checkbox
+              label="Print this"
+              checked={chosen.has(r.label)}
+              disabled={save.isPending}
+              onChange={(on) =>
+                save.mutate(printable.map((p) => p.label).filter((l) => (l === r.label ? on : chosen.has(l))))
+              }
+            />
+          </span>
         ) : (
-          <span className={styles.note}>Always tested</span>
+          <span className={`${styles.note} ${styles.nowrap}`}>Always tested</span>
         ),
     },
   ];

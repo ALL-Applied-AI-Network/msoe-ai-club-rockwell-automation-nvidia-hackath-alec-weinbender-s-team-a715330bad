@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
+import { useTheme } from "../theme";
 import styles from "./PartViewer.module.css";
 
 type PartViewerProps = {
@@ -59,6 +60,7 @@ function Interactive({
   onPick?: (pick: PartPick) => void;
 }) {
   const mesh = useQuery(meshQuery(url));
+  const theme = useTheme(); // the scene's colours are read when it is built, so a new theme rebuilds it
   const frame = useRef<HTMLDivElement>(null);
   const [noWebGl, setNoWebGl] = useState(false);
   const [stage, setStage] = useState<Stage | null>(null);
@@ -135,7 +137,7 @@ function Interactive({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [mesh.data, height]);
+  }, [mesh.data, height, theme]);
 
   // The arrows and markers sit in their own group, redrawn without rebuilding the scene or moving the camera. Keyed by
   // value, so a parent passing fresh arrays each render doesn't redraw them.
@@ -173,8 +175,9 @@ function Interactive({
 
 function Thumbnail({ url, label }: { url: string; label: string }) {
   const queryClient = useQueryClient();
+  const theme = useTheme();
   const image = useQuery({
-    queryKey: ["mesh", url, "thumbnail"],
+    queryKey: ["mesh", url, "thumbnail", theme],
     queryFn: async () => renderThumbnail(await queryClient.fetchQuery(meshQuery(url))),
     staleTime: Infinity,
   });
@@ -227,11 +230,11 @@ function buildScene(source: THREE.BufferGeometry) {
   const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 1);
 
   const scene = new THREE.Scene();
-  const material = new THREE.MeshStandardMaterial({ color: token("--mute"), roughness: 0.55, metalness: 0.1 });
+  const material = new THREE.MeshStandardMaterial({ color: token("--viewer-part"), roughness: 0.55, metalness: 0.1 });
   const part = new THREE.Mesh(geometry, material);
   scene.add(part);
   const edges = new THREE.EdgesGeometry(geometry, 30);
-  const edgeMaterial = new THREE.LineBasicMaterial({ color: token("--surface-3") });
+  const edgeMaterial = new THREE.LineBasicMaterial({ color: token("--viewer-edge") });
   scene.add(new THREE.LineSegments(edges, edgeMaterial));
 
   // The table: a grid on z = 0, a few times the part's size, one line every tenth of it.
@@ -241,8 +244,8 @@ function buildScene(source: THREE.BufferGeometry) {
   grid.position.set(target.x, target.y, 0);
   scene.add(grid);
 
-  scene.add(new THREE.HemisphereLight(token("--ink"), token("--bg"), 1.4));
-  const sun = new THREE.DirectionalLight(token("--ink"), 1.6);
+  scene.add(new THREE.HemisphereLight(token("--viewer-light"), token("--bg"), 1.4));
+  const sun = new THREE.DirectionalLight(token("--viewer-light"), 1.6);
   sun.position.set(radius, -radius * 1.5, radius * 3);
   scene.add(sun);
 

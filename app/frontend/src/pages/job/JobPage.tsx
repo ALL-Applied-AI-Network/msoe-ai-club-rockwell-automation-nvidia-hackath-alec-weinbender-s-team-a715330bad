@@ -13,6 +13,7 @@ import { jobKey } from "../validation/queries";
 import { ClipsSection } from "./clips/ClipsSection";
 import { BestFingerSection } from "./finger/BestFingerSection";
 import { JobHeader } from "./JobHeader";
+import { JobRail, type RailSection } from "./JobRail";
 import { Progress, SearchCard } from "./Progress";
 import { useJobDetail, useRescore, useResults, type Rescore } from "./queries";
 import { ResultBanners } from "./sections/Banners";
@@ -27,7 +28,7 @@ import { ReviewSection } from "./sections/Review";
 import { RunDetails } from "./sections/RunDetails";
 import { Summary } from "./sections/Summary";
 import { Stopped } from "./Stopped";
-import type { ClipPick } from "./types";
+import type { ClipPick, Results } from "./types";
 import styles from "./JobPage.module.css";
 
 type JobCard = Schemas["JobCard"];
@@ -91,53 +92,68 @@ export function JobPage() {
       )}
 
       {shown && done && base && (
-        <div className={styles.sections}>
-          <ResultBanners job={job} results={shown} />
-          {override && (
-            <Banner
-              tone="info"
-              title="Re-scored: a what-if, not the run's own result"
-              action={
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setOverride(null);
-                    setResets((n) => n + 1);
-                  }}
+        <div className={styles.withRail}>
+          <JobRail sections={railSections(shown)} validationTo={`/jobs/${id}/validation`} />
+          <div className={styles.sections}>
+            <div id="job-result" className={styles.group}>
+              <ResultBanners job={job} results={shown} />
+              {override && (
+                <Banner
+                  tone="info"
+                  title="Re-scored: a what-if, not the run's own result"
+                  action={
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setOverride(null);
+                        setResets((n) => n + 1);
+                      }}
+                    >
+                      Reset
+                    </Button>
+                  }
                 >
-                  Reset
-                </Button>
-              }
-            >
-              At σ {mm(override.error?.sigma_mm ?? base.header.error.sigma_mm)}
-              {override.task ? `, ${override.task.kind}` : ""}
-              {override.task?.offset_tolerance_mm != null ? ` within ${mm(override.task.offset_tolerance_mm)}` : ""}, from the
-              stored grasps. Nothing was simulated again.
-            </Banner>
-          )}
-          <Summary results={shown} />
-          <RescoreBar
-            key={resets}
-            error={base.header.error}
-            task={base.header.task}
-            active={override !== null}
-            pending={rescore.isFetching}
-            failure={rescore.error?.message}
-            onChange={setOverride}
-          />
-          {shown.curves && <Curves results={shown} />}
-          {shown.held_maps.length > 0 && (
-            <HeldMaps results={shown} onPick={shown.header.sim_backend === "isaac" ? setPicked : undefined} />
-          )}
-          {shown.in_hand && shown.header.task.kind !== "drop" && <InHand results={shown} />}
-          {shown.failures && <Failures results={shown} />}
-          <BestFingerSection jobId={id} results={shown} />
-          <ClipsSection jobId={id} results={shown} picked={picked} onPicked={setPicked} />
-          {shown.final_table.length > 0 && <FinalTest jobId={id} results={shown} />}
-          <Physical jobId={id} results={shown} />
-          <ReviewSection jobId={id} experimentId={job.card.experiment_id} review={job.review} />
-          <RunDetails jobId={id} results={base} />
+                  At σ {mm(override.error?.sigma_mm ?? base.header.error.sigma_mm)}
+                  {override.task ? `, ${override.task.kind}` : ""}
+                  {override.task?.offset_tolerance_mm != null ? ` within ${mm(override.task.offset_tolerance_mm)}` : ""}, from the
+                  stored grasps. Nothing was simulated again.
+                </Banner>
+              )}
+              <Summary results={shown} />
+              <RescoreBar
+                key={resets}
+                error={base.header.error}
+                task={base.header.task}
+                active={override !== null}
+                pending={rescore.isFetching}
+                failure={rescore.error?.message}
+                onChange={setOverride}
+              />
+            </div>
+            {hasSearch(shown) && (
+              <div id="job-search" className={styles.group}>
+                {shown.curves && <Curves results={shown} />}
+                {shown.held_maps.length > 0 && (
+                  <HeldMaps results={shown} onPick={shown.header.sim_backend === "isaac" ? setPicked : undefined} />
+                )}
+                {shown.in_hand && shown.header.task.kind !== "drop" && <InHand results={shown} />}
+                {shown.failures && <Failures results={shown} />}
+              </div>
+            )}
+            <div id="job-finger" className={styles.group}>
+              <BestFingerSection jobId={id} results={shown} />
+              <ClipsSection jobId={id} results={shown} picked={picked} onPicked={setPicked} />
+            </div>
+            <div id="job-test" className={styles.group}>
+              {shown.final_table.length > 0 && <FinalTest jobId={id} results={shown} />}
+              <Physical jobId={id} results={shown} />
+              <ReviewSection jobId={id} experimentId={job.card.experiment_id} review={job.review} />
+            </div>
+            <div id="job-details" className={styles.group}>
+              <RunDetails jobId={id} results={base} />
+            </div>
+          </div>
         </div>
       )}
 
@@ -160,4 +176,18 @@ export function JobPage() {
       </div>
     </Page>
   );
+}
+
+const hasSearch = (r: Results) =>
+  Boolean(r.curves) || r.held_maps.length > 0 || Boolean(r.in_hand && r.header.task.kind !== "drop") || Boolean(r.failures);
+
+/** The side list's entries, in page order: only the groups this experiment has. */
+function railSections(r: Results): RailSection[] {
+  return [
+    { id: "job-result", label: "Result" },
+    ...(hasSearch(r) ? [{ id: "job-search", label: "Search" }] : []),
+    { id: "job-finger", label: "Finger" },
+    { id: "job-test", label: "Test" },
+    { id: "job-details", label: "Details" },
+  ];
 }

@@ -1,5 +1,4 @@
 import { Card } from "../../../components/Card";
-import { Stat } from "../../../components/Stat";
 import { Table, type Column } from "../../../components/Table";
 import type { Schemas } from "../../../backend/client";
 import { mm, percent, points } from "../../../format";
@@ -16,66 +15,65 @@ export function Summary({ results }: { results: Results }) {
   const summary = results.summary!;
   const { best, stock, imprint, task_metric_label: metricLabel } = summary;
   const sigma = results.header.error.sigma_mm;
-  const detail = (score: Score) => (
-    <>
-      {score.capture_radius_mm == null ? "no capture radius" : `capture radius ${mm(score.capture_radius_mm)}`}
-      {metricLabel && score.task_metric != null && (
+  const rows: Row[] = [
+    { key: "best", name: designLabel(best.label), sub: "best design", score: best, versus: summary.gain_vs_stock },
+    ...(imprint
+      ? [{ key: "imprint", name: "Imprint", sub: "baseline", score: imprint, versus: stock ? imprint.success - stock.success : null }]
+      : []),
+    ...(stock ? [{ key: "stock", name: "Stock fingers", sub: "baseline", score: stock, versus: null }] : []),
+  ];
+  const columns: Column<Row>[] = [
+    {
+      key: "finger",
+      header: "Finger",
+      render: (r) => (
         <>
-          <br />
-          {percent(score.task_metric)} {metricLabel}
+          <strong>{r.name}</strong>
+          <span className={styles.sub}>{r.sub}</span>
         </>
-      )}
-    </>
-  );
+      ),
+    },
+    {
+      key: "success",
+      header: "Held",
+      width: "38%",
+      render: (r) => (
+        <span className={styles.meter}>
+          <span className={styles.track}>
+            <span className={r.key === "best" ? styles.fillBest : styles.fillBase} style={{ width: percent(r.score.success) }} />
+          </span>
+          <strong className={styles.meterValue}>{percent(r.score.success)}</strong>
+        </span>
+      ),
+    },
+    {
+      key: "radius",
+      header: "Capture radius",
+      render: (r) => (r.score.capture_radius_mm == null ? "none" : mm(r.score.capture_radius_mm)),
+    },
+    ...(metricLabel
+      ? [{ key: "metric", header: metricLabel, render: (r: Row) => (r.score.task_metric == null ? "" : percent(r.score.task_metric)) }]
+      : []),
+    {
+      key: "versus",
+      header: "Vs stock",
+      align: "right" as const,
+      render: (r) => (r.versus == null ? "" : <span className={r.key === "best" ? styles.gain : undefined}>{points(r.versus)}</span>),
+    },
+  ];
 
   return (
     <Card
       title={`Share of grasps held at σ ${mm(sigma)}`}
       aside={<span className={styles.note}>{summary.designs_evaluated} designs evaluated</span>}
     >
-      <div className={styles.summary}>
-        <Stat size="lg" tone="acc" label={`Best design, ${designLabel(best.label)}`} value={percent(best.success)} detail={detail(best)} />
-        {stock && (
-          <Stat
-            size="lg"
-            label="Stock fingers"
-            value={percent(stock.success)}
-            detail={
-              <>
-                {detail(stock)}
-                {summary.gain_vs_stock != null && (
-                  <>
-                    <br />
-                    {designLabel(best.label)}: {points(summary.gain_vs_stock)}
-                  </>
-                )}
-              </>
-            }
-          />
-        )}
-        {imprint && (
-          <Stat
-            size="lg"
-            label="Imprint"
-            value={percent(imprint.success)}
-            detail={
-              <>
-                {detail(imprint)}
-                {summary.gain_vs_imprint != null && (
-                  <>
-                    <br />
-                    {designLabel(best.label)}: {points(summary.gain_vs_imprint)}
-                  </>
-                )}
-              </>
-            }
-          />
-        )}
-      </div>
+      <Table label="Best design against the baselines" columns={columns} rows={rows} rowKey={(r) => r.key} />
       {best.poses && best.poses.length > 1 && <PoseTable best={best} stock={stock} imprint={imprint} />}
     </Card>
   );
 }
+
+type Row = { key: string; name: string; sub: string; score: Score; versus: number | null | undefined };
 
 /** Each pose's share of the score and each design's success in it: the headline numbers are these, weighted. */
 function PoseTable({ best, stock, imprint }: { best: Score; stock: Score | null; imprint: Score | null }) {

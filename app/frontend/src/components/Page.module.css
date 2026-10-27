@@ -2,7 +2,7 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--bg);
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
 
@@ -23,31 +23,26 @@
   gap: var(--space-2);
   color: var(--ink);
   font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.01em;
+  font-weight: var(--weight-heavy);
 }
 
 .brand:hover {
   text-decoration: none;
 }
 
-/* The gripper drawn in green on its own, no tile behind it */
+/* The two jaws and the part between them, in the accent colour */
 .mark {
-  display: grid;
-  place-items: center;
-  color: var(--acc);
-}
-
-.mark svg {
+  flex: none;
   width: 22px;
   height: 22px;
-  stroke-width: 1.6;
+  color: var(--acc);
 }
 
 .nav {
   display: flex;
+  flex-grow: 1;
   align-self: stretch;
-  gap: var(--space-5);
+  gap: var(--space-2);
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -56,7 +51,8 @@
 .link {
   display: flex;
   align-items: center;
-  border-bottom: 2px solid transparent;
+  padding: 0 var(--space-3);
+  border-bottom: 3px solid transparent;
   color: var(--mute);
   font-weight: var(--weight-medium);
   white-space: nowrap;
@@ -70,6 +66,7 @@
 
 .current {
   color: var(--ink);
+  font-weight: var(--weight-bold);
   border-bottom-color: var(--acc);
 }
 
@@ -93,7 +90,8 @@
 
 .title {
   font-size: var(--text-xl);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-heavy);
+  letter-spacing: -0.01em;
   line-height: 1.2;
 }
 

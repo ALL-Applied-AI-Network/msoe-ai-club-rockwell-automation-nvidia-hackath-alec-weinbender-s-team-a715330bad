@@ -3,9 +3,9 @@ import { Link, NavLink } from "react-router";
 import { useMeta } from "../backend/queries";
 import { CAVEATS } from "../caveats";
 import { Banner } from "./Banner";
-import { Icon } from "./Icon";
 import { ErrorState } from "./States";
 import { StatusBar } from "./StatusBar";
+import { ThemeToggle } from "./ThemeToggle";
 import styles from "./Page.module.css";
 
 // The experiments list is home, so the logo and Experiments both go there. New experiment is its main button, not a nav
@@ -33,9 +33,10 @@ export function Page({ title, description, actions, children }: PageProps) {
       <header className={styles.topbar}>
         <div className={styles.bar}>
           <Link to="/" className={styles.brand}>
-            <span className={styles.mark}>
-              <Icon name="gripper" />
-            </span>
+            <svg className={styles.mark} viewBox="0 0 22 22" aria-hidden="true">
+              <path d="M3 4 V18 H8 M19 4 V18 H14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+              <circle cx="11" cy="11" r="2.6" fill="currentColor" />
+            </svg>
             Auto-Grasp
           </Link>
           <nav className={styles.nav} aria-label="Main">
@@ -50,6 +51,7 @@ export function Page({ title, description, actions, children }: PageProps) {
               </NavLink>
             ))}
           </nav>
+          <ThemeToggle />
         </div>
       </header>
       {meta.data?.demo_data && (

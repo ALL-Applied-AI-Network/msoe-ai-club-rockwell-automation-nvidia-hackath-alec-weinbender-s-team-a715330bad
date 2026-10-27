@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { Schemas } from "../backend/client";
+import { useTheme } from "../theme";
 import { niceSize, token } from "./PartViewer";
 import styles from "./FingerViewer.module.css";
 
@@ -31,6 +32,7 @@ export function FingerViewer({ part, fingers, label, height = 360, frameKey = ""
   const [stage, setStage] = useState<Stage | null>(null);
   const [noWebGl, setNoWebGl] = useState(false);
   const framed = useRef<string | null>(null);
+  const theme = useTheme(); // colours are read when the scene is built, so a new theme rebuilds it
 
   // The renderer, camera and controls live as long as the viewer; the content below swaps in and out.
   useEffect(() => {
@@ -48,8 +50,8 @@ export function FingerViewer({ part, fingers, label, height = 360, frameKey = ""
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(token("--ink"), token("--bg"), 1.4));
-    const sun = new THREE.DirectionalLight(token("--ink"), 1.6);
+    scene.add(new THREE.HemisphereLight(token("--viewer-light"), token("--bg"), 1.4));
+    const sun = new THREE.DirectionalLight(token("--viewer-light"), 1.6);
     sun.position.set(1, -1.5, 3);
     scene.add(sun);
     const content = new THREE.Group();
@@ -82,7 +84,7 @@ export function FingerViewer({ part, fingers, label, height = 360, frameKey = ""
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [height]);
+  }, [height, theme]);
 
   useEffect(() => {
     if (!stage) return;
@@ -149,7 +151,7 @@ function piecesGeometry(pieces: Piece[], mirrored: boolean): THREE.BufferGeometr
 function fingerObject(pieces: Piece[], tone: FingerShape["tone"], mirrored: boolean): THREE.Group {
   const geometry = piecesGeometry(pieces, mirrored);
   const ghost = tone !== "finger";
-  const color = token(tone === "min" ? "--active" : tone === "max" ? "--warn" : "--acc");
+  const color = token(tone === "min" ? "--active" : tone === "max" ? "--warn" : "--viewer-finger");
   const material = new THREE.MeshStandardMaterial({
     color,
     roughness: 0.6,
@@ -178,8 +180,8 @@ function partObject(part: Part): THREE.Group {
     else geometry.translate(0, 0, r);
   }
   const group = new THREE.Group();
-  group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: token("--mute"), roughness: 0.55 })));
-  group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 30), new THREE.LineBasicMaterial({ color: token("--surface-3") })));
+  group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: token("--viewer-part"), roughness: 0.55 })));
+  group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 30), new THREE.LineBasicMaterial({ color: token("--viewer-edge") })));
   return group;
 }
 

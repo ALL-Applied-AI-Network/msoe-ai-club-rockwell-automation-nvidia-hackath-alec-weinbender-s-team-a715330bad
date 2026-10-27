@@ -1,7 +1,8 @@
 import { useMemo } from "react";
+import { useTheme } from "../../theme";
 
 // The tokens charts draw with. Recharts sets fill and stroke as SVG attributes, which don't resolve var(--token), so a
-// chart reads the tokens' values once from tokens.css. The theme is dark only, so they never change while it's open.
+// chart reads the tokens' values from tokens.css, again whenever the theme changes.
 const NAMES = [
   "acc",
   "ok",
@@ -23,15 +24,16 @@ const NAMES = [
 
 export type ChartColor = (typeof NAMES)[number];
 
-/** Every chart token's value, e.g. colors.acc is "#76b900". */
+/** Every chart token's value, e.g. colors.acc is "#1d6b4f" in the light theme. */
 export function useChartColors(): Record<ChartColor, string> {
+  const theme = useTheme();
   return useMemo(() => {
     const style = getComputedStyle(document.documentElement);
     return Object.fromEntries(NAMES.map((name) => [name, style.getPropertyValue(`--${name}`).trim()])) as Record<
       ChartColor,
       string
     >;
-  }, []);
+  }, [theme]);
 }
 
 /** Axis, tick and grid props for every Recharts chart: hairline, recessive, text in the faint text token. */

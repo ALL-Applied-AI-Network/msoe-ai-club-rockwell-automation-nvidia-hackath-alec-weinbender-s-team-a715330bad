@@ -1,0 +1,26 @@
+.toggle {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+}
+
+.option {
+  height: var(--control-height-sm);
+  padding: 0 12px;
+  border: 0;
+  border-radius: calc(var(--r-sm) - 3px);
+  background: transparent;
+  color: var(--mute);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.option[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+}

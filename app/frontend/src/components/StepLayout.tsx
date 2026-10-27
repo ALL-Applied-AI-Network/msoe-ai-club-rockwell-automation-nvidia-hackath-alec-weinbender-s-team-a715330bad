@@ -9,7 +9,7 @@ export type StepItem = {
   label: string;
   to: string; // the step's own address, so browser Back works and a failure can link to it
   status: StepStatus;
-  note?: string; // why it needs attention or is blocked: under its label for those two, a tooltip otherwise
+  note?: string; // why it needs attention or is blocked: a tooltip on the step (the rail stays one word per step)
 };
 
 type StepLayoutProps = {
@@ -52,9 +52,6 @@ export function StepLayout({ steps, current, title, description, children, rail,
                 <span className={styles.text}>
                   <span className={styles.label}>{step.label}</span>
                   <span className={styles.visuallyHidden}>, {STATUS_LABEL[step.status]}</span>
-                  {step.note && (step.status === "attention" || step.status === "blocked") && (
-                    <span className={styles.note}>{step.note}</span>
-                  )}
                 </span>
               </Link>
             </li>

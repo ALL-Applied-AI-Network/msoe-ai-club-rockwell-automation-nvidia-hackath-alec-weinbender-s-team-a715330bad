@@ -1,69 +1,80 @@
 /* Design tokens: the only place the UI's colors, fonts, radii, spacing and shadows are set. Components use these
-   variables, never raw values (.claude/rules/coding-style.md, "Frontend"). The look follows NVIDIA Brev's console: Brev's
-   #0c0c0c page, hairline borders instead of shadows, small radii, a DIN-style sans, NVIDIA green only on actions, and a
-   terminal-style status bar along the bottom. Dark only. */
+   variables, never raw values (.claude/rules/coding-style.md, "Frontend"). The redesign: a warm paper palette with a
+   forest-green accent, Manrope, rounder panels, and a light and a dark theme. The theme is the user's choice
+   (data-theme on <html>, set by theme.ts) and follows the system when they haven't chosen. */
 
 :root {
-  color-scheme: dark;
+  /* Light theme (the default) */
+  color-scheme: light;
 
-  /* Surfaces, darkest first */
-  --bg: #0c0c0c; /* the page: Brev's own background */
-  --surface: #121212; /* panels, the status bar */
-  --surface-2: #1a1a1a; /* inputs, hovered rows, inset panels */
-  --surface-3: #242424; /* pressed, selected */
-  --line: #2a2a2a; /* borders and dividers */
-  --line-strong: #414141; /* hovered borders, input borders */
+  /* Surfaces, page first */
+  --bg: #f6f4ee; /* the page */
+  --surface: #fffdf8; /* panels, the top and status bars */
+  --surface-2: #efece1; /* inputs, hovered rows, inset panels */
+  --surface-3: #e6e1d2; /* pressed, selected */
+  --line: #d9d4c6; /* borders and dividers */
+  --line-strong: #8f8a7a; /* hovered borders, input borders: 3:1 on the surfaces */
 
   /* Text */
-  --ink: #f2f2f2;
-  --mute: #a3a3a3; /* secondary text */
-  --faint: #7c7c7c; /* captions, units, timestamps: 4.5:1 on --surface */
+  --ink: #1b1b1f;
+  --mute: #55535a; /* secondary text */
+  --faint: #6b685f; /* captions, units, timestamps: 4.5:1 on --surface */
 
   /* Actions */
-  --acc: #76b900; /* NVIDIA green: primary actions and progress */
-  --acc-hover: #87d100;
-  --acc-ink: #000000; /* text on --acc */
-  --acc-text: #8fd11a; /* links and accented text */
-  --acc-soft: rgba(118, 185, 0, 0.12);
+  --acc: #1d6b4f;
+  --acc-hover: #165a41;
+  --acc-ink: #ffffff; /* text on --acc */
+  --acc-text: #1d6b4f; /* links and accented text */
+  --acc-soft: rgba(29, 107, 79, 0.1);
 
   /* Tones: text, tinted background, border. Badges, banners and help cards use them. */
-  --ok: #8fd11a;
-  --ok-soft: rgba(118, 185, 0, 0.12);
-  --ok-line: rgba(118, 185, 0, 0.35);
-  --active: #22d3ee; /* running, starting */
-  --active-soft: rgba(34, 211, 238, 0.1);
-  --active-line: rgba(34, 211, 238, 0.35);
-  --warn: #f5b400;
-  --warn-soft: rgba(245, 180, 0, 0.1);
-  --warn-line: rgba(245, 180, 0, 0.35);
-  --bad: #ff5a5f;
-  --bad-soft: rgba(255, 90, 95, 0.1);
-  --bad-line: rgba(255, 90, 95, 0.35);
-  --neutral: #a3a3a3;
-  --neutral-soft: rgba(255, 255, 255, 0.06);
-  --neutral-line: #3d3d3d;
+  --ok: #1d6b4f;
+  --ok-soft: rgba(29, 107, 79, 0.1);
+  --ok-line: rgba(29, 107, 79, 0.35);
+  --active: #0b6a85; /* running, starting */
+  --active-soft: rgba(11, 106, 133, 0.1);
+  --active-line: rgba(11, 106, 133, 0.35);
+  --warn: #8a5a00;
+  --warn-soft: rgba(196, 130, 0, 0.13);
+  --warn-line: rgba(196, 130, 0, 0.45);
+  --bad: #b3261e;
+  --bad-soft: rgba(179, 38, 30, 0.08);
+  --bad-line: rgba(179, 38, 30, 0.35);
+  --neutral: #55535a;
+  --neutral-soft: rgba(27, 27, 31, 0.06);
+  --neutral-line: #cfc9b8;
 
   /* Charts */
-  --baseline: #ff5a5f; /* stock and imprint fingers */
-  --search: #76b900; /* searched designs */
-  --best: #f2f2f2; /* the best-so-far line */
+  --baseline: #b45309; /* stock and imprint fingers */
+  --search: #1d6b4f; /* searched designs */
+  --best: #1b1b1f; /* the best-so-far line */
 
-  /* Type: Barlow for everything people read; mono only for what a machine wrote (hosts, files, ids, logs) */
-  --font: "Barlow", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --viewer-light: #ffffff; /* the light in 3D views: white on the light theme, so parts aren't lit dark */
+  --viewer-part: #c4bfae; /* 3D views: the part, its edges and the finger, lighter than the UI's own colors so shading stays readable */
+  --viewer-edge: #7d7969;
+  --viewer-finger: #3fae82;
+
+  /* Depth: only for things that float over the page (dialogs, menus). Panels use borders. */
+  --shadow-pop: 0 16px 48px rgba(40, 32, 12, 0.22);
+  --scrim: rgba(20, 18, 10, 0.5);
+
+  /* Type: Manrope for everything people read; mono only for what a machine wrote (hosts, files, ids, logs) */
+  --font: "Manrope Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Mono", Consolas, monospace;
   --text-xs: 12px;
   --text-sm: 13px;
   --text-md: 15px;
   --text-lg: 17px;
-  --text-xl: 21px;
-  --text-2xl: 28px;
+  --text-xl: 24px;
+  --text-2xl: 32px;
   --weight-medium: 500;
   --weight-semibold: 600;
   --weight-bold: 700;
+  --weight-heavy: 800;
 
   /* Shape and space */
-  --r: 6px; /* panels, dialogs */
-  --r-sm: 4px; /* buttons, inputs, badges */
+  --r: 14px; /* panels, dialogs */
+  --r-sm: 10px; /* buttons, inputs, badges */
   --r-pill: 99px; /* only round things: dots, progress tracks */
   --space-1: 4px;
   --space-2: 8px;
@@ -73,13 +84,96 @@
   --space-6: 32px;
   --gap: 16px; /* between panels, inside a panel */
   --content-width: 1280px;
-  --topbar-height: 52px;
+  --topbar-height: 56px;
   --statusbar-height: 28px;
-  --control-height: 34px; /* buttons, inputs, selects */
-  --control-height-sm: 28px;
-
-  /* Depth: only for things that float over the page (dialogs, menus). Panels use borders. */
-  --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.8);
-  --scrim: rgba(0, 0, 0, 0.7);
+  --control-height: 40px; /* buttons, inputs, selects */
+  --control-height-sm: 32px;
   --transition: 120ms ease;
+}
+
+/* Dark theme: the same warm palette, lit from behind. Written twice (chosen, and followed from the system). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141512;
+  --surface: #1c1d19;
+  --surface-2: #26271f;
+  --surface-3: #302f27;
+  --line: #34352d;
+  --line-strong: #6a6a5c;
+  --ink: #f2efe6;
+  --mute: #b8b5a9;
+  --faint: #948f83;
+  --acc: #5fc79b;
+  --acc-hover: #7ad6ae;
+  --acc-ink: #0f1f18;
+  --acc-text: #7ad6ae;
+  --acc-soft: rgba(95, 199, 155, 0.14);
+  --ok: #7ad6ae;
+  --ok-soft: rgba(95, 199, 155, 0.13);
+  --ok-line: rgba(95, 199, 155, 0.35);
+  --active: #6cc4e0;
+  --active-soft: rgba(108, 196, 224, 0.12);
+  --active-line: rgba(108, 196, 224, 0.35);
+  --warn: #f0cf8a;
+  --warn-soft: rgba(240, 207, 138, 0.1);
+  --warn-line: rgba(240, 207, 138, 0.35);
+  --bad: #ff8a82;
+  --bad-soft: rgba(255, 138, 130, 0.1);
+  --bad-line: rgba(255, 138, 130, 0.35);
+  --neutral: #b8b5a9;
+  --neutral-soft: rgba(255, 255, 255, 0.06);
+  --neutral-line: #44453b;
+  --baseline: #e0914f;
+  --search: #5fc79b;
+  --best: #f2efe6;
+  --viewer-light: #f2efe6;
+  --viewer-part: #b8b5a9;
+  --viewer-edge: #302f27;
+  --viewer-finger: #5fc79b;
+  --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.7);
+  --scrim: rgba(0, 0, 0, 0.65);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #141512;
+    --surface: #1c1d19;
+    --surface-2: #26271f;
+    --surface-3: #302f27;
+    --line: #34352d;
+    --line-strong: #6a6a5c;
+    --ink: #f2efe6;
+    --mute: #b8b5a9;
+    --faint: #948f83;
+    --acc: #5fc79b;
+    --acc-hover: #7ad6ae;
+    --acc-ink: #0f1f18;
+    --acc-text: #7ad6ae;
+    --acc-soft: rgba(95, 199, 155, 0.14);
+    --ok: #7ad6ae;
+    --ok-soft: rgba(95, 199, 155, 0.13);
+    --ok-line: rgba(95, 199, 155, 0.35);
+    --active: #6cc4e0;
+    --active-soft: rgba(108, 196, 224, 0.12);
+    --active-line: rgba(108, 196, 224, 0.35);
+    --warn: #f0cf8a;
+    --warn-soft: rgba(240, 207, 138, 0.1);
+    --warn-line: rgba(240, 207, 138, 0.35);
+    --bad: #ff8a82;
+    --bad-soft: rgba(255, 138, 130, 0.1);
+    --bad-line: rgba(255, 138, 130, 0.35);
+    --neutral: #b8b5a9;
+    --neutral-soft: rgba(255, 255, 255, 0.06);
+    --neutral-line: #44453b;
+    --baseline: #e0914f;
+    --search: #5fc79b;
+    --best: #f2efe6;
+    --viewer-light: #f2efe6;
+    --viewer-part: #b8b5a9;
+    --viewer-edge: #302f27;
+    --viewer-finger: #5fc79b;
+    --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.7);
+    --scrim: rgba(0, 0, 0, 0.65);
+  }
 }

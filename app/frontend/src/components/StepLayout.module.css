@@ -1,11 +1,12 @@
 .layout {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr) 280px;
+  grid-template-columns: 84px minmax(0, 1fr) 280px;
   align-items: start;
   gap: var(--space-5);
 }
 
-/* The step list: a rail with the current step marked in green, numbers instead of circles */
+/* The step list: a slim rail of numbered dots and one-word labels, the current step filled. Nothing else is shown here;
+   what a step needs is in the step itself. */
 
 .steps {
   position: sticky;
@@ -17,18 +18,17 @@
   flex-direction: column;
   margin: 0;
   padding: 0;
-  border-left: 1px solid var(--line);
   list-style: none;
 }
 
 .step {
+  position: relative;
   display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  margin-left: -1px;
-  padding: 6px var(--space-3);
-  border-left: 2px solid transparent;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
   color: var(--mute);
+  font-size: var(--text-sm);
   text-decoration: none;
 }
 
@@ -37,49 +37,69 @@
   text-decoration: none;
 }
 
+/* The line down to the next step */
+li:not(:last-child) > .step::after {
+  content: "";
+  position: absolute;
+  top: 31px;
+  left: 10px;
+  width: 2px;
+  height: 18px;
+  background: var(--line);
+}
+
+li:not(:last-child) > .done::after {
+  background: var(--acc);
+}
+
 .number {
+  display: grid;
   flex: none;
-  width: 1.2em;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line-strong);
+  border-radius: var(--r-pill);
   color: var(--faint);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: var(--weight-heavy);
 }
 
 .text {
-  display: flex;
-  flex-direction: column;
   min-width: 0;
 }
 
 .label {
-  font-weight: var(--weight-medium);
-}
-
-.note {
-  font-size: var(--text-xs);
-  line-height: 1.4;
+  font-weight: var(--weight-semibold);
 }
 
 .done .number {
+  border-color: var(--acc);
+  background: var(--acc-soft);
   color: var(--acc-text);
 }
 
 .current {
-  border-left-color: var(--acc);
   color: var(--ink);
+}
+
+.current .label {
+  font-weight: var(--weight-heavy);
 }
 
 .current .number {
-  color: var(--ink);
+  border-color: var(--acc);
+  background: var(--acc);
+  color: var(--acc-ink);
 }
 
-.attention .number,
-.attention .note {
+.attention .number {
+  border-color: var(--warn);
   color: var(--warn);
 }
 
-.blocked .number,
-.blocked .note {
+.blocked .number {
+  border-color: var(--bad);
   color: var(--bad);
 }
 
@@ -141,7 +161,7 @@
 
 @media (max-width: 1180px) {
   .layout {
-    grid-template-columns: 180px minmax(0, 1fr);
+    grid-template-columns: 84px minmax(0, 1fr);
   }
 
   .rail {
@@ -165,23 +185,14 @@
 
   .list {
     flex-direction: row;
-    border-bottom: 1px solid var(--line);
-    border-left: 0;
+    gap: var(--space-4);
   }
 
   .step {
-    margin: 0 0 -1px;
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 2px solid transparent;
-    border-left: 0;
     white-space: nowrap;
   }
 
-  .current {
-    border-bottom-color: var(--acc);
-  }
-
-  .note {
+  li:not(:last-child) > .step::after {
     display: none;
   }
 

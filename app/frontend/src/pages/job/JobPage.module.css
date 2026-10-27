@@ -59,7 +59,30 @@
 .sections {
   display: flex;
   flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+/* The results beside their slim side list */
+.withRail {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-5);
+}
+
+/* One group of sections, a stop in the side list */
+.group {
+  display: flex;
+  flex-direction: column;
   gap: var(--gap);
+  scroll-margin-top: calc(var(--topbar-height) + var(--space-4));
+}
+
+@media (max-width: 860px) {
+  .withRail {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .stats {
@@ -83,6 +106,51 @@
 .summary > :first-child {
   padding-left: 0;
   border-left: 0;
+}
+
+/* The comparison table: a held-rate bar per finger */
+.sub {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+
+.fillBest,
+.fillBase {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.fillBest {
+  background: var(--acc);
+}
+
+.fillBase {
+  background: var(--baseline);
+}
+
+.meterValue {
+  min-width: 3.2ch;
+  text-align: right;
+}
+
+.gain {
+  color: var(--acc-text);
+  font-weight: var(--weight-bold);
 }
 
 .pair {
@@ -114,6 +182,12 @@
 .note {
   font-size: var(--text-sm);
   color: var(--faint);
+}
+
+/* A table cell that keeps its words on one line, e.g. the final test's "Print this" box */
+.nowrap,
+.nowrap label {
+  white-space: nowrap;
 }
 
 .lead {
