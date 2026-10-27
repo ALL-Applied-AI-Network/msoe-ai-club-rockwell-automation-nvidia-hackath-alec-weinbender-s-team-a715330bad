@@ -210,6 +210,13 @@
   }
 }
 
+/* Medium windows: the GPU shows as its dot alone, so every page link fits. */
+@media (max-width: 1500px) {
+  .computeText {
+    display: none;
+  }
+}
+
 /* Narrow screens: the logo and the tools on the first row, the pages on their own row under it. */
 @media (max-width: 1000px) {
   .bar {
