@@ -60,6 +60,7 @@ Linked from the documents above but not provided yet:
 | [notes/library-evaluation-backend-plan.md](notes/library-evaluation-backend-plan.md) | The plan for the user stories' first build: finger library, evaluation jobs, grasp accuracy on the cell, bulk part upload, qualifications per finger and part (decisions L1–L16, workstreams W1–W9) |
 | [notes/backend-api.md](notes/backend-api.md) | The backend API as built, screen by screen, for the frontend; demo data (`DEMO_DATA=true`) |
 | [notes/frontend-plan.md](notes/frontend-plan.md) | The frontend plan: every screen and user flow, GPU choice and help, caveats, priorities, backend gaps |
+| [notes/submission-summary.md](notes/submission-summary.md) | DRAFT one-page summary for the final submission: problem, business case, method, results (placeholders), limitations |
 | [experiments/](experiments/) | Simulation and physical trial log (required for measured results) |
 | [images/](images/) | Images referenced by the docs |
 | [../cad/](../cad/README.md) | The organizers' CAD of the cell, unchanged, with hashes and what we measured in it |
