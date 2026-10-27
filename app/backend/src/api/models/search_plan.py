@@ -69,7 +69,7 @@ class SearchConfig(BaseModel):
     n_initial: int  # designs in round 0: before the first GP fit (BO); the whole budget for a Sobol sweep
     budget: int  # designs
     batch_size: int  # designs per round after round 0 (BO); n_initial otherwise
-    patience: int  # designs without a MIN_GAIN improvement before the search stops
+    patience: int  # BO designs without a MIN_GAIN improvement before the search stops (the Sobol start doesn't count)
     clearance_mm: float | None = None  # the part's clearance on the table, which caps the pad (see search_space.py)
 
     @property
@@ -90,14 +90,15 @@ class SearchConfig(BaseModel):
 
     def stop_reason(self, scores: list[float]) -> Literal["budget", "patience"] | None:
         """Why this search is over, given its designs' scores in the order they were evaluated, or None while it should
-        go on: its budget is spent, or (a BO search, after at least one batch) its last `patience` designs gained less
-        than MIN_GAIN on its best."""
+        go on: its budget is spent, or (a BO search) its last `patience` BO designs gained less than MIN_GAIN on its best.
+        The Sobol start only sets the best to beat: counting it too stopped a search whose best came early in the start
+        after one BO batch (EXP-0001 on the screw, 2026-10-26: 16 of 128 designs)."""
         if len(scores) >= self.budget:
             return "budget"
         if self.method != "bo" or len(scores) <= self.n_initial:
             return None
-        best, stale = None, 0
-        for score in scores:
+        best, stale = max(scores[: self.n_initial], default=None), 0
+        for score in scores[self.n_initial :]:
             if best is None or score > best + MIN_GAIN:
                 best, stale = score, 0
             else:

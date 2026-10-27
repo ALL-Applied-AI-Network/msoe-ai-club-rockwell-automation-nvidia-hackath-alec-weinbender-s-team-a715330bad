@@ -216,9 +216,9 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
       over the imprint 76.0% on the M6 screw, in 495 s against a 415 s estimate
       ([log](docs/experiments/2026-10-26-gb10-m6-screw-evaluation.md)). Its re-run of the stock fingers is how risk 10
       was found.
-- [ ] **Fix the BO search's patience** (`SearchPlan.stop_reason`, `models/search_plan.py`). It counts the Sobol
-      starts after the best as stale, so a search whose best is an early Sobol design stops after one BO batch.
-      EXP-0001 stopped after 16 of 128 designs. Then rerun the screw's generation job (about 2 h at 6.4 grasps/s).
+- [x] **Fix the BO search's patience** (2026-10-26, `SearchPlan.stop_reason`). The Sobol start now only sets the best
+      to beat, and BO gets `patience` designs of its own. EXP-0001 had stopped after 16 of 128 designs.
+  - [ ] Rerun the screw's generation job, about 2 h at 6.4 grasps/s if it runs its full budget.
 - [ ] **Measure the screw's repeatability on the reference path** (`--envs 1`, the stock grid twice), to tell
       whether risk 10 comes from the vectorised path or from the part.
 - [ ] Second build: failure reasons per grasp and replays (story 13; plan W7), and the pitch metrics (W8).

@@ -9,7 +9,7 @@ designs, so the sim's start-up and network cost is paid once per round however m
   first designs, a Sobol sample (for a Sobol sweep, the whole sweep);
 - later rounds: each BO search still running fits its own GP to its own scores and proposes batch_size designs with
   qLogNoisyExpectedImprovement, or a Sobol sample that round if the fit fails. A search stops when its budget is spent,
-  or when its last `patience` designs gained less than MIN_GAIN on its best (after at least one batch).
+  or when its last `patience` BO designs gained less than MIN_GAIN on its best (the Sobol start only sets that best).
 
 Each round is checkpointed in one transaction, so a crashed, cancelled or interrupted job resumes after its last round
 and never redoes one. The final test re-runs the top FINALISTS of each search (a locked design is its search's only one)

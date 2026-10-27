@@ -8,7 +8,7 @@ from api.models.job_pose import JobPose
 from api.models.job_spec import JobSpec
 from api.models.part import Part
 from api.models.piece import hull_piece
-from api.models.search_plan import BASELINES, FINALISTS, TimeEstimate, plan_job
+from api.models.search_plan import BASELINES, FINALISTS, SearchConfig, TimeEstimate, plan_job
 
 CAP, BOX = Part(), Part(shape="box")
 UNKNOWN = TimeEstimate(seconds=None, grasps_per_s=None, source="unknown")
@@ -190,3 +190,32 @@ def test_a_pose_the_middle_design_cant_grip_is_a_warning_not_a_blocker():
 
     assert result.blocked == []
     assert any(w.startswith("V-pad, lying flat: the middle design can't grip this pose") for w in result.warnings)
+
+
+def bo_search(**changes) -> SearchConfig:
+    config = {"key": "vpad", "family": "vpad", "free": ["slack_mm"], "locked": {}, "ranges": {}, "method": "bo"}
+    return SearchConfig(**config | {"n_initial": 12, "budget": 128, "batch_size": 4, "patience": 12} | changes)
+
+
+def test_an_early_best_in_the_sobol_start_doesnt_use_up_the_patience():
+    """EXP-0001 on the screw: the 3rd of 12 Sobol designs was the best and no BO design beat it. Counting the start as
+    stale stopped the search after its first batch (16 designs); now BO gets `patience` designs of its own."""
+    start = [0.1, 0.1, 0.851] + [0.5] * 9
+    search = bo_search()
+    assert search.stop_reason(start + [0.84] * 4) is None
+    assert search.stop_reason(start + [0.84] * 11) is None
+    assert search.stop_reason(start + [0.84] * 12) == "patience"
+
+
+def test_a_bo_design_that_gains_resets_the_patience_and_one_that_gains_too_little_doesnt():
+    search = bo_search()
+    start = [0.5] * 12
+    assert search.stop_reason(start + [0.5] * 11 + [0.6] + [0.6] * 11) is None  # 0.6 beat 0.5: 11 stale since
+    assert search.stop_reason(start + [0.5] * 11 + [0.6] + [0.6] * 12) == "patience"
+    assert search.stop_reason(start + [0.503] * 12) == "patience"  # under MIN_GAIN: no gain
+
+
+def test_a_search_stops_on_its_budget_or_not_at_all_during_the_start():
+    assert bo_search(budget=20).stop_reason([0.5] * 20) == "budget"
+    assert bo_search().stop_reason([0.5] * 12) is None
+    assert bo_search(method="sobol", n_initial=16, budget=16, batch_size=16).stop_reason([0.5] * 10) is None
