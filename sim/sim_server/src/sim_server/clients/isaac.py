@@ -49,7 +49,7 @@ from sim_server.models.pose import BodyPose
 from sim_server.models.recording import PropBox
 from sim_server.robot.gripper_frame import geometry_from_twin, jaw_body_points, jaw_body_triangles
 from sim_server.robot.motion import FPS, HELD_RISE, PHYSICS_DT, PHYSICS_STEPS_PER_FRAME, GraspPlanner
-from sim_server.robot.poses import nominal_pose, yaw_quaternion
+from sim_server.robot.poses import landing_motion, nominal_pose, yaw_quaternion
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +197,8 @@ class GraspCell:
         first = plans[0]
         if any(plan.segment_end != first.segment_end for plan in plans if plan is not None):
             raise ValueError("the grasps in a chunk follow different segments; a batch has one transport")
-        approach_end, lift_end, settle_end = first.segment_end["approach"], first.segment_end["lift"], first.segment_end.get("settle")
+        ends = first.segment_end
+        approach_end, descend_end, lift_end, settle_end = ends["approach"], ends["descend"], ends["lift"], ends.get("settle")
 
         home = self._joint_vector(self.planner.q_home, geo.jaw_open)
         targets = np.tile(home, (first.frames, n, 1))
@@ -231,7 +232,7 @@ class GraspCell:
         if on_frame is not None:
             for _ in range(WARMUP_RENDERS):  # renders only, no physics: materials compile, and the first images come back empty
                 self.world.render()
-        z_start = lift = z_settled = None
+        start = landed = lift = z_settled = None
         for frame in range(first.frames + hold_frames):
             self._arm.set_joint_position_targets(targets[min(frame, first.frames - 1)])
             for step in range(PHYSICS_STEPS_PER_FRAME):
@@ -239,12 +240,15 @@ class GraspCell:
             if on_frame is not None:
                 on_frame()
             if frame + 1 == approach_end:
-                z_start = self._part_poses()[0][:, 2]
+                start = self._part_poses()
+            if frame + 1 == descend_end:  # the fingers are down and the jaws still open: anything moved, they touched it
+                landed = self._part_poses()
             if frame + 1 == lift_end:
                 lift = self._part_poses()
             if frame + 1 == settle_end:
                 z_settled = self._part_poses()[0][:, 2]
         lift_positions, lift_orientations = lift
+        z_start = start[0][:, 2]
         rise = lift_positions[:, 2] - z_start
         finite = np.isfinite(rise) & np.all(np.isfinite(lift_positions), axis=1) & np.all(np.isfinite(lift_orientations), axis=1)
         if not np.all(finite):
@@ -261,11 +265,15 @@ class GraspCell:
                     position=(float(x - ox), float(y - oy), float(z - geo.table_top_z)),  # world -> this copy's base frame
                     orientation=tuple(float(v) for v in lift_orientations[slot]),
                 )
+            landing = None
+            if finite[slot] and all(np.all(np.isfinite(read[i][slot])) for read in (start, landed) for i in (0, 1)):
+                landing = landing_motion(start[0][slot], start[1][slot], landed[0][slot], landed[1][slot])
             outcomes.append(
                 GraspOutcome(
                     held=bool(finite[slot] and rise[slot] > HELD_RISE),
                     lift_pose=lift_pose,
                     held_after_transport=None if risen_after is None else bool(risen_after[slot] > HELD_RISE),  # NaN -> False
+                    landing=landing,
                 )
             )
         return outcomes

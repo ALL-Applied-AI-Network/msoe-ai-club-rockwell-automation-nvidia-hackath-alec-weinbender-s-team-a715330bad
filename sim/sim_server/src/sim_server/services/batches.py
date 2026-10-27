@@ -11,6 +11,7 @@ from sim_server.models.finger import FingerDesign
 from sim_server.models.grasp import GraspSettings
 from sim_server.models.gripper import GripperGeometry
 from sim_server.models.offset import Offset
+from sim_server.models.outcome import Landing
 from sim_server.models.part import Part
 from sim_server.models.piece import Piece, Point
 from sim_server.models.pose import InHandPose
@@ -145,6 +146,14 @@ def in_hand_to_mm(pose: InHandPose | None) -> list[float] | None:
     if out[4] <= -180.0:
         out[4] += 360.0
     return out
+
+
+def landing_to_mm(landing: Landing | None) -> list[float] | None:
+    """The response's [shift_mm, turn_deg], or None."""
+    if landing is None:
+        return None
+    shift, turn = landing
+    return [round(shift * MM_PER_M, IN_HAND_DECIMALS) + 0.0, round(turn, IN_HAND_DECIMALS) + 0.0]
 
 
 def grasp_settings(design: FingerDesign, part: Part, geo: GripperGeometry) -> GraspSettings:
