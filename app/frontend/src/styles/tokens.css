@@ -1,6 +1,7 @@
 /* Design tokens: the only place the UI's colors, fonts, radii, spacing and shadows are set. Components use these
    variables, never raw values (.claude/rules/coding-style.md, "Frontend"). The redesign: a warm paper palette with a
-   forest-green accent, Manrope, rounder panels, and a light and a dark theme. The theme is the user's choice
+   forest-green accent, Manrope, rounder panels, and a light and a dark theme. The dark theme's backgrounds are the
+   charcoal of the earlier Brev-style UI; its accent colours are the new ones. The theme is the user's choice
    (data-theme on <html>, set by theme.ts) and follows the system when they haven't chosen. */
 
 :root {
@@ -99,14 +100,14 @@
 /* Dark theme: the same warm palette, lit from behind. Written twice (chosen, and followed from the system). */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --chrome: #181915;
-  --field: #12130f;
-  --bg: #141512;
-  --surface: #1c1d19;
-  --surface-2: #26271f;
-  --surface-3: #302f27;
-  --line: #34352d;
-  --line-strong: #6a6a5c;
+  --chrome: #121212;
+  --field: #141414;
+  --bg: #1b1b1b;
+  --surface: #222222;
+  --surface-2: #2a2a2a;
+  --surface-3: #343434;
+  --line: #313131;
+  --line-strong: #5a5a5a;
   --ink: #f2efe6;
   --mute: #b8b5a9;
   --faint: #948f83;
@@ -129,13 +130,13 @@
   --bad-line: rgba(255, 138, 130, 0.35);
   --neutral: #b8b5a9;
   --neutral-soft: rgba(255, 255, 255, 0.06);
-  --neutral-line: #44453b;
+  --neutral-line: #4a4a4a;
   --baseline: #e0914f;
   --search: #5fc79b;
   --best: #f2efe6;
   --viewer-light: #f2efe6;
   --viewer-part: #b8b5a9;
-  --viewer-edge: #302f27;
+  --viewer-edge: #343434;
   --viewer-finger: #5fc79b;
   --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.7);
   --scrim: rgba(0, 0, 0, 0.65);
@@ -144,14 +145,14 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --chrome: #181915;
-    --field: #12130f;
-    --bg: #141512;
-    --surface: #1c1d19;
-    --surface-2: #26271f;
-    --surface-3: #302f27;
-    --line: #34352d;
-    --line-strong: #6a6a5c;
+    --chrome: #121212;
+    --field: #141414;
+    --bg: #1b1b1b;
+    --surface: #222222;
+    --surface-2: #2a2a2a;
+    --surface-3: #343434;
+    --line: #313131;
+    --line-strong: #5a5a5a;
     --ink: #f2efe6;
     --mute: #b8b5a9;
     --faint: #948f83;
@@ -174,13 +175,13 @@
     --bad-line: rgba(255, 138, 130, 0.35);
     --neutral: #b8b5a9;
     --neutral-soft: rgba(255, 255, 255, 0.06);
-    --neutral-line: #44453b;
+    --neutral-line: #4a4a4a;
     --baseline: #e0914f;
     --search: #5fc79b;
     --best: #f2efe6;
     --viewer-light: #f2efe6;
     --viewer-part: #b8b5a9;
-    --viewer-edge: #302f27;
+    --viewer-edge: #343434;
     --viewer-finger: #5fc79b;
     --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.7);
     --scrim: rgba(0, 0, 0, 0.65);
