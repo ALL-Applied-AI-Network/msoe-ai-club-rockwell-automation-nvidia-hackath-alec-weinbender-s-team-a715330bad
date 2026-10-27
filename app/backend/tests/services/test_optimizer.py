@@ -217,6 +217,8 @@ def test_finishing_again_replaces_the_final_test_and_a_done_job_is_left_alone(db
 
 @pytest.mark.filterwarnings("ignore::botorch.exceptions.warnings.InputDataWarning")  # equal scores can't be standardized
 def test_a_search_that_stops_gaining_stops_on_patience(db, config, cad, cube_job):
+    """Every design scores the same, so the Sobol start's best is never beaten: the search still gets `patience` BO
+    designs (three batches) before it stops, not one batch as when the start counted as stale."""
     job = cube_job(budget=40)  # 12 Sobol designs, then batches of 4; patience 12 designs
     search = job.plan.searches[0]
     assert (search.n_initial, search.batch_size, search.patience) == (12, 4, 12)
@@ -224,10 +226,10 @@ def test_a_search_that_stops_gaining_stops_on_patience(db, config, cad, cube_job
     run(db, config, cad, job.id, HoldsEverythingSim())
 
     assert jobs.get_job(db, job.id).status == "done"
-    assert Counter(t.round for t in trials(db, job.id, "search")) == {0: 14, 1: 4}
+    assert Counter(t.round for t in trials(db, job.id, "search")) == {0: 14, 1: 4, 2: 4, 3: 4}
     with db.session() as s:
         meta = s.get(RunMetaRow, job.id).meta
-    assert [(s["key"], s["designs"], s["stop_reason"]) for s in meta["searches"]] == [("vpad", 16, "patience")]
+    assert [(s["key"], s["designs"], s["stop_reason"]) for s in meta["searches"]] == [("vpad", 24, "patience")]
 
 
 def test_the_run_metadata_records_what_the_run_used(finished_job):
