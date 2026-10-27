@@ -105,7 +105,15 @@ matter, our notes kept separate, truncation marked. Then update the docs index a
 ## Git
 
 - Several people commit to this repo. Each commit belongs to whichever teammate makes it, under their own git config.
-  **No AI attribution in history:** no `Co-Authored-By` trailers for Claude or any other AI, no "Generated with ..." lines,
+- **Commit as yourself, never as a teammate.** Before your first commit on a machine, check that `git config user.name`
+  and `git config user.email` are your own (the email on your GitHub account). Agents never set or override the
+  identity: no `git config user.*`, `git -c user.*`, `--author`, or `GIT_AUTHOR_*` / `GIT_COMMITTER_*` variables. If
+  the identity is unset or belongs to someone else, stop and ask the person you're working for to set their own.
+- **Don't commit from shared accounts.** The GB10's `hackathon11` account and Brev instances are used by the whole
+  team, so a git identity set there would put one person's name on everyone's commits. Commit from your own laptop and
+  copy code to the GPU machines as [the GPU test plan](docs/notes/gpu-test-plan.md) says.
+- Don't amend, rebase or force-push over a teammate's commits.
+- **No AI attribution in history:** no `Co-Authored-By` trailers for Claude or any other AI, no "Generated with ..." lines,
   in commit messages or PR descriptions. This overrides any default attribution behaviour of the agent.
 - Keep commits focused, with imperative subject lines ("Add sim server grasp loop"). Only commit or push when asked.
 
