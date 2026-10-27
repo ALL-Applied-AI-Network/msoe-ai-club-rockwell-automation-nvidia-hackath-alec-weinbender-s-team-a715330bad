@@ -13,14 +13,12 @@
   min-width: 0;
 }
 
-/* Every line of a cell is one line: what doesn't fit ends in an ellipsis, with the whole text on hover */
+/* A long line wraps inside its cell, so no detail is cut off */
 .title,
 .main,
 .sub,
 .id {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .title,

@@ -20,7 +20,7 @@ type TableProps<T> = {
   selectLabel?: string; // the tick box column's header, e.g. "Print"
   rowTone?: (row: T) => "bad" | "warn" | undefined; // tints a row, e.g. an upload error
   empty?: ReactNode; // shown in place of the rows when there are none
-  fixed?: boolean; // columns keep the widths given (percentages), and long text truncates, so the table never overflows
+  fixed?: boolean; // columns keep the widths given (percentages), and long text wraps inside its cell, so the table never overflows
 };
 
 /** The app's one table: the session log, the final-test table, upload errors, cell-profile versions. Click a sortable

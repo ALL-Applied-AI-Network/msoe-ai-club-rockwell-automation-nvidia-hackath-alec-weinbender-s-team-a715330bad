@@ -21,10 +21,9 @@
 
 .inline .control {
   width: auto;
-  max-width: 200px; /* a long option (a cell's name) truncates here; the open menu shows it whole */
+  max-width: 100%;
   border-radius: var(--r-md);
   font-size: var(--text-sm);
-  text-overflow: ellipsis;
 }
 
 .hidden {

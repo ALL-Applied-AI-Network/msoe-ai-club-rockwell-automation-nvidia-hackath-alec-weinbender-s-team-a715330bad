@@ -40,13 +40,13 @@
 .code {
   margin: 0;
   padding: var(--space-3);
-  overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--bg);
   color: var(--mute);
   font: var(--text-sm) / 1.6 var(--mono);
-  white-space: pre;
+  white-space: pre-wrap; /* a long line wraps rather than scrolling out of sight */
+  overflow-wrap: anywhere;
 }
 
 .downloads {

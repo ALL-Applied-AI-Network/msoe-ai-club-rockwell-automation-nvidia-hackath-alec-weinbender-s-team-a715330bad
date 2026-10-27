@@ -49,13 +49,13 @@
   background: var(--surface-2);
 }
 
-/* Fixed layout: the columns' widths are the ones given, and cells clip what doesn't fit (their content truncates). */
+/* Fixed layout: the columns' widths are the ones given, and long text wraps inside its cell (nothing is clipped). */
 .fixed {
   table-layout: fixed;
 }
 
 .fixed td {
-  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .right {
