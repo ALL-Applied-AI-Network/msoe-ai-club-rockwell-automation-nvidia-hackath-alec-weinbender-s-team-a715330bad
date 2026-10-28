@@ -372,6 +372,7 @@ software.
 | --- | --- |
 | `uv`, `git`, `node` or `npm` isn't found after installing | Close and reopen the terminal (and VS Code) so it picks up the new `PATH`. |
 | PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled` | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or use `npm.cmd` instead of `npm`. |
+| Importing PyTorch fails with `WinError 1114` loading `torch/lib/c10.dll` | Check the Windows x64 [Visual C++ runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist). On MICHAEL-SERVER, updating 14.29.30153 to 14.44.35211 fixed this with the locked torch 2.14.1. Run the signed Microsoft installer from your desktop if an automated installation fails to elevate (error 1459), then retry in a fresh Python process. |
 | `npm ci` fails with "package.json and package-lock.json are not in sync" | Someone changed `package.json` without committing the lockfile. Run `npm install` in `app/frontend/` and commit `package-lock.json`. |
 | `npm run dev` shows the page but API calls fail (`ECONNREFUSED`) | The backend isn't running, or it's on another port: start it, or set `API_URL` (see [Web app](#web-app-app)). |
 | PowerShell won't run the uv installer | Use the exact command above. `-ExecutionPolicy ByPass` applies to that one command only. |
@@ -381,7 +382,7 @@ software.
 | A commit is blocked by the pre-commit guard | It says why: a file over 5 MB, an `.env` file, model weights, or something that looks like a key. Take that file out of the commit. |
 | `brev: command not found` | It's installed inside WSL: run it in the Ubuntu terminal, not PowerShell. Just installed? Open a new Ubuntu terminal so `~/.local/bin` is on your `PATH`, or run `~/.local/bin/brev`. If you installed it with `sudo`, it went to root's home: install it again without `sudo`. |
 | `wsl --install` fails, or WSL won't start | Run PowerShell as administrator. If it still fails, turn on virtualization (VT-x or AMD-V) in the laptop's BIOS/UEFI settings. |
-| `ssh ... spark1.ai.msoe.edu` times out or can't resolve the host | The MSOE VPN isn't connected. Connect GlobalProtect first. |
+| `ssh ... spark1.ai.msoe.edu` times out or can't resolve the host | Connect GlobalProtect on the machine running the shell. Check `hostname` and `Resolve-DnsName spark1.ai.msoe.edu` in PowerShell. If DNS resolves and the VPN route is active but SSH still times out, report the host and port 22 connectivity failure to the team; VPN connection alone doesn't establish server reachability. |
 | The GB10 still asks for the password after adding your key | Check you sent the `.pub` file, then on the GB10 run `chmod 700 ~/.ssh` and `chmod 600 ~/.ssh/authorized_keys`. |
 | The app won't start: "COMPUTE_BACKENDS=... forwards the sim server to this machine, so it needs SIM_BACKEND=http and a local SIM_URL" | Set `SIM_BACKEND=http` and `SIM_URL=http://127.0.0.1:9000` in `.env` ([step 2](#2-your-env)). |
 | GPU panel: "can't reach the GB10 (spark1.ai.msoe.edu): connect the MSOE VPN" | Connect GlobalProtect, then press **Refresh the list**. |
@@ -397,3 +398,9 @@ software.
 | GPU panel: "The sim server isn't answering (...); retrying, and running jobs wait up to 120 min for it" | The connection dropped, usually the VPN: reconnect GlobalProtect. The panel reconnects by itself and the jobs carry on ([if the VPN drops](#4-use-it)). |
 | A job failed: "... didn't answer again within 120 min: reconnect the GPU in the GPU panel, then resume the job" | The connection was down longer than `SIM_RECONNECT_MINUTES`. Connect the GPU, then resume the job (`POST /api/jobs/{id}/resume`): it carries on after its last finished round. |
 | A job is refused: "The GPU isn't connected" | Connect a target in the GPU panel and wait for **Ready** or **Connected** ([step 4](#4-use-it)). |
+
+## Optimization benchmark
+
+To run BO, Sobol and genetic-search comparisons without the frontend, see the
+[benchmark runbook](docs/notes/benchmark-runbook.md). It includes local mock checks, Windows/Linux commands and
+instructions for a teammate with GB10 access. Real simulations require verifying the existing CPU-physics server first.

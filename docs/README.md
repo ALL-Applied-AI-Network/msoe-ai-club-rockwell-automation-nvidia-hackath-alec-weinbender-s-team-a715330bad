@@ -54,6 +54,8 @@ Linked from the documents above but not provided yet:
 | [Auto-Grasp User Stories.md](<Auto-Grasp User Stories.md>) | **The 17 user stories** (manufacturing engineer, robotics engineer), their inputs and outputs, and the features with a suggested first build |
 | [../CONTEXT.md](../CONTEXT.md) | Current project state: facts, constraints, decisions, open questions |
 | [notes/things-to-know.md](notes/things-to-know.md) | Gotchas, mismatches and warnings everyone should read |
+| [notes/bo-assessment.md](notes/bo-assessment.md) | Local launch commands, GB10 access handoff and a proposed equal-budget BO/Sobol benchmark |
+| [notes/benchmark-runbook.md](notes/benchmark-runbook.md) | Portable BO/Sobol/genetic runner, mock checks, CPU-physics GB10 handoff and result return instructions |
 | [notes/gpu-test-plan.md](notes/gpu-test-plan.md) | Runbook: bring up the sim server on Brev / the GB10 and validate it step by step |
 | [notes/cadquery-design.md](notes/cadquery-design.md) | CadQuery as the CAD kernel: why fingers are built as convex solids, the finger mount, part import, V-HACD, what's left to do |
 | [notes/input-flow-backend-plan.md](notes/input-flow-backend-plan.md) | The input-flow and outputs backend plan: decisions D1–D17, models, pipeline, sim contract v2, workstreams |

@@ -11,6 +11,11 @@ Log every simulation batch and every physical trial session here, including fail
 
 | Date | Experiment | Kind | Headline result |
 | --- | --- | --- | --- |
+| 2026-10-27 | [Full-grid cube16 optimizer comparison, seed 0](2026-10-27-cube16-full-grid-comparison.md) | sim (real twin, complete) | 32 candidates/method: fresh holdout BO 92.31%, Sobol 91.18%, GA 91.04%; 2 h 49 min, one seed only; retrieved 2026-10-28 |
+| 2026-10-27 | [Noise-aware optimizer comparison pilot](2026-10-27-noise-aware-benchmark.md) | sim (real twin, sparse pilot) | Repeated finalist selection and independent holdout scoring; bounded BO/Sobol/GA implementation check, not a full-grid accuracy comparison |
+| 2026-10-27 | [GB10 access restored and local source sync](2026-10-27-gb10-access-and-sync.md) | sim (real twin) | Passwordless SSH and app GPU connection work; six landing-aware stock/imprint grasps passed on the CPU service; local main updated to 64c94a7 |
+| 2026-10-22 | [BO/Sobol/genetic benchmark verification](2026-10-22-optimization-benchmark.md) | other (software/mock) | Cube smoke and screw quick completed; 23 targeted tests passed; full suite 905 passed and one existing timing-sensitive test failed, then passed alone |
+| 2026-10-21 | [Windows local setup and mock optimizer verification](2026-10-21-windows-local-setup.md) | other (software/mock) | Live mock job completed BO rounds and CAD export after a Visual C++ runtime update; GB10 SSH still timed out |
 | 2026-10-20 | [Sim server bring-up on Brev, stages 0–3](2026-10-20-brev-sim-server-bringup.md) | sim (real twin) | Stock cube held 1/1, 10/10 and 56–61/81 on the grid; 2.1 grasps/s after fixing a uvloop crash; outcomes beyond 5 mm not repeatable |
 | 2026-10-20 | [Sim server bring-up on the MSOE GB10, 0.2 and stages 1–3](2026-10-20-gb10-sim-server-bringup.md) | sim (real twin) | Isaac Sim 6.0.1 from aarch64 pip wheels; stock cube 1/1, 10/10, 58–60/81; agrees with Brev 92.6–96.3% (as well as each agrees with itself); 2.8 grasps/s |
 | 2026-10-20 | [The app end to end on the GB10 (stage 7), and the first clips](2026-10-20-gb10-app-end-to-end-and-clips.md) | sim (real twin) | Connect, a real experiment (1,206 grasps in about 7 min, ~3 grasps/s) and 4 Isaac Sim clips all work through the app; clips take ~7 s on the GPU; 2 of 4 clips at edge points disagree with the stored result, one each way |

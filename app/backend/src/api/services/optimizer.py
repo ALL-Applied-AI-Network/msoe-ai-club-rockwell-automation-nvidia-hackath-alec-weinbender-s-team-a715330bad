@@ -191,11 +191,15 @@ def _stop_reason(search: SearchConfig, trials: list[Trial]) -> str | None:
     return search.stop_reason([t.success_rate for t in sorted(trials, key=lambda t: t.number)])
 
 
-def _propose(space: SearchSpace, trials: list[Trial], q: int, *, seed: int, round_number: int) -> list[list[float]]:
+def _propose(
+    space: SearchSpace, trials: list[Trial], q: int, *, seed: int, round_number: int, diagnostics: dict | None = None
+) -> list[list[float]]:
     """The next q points of the search's unit cube: the batch BoTorch expects to improve most on the best score so far,
     chosen one point at a time with the earlier ones treated as pending, so the batch spreads out instead of piling onto
     one optimum. Falls back to continuing the search's Sobol sequence if the GP can't be fitted or optimised."""
     d = len(space.names)
+    if diagnostics is not None:
+        diagnostics.update(source="bo", fallback_reason=None)
     torch.manual_seed(seed + round_number)
     try:
         x = torch.tensor([space.to_unit(Design(kind="search", params=t.params)) for t in trials], dtype=torch.double)
@@ -208,7 +212,9 @@ def _propose(space: SearchSpace, trials: list[Trial], q: int, *, seed: int, roun
             acquisition, bounds=bounds, q=q, num_restarts=GP_RESTARTS, raw_samples=GP_RAW_SAMPLES, sequential=True
         )
         return candidates.tolist()
-    except Exception:
+    except Exception as error:
+        if diagnostics is not None:
+            diagnostics.update(source="sobol_fallback", fallback_reason=f"{type(error).__name__}: {error}")
         logger.warning("GP proposal failed; using a Sobol sample this round", exc_info=True)
         return _sobol(d, q, seed, skip=len(trials))
 
@@ -253,7 +259,9 @@ def _run_round(
     logger.info("Job %s: round %d done: %d designs in %.1f s, best %.3f", job_id, number, len(rows), sum(seconds), best_value or 0.0)
 
 
-def _simulate(run: _Run, sim: SimClient, designs: list[Design], grid: OffsetGrid) -> tuple[list[list[Outcomes]], list[float]]:
+def _simulate(
+    run: _Run, sim: SimClient, designs: list[Design], grid: OffsetGrid, diagnostics: list[dict] | None = None
+) -> tuple[list[list[Outcomes]], list[float]]:
     """Every design at every grid point in every resting pose the job covers, in one sim request per pose: (outcomes per
     pose, sim seconds) per design. Each design is built once, for the primary pose; one that fails the geometry checks
     (finger.problems) there isn't sent at all, and one that can't grip another pose isn't sent for it. A design fails
@@ -264,9 +272,12 @@ def _simulate(run: _Run, sim: SimClient, designs: list[Design], grid: OffsetGrid
     built: list[Finger | None] = []  # per design: its finger for the primary pose; None for the stock fingers
     usable: list[bool] = []
     for design in designs:
+        geometry_started = time.perf_counter()
         if design.kind == "stock":
             built.append(None)
             usable.append(True)
+            if diagnostics is not None:
+                diagnostics.append({"rejections": [], "finger": None, "geometry_s": 0.0, "simulated_grasps": 0})
             continue
         try:
             finger = build_finger(primary, design, gripper)
@@ -277,6 +288,15 @@ def _simulate(run: _Run, sim: SimClient, designs: list[Design], grid: OffsetGrid
             logger.info("Job %s: not simulating a %s design (%s): %s", run.job.id, design.kind, design.params, "; ".join(found))
         built.append(finger)
         usable.append(not found)
+        if diagnostics is not None:
+            diagnostics.append(
+                {
+                    "rejections": found,
+                    "finger": finger.model_dump(mode="json") if finger is not None else None,
+                    "geometry_s": time.perf_counter() - geometry_started,
+                    "simulated_grasps": 0,
+                }
+            )
     outcomes: list[list[Outcomes | None]] = [[None] * len(poses) for _ in designs]
     seconds = [0.0] * len(designs)
     offsets = grid.points()
@@ -302,6 +322,8 @@ def _simulate(run: _Run, sim: SimClient, designs: list[Design], grid: OffsetGrid
         for i, result in zip(sent, results, strict=True):
             outcomes[i][k] = result
             seconds[i] += share
+            if diagnostics is not None:
+                diagnostics[i]["simulated_grasps"] += n
     dropped = Outcomes.dropped(n, run.transport)
     return [[out if out is not None else dropped for out in by_pose] for by_pose in outcomes], seconds
 

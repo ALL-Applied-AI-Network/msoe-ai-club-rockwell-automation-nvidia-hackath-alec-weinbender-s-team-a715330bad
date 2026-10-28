@@ -80,6 +80,27 @@ The plan's LLM step is out of the loop (decision below). Stretch: a surrogate mo
 
 ## Repo status
 
+2026-10-27 14:18 CDT: a full-grid cube16 BO/Sobol/GA comparison (32 candidates/method, seed 0, repeated validation)
+completed successfully in `~/optimization-benchmark-20261027` on GB10 using the existing CPU simulator without restarting it.
+Retrieved 2026-10-28: independent dense holdouts BO 92.31%, Sobol 91.18%, GA 91.04%; 96 candidates, 2 h 49 min.
+One seed only; no proven improvement over Oliver's exact D1 or hardware validation.
+[Results and commands](docs/experiments/2026-10-27-cube16-full-grid-comparison.md).
+The completed comparison is preliminary; improvement over Oliver's exact D1 is not established.
+
+2026-10-27 optimization tooling: the comparison runner supports the 16 mm cube, distinct-geometry finalists,
+repeated selection means and independent holdout comparison. A bounded real CPU pilot completed for BO/Sobol/GA
+(276 submitted grasps); all tied on its three-point diagnostic grid, so no full-grid improvement is claimed.
+[Noise-aware benchmark log](docs/experiments/2026-10-27-noise-aware-benchmark.md).
+
+2026-10-27 local setup: MICHAEL-SERVER now has passwordless GB10 access, and the app reaches the existing CPU/64-env
+service (server archive 121b55d). Six current-client stock/imprint grasps passed with landing readouts. Local main was
+fast-forwarded to 64c94a7, retaining the team's BO fixes and prior experiments; see the
+[access/sync log](docs/experiments/2026-10-27-gb10-access-and-sync.md).
+
+2026-10-22: A standalone BO/Sobol/genetic comparison runner is available with mock verification and a
+[GB10 teammate runbook](docs/notes/benchmark-runbook.md). It does not change production algorithm selection.
+See the historical [software experiment log](docs/experiments/2026-10-22-optimization-benchmark.md).
+
 | Component | Path | State |
 | --- | --- | --- |
 | Web app backend (input flow, batch BO, results, tracker, exports; finger library, evaluation jobs, qualifications) | `app/backend/` | Works end-to-end with the **mock** sim, a geometric capture check (not physics): 1000+ tests, plus an end-to-end run against a live server with real worker processes. Evaluation jobs and the finger library (2026-10-26) have run on the mock only, in tests and the demo seed |
