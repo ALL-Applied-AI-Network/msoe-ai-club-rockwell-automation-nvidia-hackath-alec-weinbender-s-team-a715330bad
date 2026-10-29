@@ -123,6 +123,27 @@ on the GB10. Its GPU page connects the GB10 like a laptop does. Someone clicks *
 everyone. `app/deploy/gb10.sh deploy` ships HEAD (build the UI, install, restart); `status`, `logs`, `restart` and `stop`
 manage it. The layout on the GB10 is in `app/deploy/serve.sh`.
 
+**What's in it (since 2026-10-29):** the six Isaac experiments on the M6 screw and the 16 mm cube (EXP-0001 to
+EXP-0006, logged in [docs/experiments/](../docs/experiments/README.md)), both parts, and the finger library. The data came
+from Oliver's laptop.
+
+- **Printable fingers:** each generation experiment's results page downloads its designs as STEP, an STL per side and a
+  print sheet. EXP-0006 is the cube finger.
+- **Before printing:** a finger still goes through the review gate, and the mount (SMC's STEP) should be checked on the
+  real jaw first (CONTEXT.md, risk 1).
+- **It's one shared database.** Jobs run here don't appear in anyone's laptop app, and laptop jobs don't appear here.
+- **The data from before the import** (one test part and one cancelled job) is kept in
+  `~/autograsp/data.before-import-20261029-1650/`.
+
+**Two things to know when deploying:**
+
+- `gb10.sh deploy` runs `npm ci` only when `app/frontend/node_modules` is missing. After pulling a frontend change that
+  adds a package, run `npm ci` in `app/frontend/` first, or the build fails on the missing import.
+- The database stores absolute file paths for uploads and CAD exports. Moving a laptop's database here means rewriting
+  those paths to `/home/hackathon11/autograsp/data/...` and copying `uploads/` and `outputs/` with it. Also mark the
+  laptop's GPU sessions stopped, and disconnect the hosted session before the swap, because its worker writes to its
+  session row.
+
 ## Frontend
 
 The UI is a Vite + React + TypeScript app in `frontend/` (setup in [../SETUP.md](../SETUP.md#web-app-app)). The screens

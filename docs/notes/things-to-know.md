@@ -78,6 +78,14 @@ Short list of things that will bite us if nobody knows them. **Add to it** whene
     - Jobs from before have no landing data, keep their old scores, and say it wasn't checked. Don't compare an old
       job's numbers with a new one's.
     - On the M6 screw it drops stock from about 88% to 63%.
+12. **The team's results live in the hosted app on the GB10 (since 2026-10-29).**
+    - It has the six Isaac experiments and the printable D1 fingers ([app/README.md](../../app/README.md#hosted-on-the-gb10)).
+    - Each laptop's `app/data/` is its own database and doesn't sync. Run the jobs we report in the hosted app, or log
+      them in `docs/experiments/`.
+    - The database stores absolute file paths. A database copied between machines needs its paths rewritten, or its
+      downloads break.
+13. **After pulling a frontend change, run `npm ci` in `app/frontend/`.** `gb10.sh deploy` only installs packages when
+    `node_modules` is missing, so a newly added package fails the build (it happened with the 2026-10-29 redesign's font).
 
 ## The digital twin (`sim/fanuc_er4ia_sim/`)
 
