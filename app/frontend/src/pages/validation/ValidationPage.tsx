@@ -2,6 +2,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, unwrap, type Schemas } from "../../backend/client";
 import { PhysicalBadge, SimBadge } from "../../components/Badges";
+import { BackButton } from "../../components/BackButton";
 import { Banner } from "../../components/Banner";
 import { LinkButton } from "../../components/Button";
 import { Card } from "../../components/Card";
@@ -68,7 +69,7 @@ export function ValidationPage() {
   const close = points.filter((p) => p.low != null && p.high != null && p.predicted >= p.low && p.predicted <= p.high).length;
 
   return (
-    <Page title="Validation">
+    <Page title="Validation" actions={<BackButton />}>
       {jobs.isPending && <Skeleton height={360} />}
       {jobs.isError && <ErrorState title="Couldn't load the experiments" message={jobs.error.message} onRetry={() => jobs.refetch()} />}
 

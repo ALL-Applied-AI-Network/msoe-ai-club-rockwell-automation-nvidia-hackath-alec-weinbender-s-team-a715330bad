@@ -10,6 +10,7 @@ import { useJobEvents } from "./useJobEvents";
 import { jobKey } from "../validation/queries";
 import { BestFingerSection } from "./finger/BestFingerSection";
 import { JobHeader } from "./JobHeader";
+import { JobRail } from "./JobRail";
 import { Progress, SearchCard } from "./Progress";
 import { useJobDetail, useResults } from "./queries";
 import { ResultBanners } from "./sections/Banners";
@@ -19,8 +20,17 @@ import { Evidence } from "./sections/Evidence";
 import { Summary } from "./sections/Summary";
 import { Stopped } from "./Stopped";
 import type { ClipPick } from "./types";
+import styles from "./JobPage.module.css";
 
 type JobCard = Schemas["JobCard"];
+
+// The side list's entries, in page order
+const RAIL_SECTIONS = [
+  { id: "job-result", label: "Result" },
+  { id: "job-finger", label: "Finger" },
+  { id: "job-test", label: "Test" },
+  { id: "job-evidence", label: "Evidence" },
+];
 
 /** #/jobs/:id: one job at one address, followed live while it runs. A generation job shows its designs
  *  (frontend-plan.md 6.2, 6.3, 7); an evaluation job shows the library's fingers ranked (EvaluationResults). */
@@ -81,14 +91,25 @@ function GenerationResults({ job }: { job: Schemas["JobDetailResponse"] }) {
       )}
 
       {shown && done && (
-        <>
-          <ResultBanners job={job} results={shown} />
-          <Summary results={shown} />
-          <BestFingerSection jobId={id} results={shown} />
-          {shown.final_table.length > 0 && <FinalTest jobId={id} results={shown} />}
-          <Physical jobId={id} results={shown} />
-          <Evidence jobId={id} results={shown} picked={picked} onPicked={setPicked} />
-        </>
+        <div className={styles.withRail}>
+          <JobRail sections={RAIL_SECTIONS} validationTo={`/jobs/${id}/validation`} />
+          <div className={styles.sections}>
+            <div id="job-result" className={styles.group}>
+              <ResultBanners job={job} results={shown} />
+              <Summary results={shown} />
+            </div>
+            <div id="job-finger" className={styles.group}>
+              <BestFingerSection jobId={id} results={shown} />
+            </div>
+            <div id="job-test" className={styles.group}>
+              {shown.final_table.length > 0 && <FinalTest jobId={id} results={shown} />}
+              <Physical jobId={id} results={shown} />
+            </div>
+            <div id="job-evidence" className={styles.group}>
+              <Evidence jobId={id} results={shown} picked={picked} onPicked={setPicked} />
+            </div>
+          </div>
+        </div>
       )}
 
       {shown && !done && (

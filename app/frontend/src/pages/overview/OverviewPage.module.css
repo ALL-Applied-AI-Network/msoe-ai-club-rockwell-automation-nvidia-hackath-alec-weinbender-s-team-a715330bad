@@ -21,11 +21,9 @@
 }
 
 .factValue {
-  overflow: hidden;
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .ok {
@@ -177,11 +175,9 @@
 }
 
 .eventSub {
-  overflow: hidden;
   color: var(--faint);
   font-size: var(--text-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .eventTime {

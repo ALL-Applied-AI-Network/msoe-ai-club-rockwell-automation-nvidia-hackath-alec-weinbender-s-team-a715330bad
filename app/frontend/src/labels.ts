@@ -3,13 +3,13 @@
 /** The new-experiment wizard's steps, in order. A failed job's `failed_step` (1 to 8) indexes this list. */
 export const WIZARD_STEPS = [
   { slug: "part", label: "Part" },
-  { slug: "pose", label: "Resting pose" },
+  { slug: "pose", label: "Pose" },
   { slug: "task", label: "Task" },
   { slug: "cell", label: "Cell" },
   { slug: "grasp", label: "Grasp" },
-  { slug: "families", label: "Finger families" },
-  { slug: "error", label: "Camera error" },
-  { slug: "review", label: "Review and run" },
+  { slug: "families", label: "Fingers" },
+  { slug: "error", label: "Camera" },
+  { slug: "review", label: "Review" },
 ] as const;
 
 /** The wizard step a `failed_step` number points at, or undefined when it's out of range. */

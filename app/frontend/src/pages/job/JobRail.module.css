@@ -1,0 +1,110 @@
+/* The same slim rail as the wizard's steps (StepLayout.module.css): numbered dots, one word each, the current one filled */
+
+.rail {
+  position: sticky;
+  top: calc(var(--topbar-height) + var(--space-4));
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mute);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.step:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+li:not(:last-child) > .step::after {
+  content: "";
+  position: absolute;
+  top: 31px;
+  left: 10px;
+  width: 2px;
+  height: 18px;
+  background: var(--line);
+}
+
+li:not(:last-child) > .done::after {
+  background: var(--acc);
+}
+
+.number {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: var(--weight-heavy);
+}
+
+.label {
+  font-weight: var(--weight-semibold);
+}
+
+.done .number {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+  color: var(--acc-text);
+}
+
+.current {
+  color: var(--ink);
+}
+
+.current .label {
+  font-weight: var(--weight-heavy);
+}
+
+.current .number {
+  border-color: var(--acc);
+  background: var(--acc);
+  color: var(--acc-ink);
+}
+
+@media (max-width: 860px) {
+  .rail {
+    position: static;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .list {
+    flex-direction: row;
+    gap: var(--space-4);
+  }
+
+  .step {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  li:not(:last-child) > .step::after {
+    display: none;
+  }
+}

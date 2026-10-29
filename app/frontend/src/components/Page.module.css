@@ -1,129 +1,103 @@
-/* The shell: a fixed sidebar on the left, and the page beside it (top bar, then the content). */
-.shell {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  min-height: 100vh;
-}
-
-.sidebar {
+/* The top bar: the logo, the pages, and on the right the GPU, the simulator and the light/dark switch. */
+.topbar {
   position: sticky;
   top: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  height: 100vh;
-  padding: var(--space-5) var(--space-3) var(--space-4);
-  border-right: 1px solid var(--line);
+  z-index: 10;
   background: var(--chrome);
+  border-bottom: 1px solid var(--line);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  max-width: var(--content-width);
+  height: var(--topbar-height);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
 }
 
 .brand {
   display: flex;
+  flex: none;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-3);
+  gap: var(--space-2);
   color: var(--ink);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.01em;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-heavy);
 }
 
 .brand:hover {
   text-decoration: none;
 }
 
+/* The two jaws and the part between them, in the accent colour */
 .mark {
-  display: grid;
-  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
   color: var(--acc);
-}
-
-.mark svg {
-  width: 26px;
-  height: 26px;
-  stroke-width: 1.8;
 }
 
 .nav {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  flex-grow: 1;
+  align-self: stretch;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .link {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  height: 44px;
   padding: 0 var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
+  border-bottom: 3px solid transparent;
   color: var(--mute);
   font-weight: var(--weight-medium);
   white-space: nowrap;
-  transition:
-    background var(--transition),
-    color var(--transition);
-}
-
-.link svg {
-  width: 18px;
-  height: 18px;
+  transition: color var(--transition);
 }
 
 .link:hover {
-  background: var(--surface-2);
   color: var(--ink);
   text-decoration: none;
 }
 
-.current,
-.current:hover {
-  border-color: var(--ok-line);
-  background: var(--acc-soft);
+.current {
   color: var(--ink);
+  font-weight: var(--weight-bold);
+  border-bottom-color: var(--acc);
 }
 
-.current svg {
-  color: var(--acc);
-}
-
-/* The GPU, at the foot of the sidebar */
-.compute {
+.tools {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: auto;
-  padding: var(--space-4) var(--space-3) var(--space-2);
-  border-top: 1px solid var(--line);
-  color: var(--ink);
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
 }
 
-.compute:hover {
-  text-decoration: none;
+.url {
+  color: var(--faint);
+  font-size: var(--text-xs);
 }
 
-.compute:hover .computeHead {
-  color: var(--acc-text);
-}
-
-.computeHead {
+/* The GPU: a dot and a few words, opening the GPU page */
+.compute {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-weight: var(--weight-semibold);
+  color: var(--mute);
+  font-size: var(--text-sm);
 }
 
-.computeHead svg {
-  margin-left: auto;
-  color: var(--faint);
+.compute:hover {
+  color: var(--ink);
+  text-decoration: none;
 }
 
 .computeText {
-  overflow: hidden;
-  color: var(--faint);
-  font-size: var(--text-sm);
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -151,40 +125,13 @@
   background: var(--bad);
 }
 
-/* The page beside the sidebar */
-.main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-3);
-  height: var(--topbar-height);
-  /* Its right edge lines up with the content's, also once the content is centred on a wide screen */
-  padding: 0 max(var(--space-6), calc((100% - var(--content-width)) / 2 + var(--space-6)));
-  border-bottom: 1px solid var(--line);
-  background: var(--chrome);
-}
-
-.url {
-  color: var(--faint);
-  font-size: var(--text-xs);
-}
-
 .content {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
   width: 100%;
   max-width: var(--content-width);
-  margin-inline: auto; /* past the widest content, the page sits centred rather than against the sidebar */
+  margin-inline: auto; /* past the widest content, the page sits centred */
   padding: var(--space-5) var(--space-6) var(--space-6);
 }
 
@@ -198,7 +145,8 @@
 
 .title {
   font-size: var(--text-3xl);
-  font-weight: var(--weight-bold);
+  font-weight: var(--weight-heavy);
+  letter-spacing: -0.01em;
   line-height: 1.15;
 }
 
@@ -259,29 +207,33 @@
   }
 }
 
-/* Narrow screens: the sidebar becomes a bar along the top, its links in a row. */
-@media (max-width: 860px) {
-  .shell {
-    grid-template-columns: minmax(0, 1fr);
+/* Medium windows: the GPU shows as its dot alone, so every page link fits. */
+@media (max-width: 1500px) {
+  .computeText {
+    display: none;
+  }
+}
+
+/* Narrow screens: the logo and the tools on the first row, the pages on their own row under it. */
+@media (max-width: 1000px) {
+  .bar {
+    flex-wrap: wrap;
+    gap: 0 var(--space-3);
+    height: auto;
+    padding: var(--space-2) var(--space-4) 0;
   }
 
-  .sidebar {
-    position: static;
-    flex-direction: row;
-    align-items: center;
-    gap: var(--space-3);
-    height: auto;
-    padding: var(--space-2) var(--space-4);
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    overflow-x: auto;
+  .tools {
+    margin-left: auto;
   }
 
   .nav {
-    flex-direction: row;
+    order: 3;
+    width: 100%;
+    height: 44px;
   }
 
-  .compute {
+  .computeText {
     display: none;
   }
 

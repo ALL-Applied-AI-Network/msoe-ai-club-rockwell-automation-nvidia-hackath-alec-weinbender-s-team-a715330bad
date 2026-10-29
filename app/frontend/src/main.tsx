@@ -1,8 +1,5 @@
-import "@fontsource/barlow/400.css";
-import "@fontsource/barlow/500.css";
-import "@fontsource/barlow/600.css";
-import "@fontsource/barlow/700.css";
 import "@fontsource-variable/jetbrains-mono";
+import "@fontsource-variable/manrope";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -11,6 +8,7 @@ import { JobsPage } from "./pages/jobs/JobsPage";
 import { OverviewPage } from "./pages/overview/OverviewPage";
 import { GpuPage } from "./pages/gpu/GpuPage";
 import { NotBuiltPage } from "./pages/NotBuiltPage";
+import "./theme";
 import "./styles/tokens.css";
 import "./styles/base.css";
 

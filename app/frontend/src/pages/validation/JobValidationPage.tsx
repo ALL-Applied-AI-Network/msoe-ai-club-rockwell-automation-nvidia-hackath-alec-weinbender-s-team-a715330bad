@@ -4,6 +4,7 @@ import { JobStatusBadge, PhysicalBadge, SimBadge } from "../../components/Badges
 import { LinkButton } from "../../components/Button";
 import { Page } from "../../components/Page";
 import { EmptyState, ErrorState, Skeleton } from "../../components/States";
+import { Tabs } from "../../components/Tabs";
 import { LogStage } from "./LogStage";
 import { PrintedFingersStage } from "./PrintedFingersStage";
 import { PrintSelectionStage } from "./PrintSelectionStage";
@@ -42,19 +43,33 @@ export function JobValidationPage() {
 
   const detail = job.data;
   const header = (
-    <div className={styles.badges}>
-      <JobStatusBadge status={detail.status} />
-      <SimBadge backend={detail.sim_backend} />
-      <PhysicalBadge status={detail.card.physical_badge} />
-    </div>
+    <>
+      <div className={styles.badges}>
+        <JobStatusBadge status={detail.status} />
+        <SimBadge backend={detail.sim_backend} />
+        <PhysicalBadge status={detail.card.physical_badge} />
+      </div>
+      <Tabs
+        label="This experiment"
+        tabs={[
+          { to: `/jobs/${id}`, label: done ? "Results" : "Progress", end: true },
+          { to: `/jobs/${id}/validation`, label: "Validation" },
+        ]}
+      />
+    </>
   );
   // Test plans, predictions and logged trials cover the primary pose only, for now
   const primary = detail.plan.poses.length > 1 ? detail.plan.poses[0].label : null;
   const title = `${detail.name} (${detail.experiment_id})`;
   const back = (
-    <LinkButton variant="secondary" to="/validation">
-      All validation
-    </LinkButton>
+    <>
+      <LinkButton variant="secondary" to="/validation">
+        All validation
+      </LinkButton>
+      <LinkButton variant="primary" to={`/jobs/${id}`}>
+        Back to the experiment
+      </LinkButton>
+    </>
   );
 
   if (!done) {
@@ -64,8 +79,8 @@ export function JobValidationPage() {
         <EmptyState
           title="Validation starts once the experiment is done"
           action={
-            <LinkButton variant="secondary" to="/">
-              Back to the experiments
+            <LinkButton variant="secondary" to="/jobs">
+              Back to the jobs
             </LinkButton>
           }
         >

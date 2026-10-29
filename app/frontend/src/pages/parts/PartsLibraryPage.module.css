@@ -16,9 +16,7 @@
 
 .main,
 .sub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere; /* a long name wraps onto a second line instead of ending in an ellipsis */
 }
 
 .main {

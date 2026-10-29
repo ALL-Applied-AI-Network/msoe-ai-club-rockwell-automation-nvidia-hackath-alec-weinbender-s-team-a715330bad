@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api, unwrapAs, type Schemas } from "../../../backend/client";
 import { Badge } from "../../../components/Badge";
-import { Button } from "../../../components/Button";
 import { Card } from "../../../components/Card";
 import { CopyButton } from "../../../components/CopyButton";
 import { DownloadButton } from "../../../components/DownloadButton";
@@ -17,7 +16,7 @@ import type { Results } from "../types";
 import styles from "./BestFingerSection.module.css";
 
 type FingerView = Schemas["FingerPreview"];
-type Checks = Schemas["ChecksResponse"];
+type ChecksResponse = Schemas["ChecksResponse"];
 type VPadParams = Schemas["VPadParams"];
 
 /** Results, "Best finger" (frontend-plan.md 7.3): the mirrored pair on the part with the jaws closed, the design's
@@ -160,7 +159,7 @@ function Downloads({ jobId, base, label }: { jobId: string; base: string; label:
   const checks = useQuery({
     queryKey: ["job", jobId, "checks", label],
     queryFn: () =>
-      unwrapAs<Checks>(
+      unwrapAs<ChecksResponse>(
         api.GET("/api/jobs/{job_id}/designs/{label}/checks", { params: { path: { job_id: jobId, label } } }),
       ),
     staleTime: 60_000,
@@ -178,43 +177,55 @@ function Downloads({ jobId, base, label }: { jobId: string; base: string; label:
         <DownloadButton href={`${base}/cad?format=stl&side=R`} label="STL, right" checksUrl={checksUrl} />
         <DownloadButton href={`${base}/print-sheet.pdf`} label="Print sheet (PDF)" checksUrl={checksUrl} />
       </div>
-      {checks.data && <CheckList checks={checks.data.checks} />}
+      {checks.data && <Checks checks={checks.data.checks} />}
     </section>
   );
 }
 
-/** The export checks: failures in full, passes as one line that opens to show them. */
-function CheckList({ checks }: { checks: Checks["checks"] }) {
-  const [open, setOpen] = useState(false);
+type Check = ChecksResponse["checks"][number];
+
+/** Failed checks stay in view; the passed ones fold into a "Passed 4/5" line that opens to list them. */
+function Checks({ checks }: { checks: Check[] }) {
+  const passed = checks.filter((check) => check.ok);
   const failed = checks.filter((check) => !check.ok);
-  const shown = open ? checks : failed;
   return (
     <>
-      {failed.length === 0 && (
-        <div className={styles.passed}>
-          <Badge tone="ok" label={`All ${checks.length} export checks passed`} />
-          <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
-            {open ? "Hide the checks" : "Show the checks"}
-          </Button>
-        </div>
-      )}
-      {shown.length > 0 && (
+      {failed.length > 0 && (
         <ul className={styles.checks}>
-          {shown.map((check) => (
-            <li key={check.name} className={styles.check}>
-              <Badge
-                tone={check.ok ? "ok" : check.blocking ? "bad" : "warn"}
-                label={check.ok ? "Passed" : check.blocking ? "Failed" : "Failed, not blocking"}
-              />
-              <span>
-                <strong className={styles.checkName}>{capitalise(check.name)}</strong>
-                <span className={styles.note}>{check.detail}</span>
-              </span>
-            </li>
+          {failed.map((check) => (
+            <CheckItem key={check.name} check={check} />
           ))}
         </ul>
       )}
+      {passed.length > 0 && (
+        <details className={styles.passed}>
+          <summary className={styles.passedSummary}>
+            <Badge tone="ok" label={`Passed ${passed.length}/${checks.length}`} />
+            <span className={styles.chevron} aria-hidden="true" />
+          </summary>
+          <ul className={styles.checks}>
+            {passed.map((check) => (
+              <CheckItem key={check.name} check={check} />
+            ))}
+          </ul>
+        </details>
+      )}
     </>
+  );
+}
+
+function CheckItem({ check }: { check: Check }) {
+  return (
+    <li className={styles.check}>
+      <Badge
+        tone={check.ok ? "ok" : check.blocking ? "bad" : "warn"}
+        label={check.ok ? "Passed" : check.blocking ? "Failed" : "Failed, not blocking"}
+      />
+      <span>
+        <strong className={styles.checkName}>{capitalise(check.name)}</strong>
+        <span className={styles.note}>{check.detail}</span>
+      </span>
+    </li>
   );
 }
 
