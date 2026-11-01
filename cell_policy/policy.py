@@ -1,13 +1,18 @@
-"""CAD-to-Fingers on the real cell: pick one M6 countersunk screw off the table and drop it in the yellow bin, with the
-grasp aimed at a test-plan offset, so the robot measures what the sim predicted for the same offset.
+"""CAD-to-Fingers on the real cell: pick one part, an M6 countersunk screw or the 16 mm cube, off the table and drop it in
+the yellow bin, with the grasp aimed at a test-plan offset, so the robot measures what the sim predicted for the same
+offset.
 
 This file replaces policy.py in a clone of the organizers' client package
 (https://github.com/SIDCLab/PhysicalAI-Hackathon-2026; docs/references/physicalai-client-package.md). See README.md here.
 
 The policy is blind on purpose. Each rollout's prompt (placement.yaml, written by make_placement.py) carries a tag with
-the screw's and the bin's nominal poses and the offset to command, for example
+the part's and the bin's nominal poses and the offset to command, and optionally how high the fingertips close, e.g.
     Put the screw into the yellow bin. [c2f trial=T0007 dx=+3.00 dy=+0.00 dyaw=+0.0 screw=420,-40,90 bin=480,120,0]
-The operator places the screw at the nominal pose every rollout, and the policy grasps at that pose plus the offset.
+    Put the 16 mm cube into the yellow bin. [c2f trial=T0003 dx=-2.00 dy=+0.00 dyaw=+0.0 cube=420,-40,0 bin=480,120,0 tip=2.5]
+A screw is gripped across its shank, near its centre of mass; a cube at its centre, across the faces its yaw points
+through. tip= is the fingertips' height above the surface when they close: the height the sim gripped at, so the arm
+repeats the sim's grasp (default GRASP_TIP_HEIGHT_MM, the stock rule).
+The operator places the part at the nominal pose every rollout, and the policy grasps at that pose plus the offset.
 The offset is in the gripper frame of the app's test plans (api/models/test_plan.py): dx along the jaws' closing
 direction, dy across it, dyaw about z. So the grasp error is the commanded offset plus however far the operator's
 placement is off, the same for every finger design. Without a tag (the mock's instruction), it uses the DEFAULT_* poses
@@ -17,7 +22,7 @@ Frames (calibration/FRAMES.md): "tcp" actions are the stock fingertip (UTOOL1) i
 z_UF0 = z_base - 330 mm, so the surface is at about -335 mm. w, p, r = -180, 0, R points the fingers down and R turns
 them about z. Which way the jaws close at a given R isn't documented. The policy measures it: the arm's FK from
 obs["joints"] (calibration.geometry.flange_pose, the twin's convention, jaws along the flange's +y) gives the jaw axis,
-and obs["tcp_pose"] gives the R it was at. It does this on the first observation and again once it is above the screw,
+and obs["tcp_pose"] gives the R it was at. It does this on the first observation and again once it is above the part,
 re-aiming before it descends if the jaws are off.
 
 Nothing here was run on the real arm. run.py --mock checks only formats and limits (the mock has no kinematics).
@@ -47,9 +52,12 @@ TOOL_AXIS_FLANGE = (1.0, 0.0, 0.0)  # the tool's axis in J6_link (twin: TOOL_AXI
 
 # --- The task ---------------------------------------------------------------------------------------------------------
 DEFAULT_SCREW = (420.0, -40.0, 90.0)  # head x, y (mm) and yaw (deg, head to tip), as placement.yaml gives a screw
+DEFAULT_CUBE = (420.0, -40.0, 0.0)  # centre x, y (mm) and yaw (deg, a face's normal), as placement.yaml gives a cube
 DEFAULT_BIN = (480.0, 120.0, 0.0)  # centre x, y (mm) and yaw (deg)
 GRASP_ALONG_MM = 12.0  # from the screw's head point toward its tip: about its centre of mass (13.4 mm from the head's top)
-GRASP_TIP_HEIGHT_MM = 2.5  # fingertips above the surface when they close: below a lying screw's shank axis (3-6 mm)
+# Fingertips above the surface when they close, unless the tag sets tip=: below a lying screw's shank axis (3-6 mm), and
+# the sim's stock rule for a cube. The cell refuses the TCP below 1.1 mm above the surface (TCP_BOX_MM).
+GRASP_TIP_HEIGHT_MM = 2.5
 TIP_BELOW_TCP_MM = 0.0  # how far our fingertips end below UTOOL1 (the stock tips); 0 when they keep the stock length
 APPROACH_HEIGHT_MM = 60.0  # fingertips above the surface, above the screw
 CARRY_HEIGHT_MM = 120.0  # fingertips above the surface while carrying
@@ -70,20 +78,23 @@ MAX_CHUNK = 100  # rows per act() call (the cell's limit)
 LOG_FILE = Path(__file__).resolve().parent / "cad2fingers_rollouts.jsonl"
 TAG = re.compile(
     r"\[c2f\s+trial=(?P<trial>\S+)\s+dx=(?P<dx>[-+0-9.]+)\s+dy=(?P<dy>[-+0-9.]+)\s+dyaw=(?P<dyaw>[-+0-9.]+)"
-    r"\s+screw=(?P<screw>[-+0-9.,]+)\s+bin=(?P<bin>[-+0-9.,]+)\]"
+    r"\s+(?P<kind>screw|cube)=(?P<part>[-+0-9.,]+)\s+bin=(?P<bin>[-+0-9.,]+)(?:\s+tip=(?P<tip>[-+0-9.]+))?\]"
 )
 
 
 @dataclass(frozen=True)
 class Rollout:
-    """What one rollout's prompt asks for: the nominal screw and bin poses and the offset to command."""
+    """What one rollout's prompt asks for: the part and the bin's nominal poses, the offset to command, and how high the
+    fingertips close."""
 
     trial: str | None
     dx_mm: float
     dy_mm: float
     dyaw_deg: float
-    screw: tuple[float, float, float]
+    part: tuple[float, float, float]  # a screw's head x, y and yaw (head to tip); a cube's centre x, y and yaw
     bin: tuple[float, float, float]
+    kind: str = "screw"  # "screw" or "cube"
+    tip_mm: float = GRASP_TIP_HEIGHT_MM
 
 
 def parse_instruction(text: str | None) -> Rollout:
@@ -91,8 +102,9 @@ def parse_instruction(text: str | None) -> Rollout:
     match = TAG.search(text or "")
     if match is None:
         return Rollout(None, 0.0, 0.0, 0.0, DEFAULT_SCREW, DEFAULT_BIN)
-    screw, bin_ = (_pose(match[k]) for k in ("screw", "bin"))
-    return Rollout(match["trial"], float(match["dx"]), float(match["dy"]), float(match["dyaw"]), screw, bin_)
+    part, bin_ = (_pose(match[k]) for k in ("part", "bin"))
+    tip = float(match["tip"]) if match["tip"] else GRASP_TIP_HEIGHT_MM
+    return Rollout(match["trial"], float(match["dx"]), float(match["dy"]), float(match["dyaw"]), part, bin_, match["kind"], tip)
 
 
 def _pose(text: str) -> tuple[float, float, float]:
@@ -126,16 +138,20 @@ def jaw_yaw_from_joints(joints, flange_pose) -> float | None:
 
 
 def grasp_target(rollout: Rollout, jaw_yaw_at_r0: float, near_r: float) -> tuple[float, float, float]:
-    """Where the fingertips go to grip (x, y in UF0 mm) and the R that turns the jaws across the screw, plus the
-    rollout's offset: dx along the jaws, dy across them, dyaw about z."""
-    hx, hy, yaw = rollout.screw
-    axis = math.radians(yaw)
-    gx, gy = hx + GRASP_ALONG_MM * math.cos(axis), hy + GRASP_ALONG_MM * math.sin(axis)
-    jaw = math.radians(yaw + 90.0)
+    """Where the fingertips go to grip (x, y in UF0 mm) and the R that turns the jaws to close across the part, plus the
+    rollout's offset: dx along the jaws, dy across them, dyaw about z. A screw is gripped across its shank,
+    GRASP_ALONG_MM from its head; a cube at its centre, with the jaws along its yaw (across two faces)."""
+    px, py, yaw = rollout.part
+    if rollout.kind == "cube":
+        gx, gy, jaw_deg = px, py, yaw
+    else:
+        axis = math.radians(yaw)
+        gx, gy, jaw_deg = px + GRASP_ALONG_MM * math.cos(axis), py + GRASP_ALONG_MM * math.sin(axis), yaw + 90.0
+    jaw = math.radians(jaw_deg)
     jx, jy = math.cos(jaw), math.sin(jaw)
     x = gx + rollout.dx_mm * jx - rollout.dy_mm * jy  # dy along z cross the jaw direction
     y = gy + rollout.dx_mm * jy + rollout.dy_mm * jx
-    r = nearest_equivalent(wrap180(yaw + 90.0 + rollout.dyaw_deg - jaw_yaw_at_r0), near_r)
+    r = nearest_equivalent(wrap180(jaw_deg + rollout.dyaw_deg - jaw_yaw_at_r0), near_r)
     return x, y, wrap180(r) if abs(r) > 360 else r
 
 
@@ -176,10 +192,10 @@ def tip_z(height_above_surface_mm: float) -> float:
 
 
 def plan_pick_and_drop(rollout: Rollout, start, jaw_yaw_at_r0: float) -> list[list[float]]:
-    """From above the screw (start, already aimed): down, close, up, over the bin turned to the drop yaw, open, up."""
+    """From above the part (start, already aimed): down, close, up, over the bin turned to the drop yaw, open, up."""
     x, y, r = grasp_target(rollout, jaw_yaw_at_r0, start[5])
     above = [x, y, tip_z(APPROACH_HEIGHT_MM), -180.0, 0.0, r]
-    grip = [x, y, tip_z(GRASP_TIP_HEIGHT_MM), -180.0, 0.0, r]
+    grip = [x, y, tip_z(rollout.tip_mm), -180.0, 0.0, r]
     lifted = [x, y, tip_z(CARRY_HEIGHT_MM), -180.0, 0.0, r]
     bx, by, bin_yaw = rollout.bin
     drop_r = nearest_equivalent(wrap180(bin_yaw + DROP_JAW_YAW_FROM_BIN_DEG - jaw_yaw_at_r0), r)
@@ -274,7 +290,7 @@ class Policy:
             rows = segment(current, above, TRAVEL_STEP_MM, 0.0) if current else [[*above, 0.0]]
             self._set(rows, "aim")
         elif self.phase == "aim":
-            # Above the screw: aim again with the jaws as measured here, then the rest of the rollout.
+            # Above the part: aim again with the jaws as measured here, then the rest of the rollout.
             x, y, r = grasp_target(rollout, self.jaw_yaw_at_r0, current[5])
             start = current
             if abs(wrap180(r - current[5])) > REAIM_TOLERANCE_DEG:

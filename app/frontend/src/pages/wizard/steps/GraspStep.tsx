@@ -293,7 +293,7 @@ function PoseGrasp({ partId, partName, pose, poseLabel, grasp, active, onGate }:
             hint="Otherwise the search chooses it."
           />
           {fixHeight && (
-            <NumberInput label="Grip height" unit="mm" value={height} onChange={setHeight} min={0} hint="Above the table." />
+            <NumberInput label="Grip height" unit="mm" value={height} onChange={setHeight} min={2.5} hint="Above the table: at least 2.5 mm." />
           )}
         </div>
 

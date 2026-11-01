@@ -5,7 +5,7 @@
 # our printed fingers: change policy and custom_hardware to the commented values and submit again.
 
 team: Alec Weinbender's Team
-contact: <name, email>            # TODO: who the organizers should reach about this request
+contact: Alec Weinbender, weinbendera@msoe.edu
 policy: CAD2Fingers-Screw-Stock   # printed-finger run: CAD2Fingers-Screw-<finger ID>, e.g. CAD2Fingers-Screw-EXP-0001-D1
 
 # Choose the closest model type. This does not affect scoring.
@@ -18,7 +18,7 @@ model_type: Hybrid
 # Hybrid      Combines multiple approaches, or choose this if unsure
 
 # --- Task ---
-task_id: screw-bin-X              # TODO: replace X with our team letter
+task_id: screw-bin-A              # Short task name ending with our team letter
 task: Pick up the M6 screw and drop it into the yellow bin, with the grasp aimed at a set offset each rollout.
                                   # Describe your task in one short sentence
 

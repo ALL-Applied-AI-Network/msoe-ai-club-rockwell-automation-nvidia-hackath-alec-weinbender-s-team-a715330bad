@@ -59,7 +59,9 @@ SEAT_GAP_MM = 0.5  # gripping, each pad face stays this far from the part's cent
 TOP_CLEARANCE_MM = 3.0  # the pad reaches this far above the part's top, so the bridge clears it
 IMPRINT_CLEARANCE_MM = 0.2
 STOCK_TIP_MM = 2.5  # the stock fingertips' height above the table when gripping: the twin's cube rule, as the sim runs it
-MIN_TIP_MM = 1.0  # fingertips above the table
+# Fingertips above the table, at least: the stock rule. The UWM cell refuses the TCP below about 1.1 mm, and where printed
+# tips end (the mount, print tolerance) and the table's height are known to about a millimetre (2026-10-30).
+MIN_TIP_MM = 2.5
 MIN_CONTACT_MM = 2.0  # pad face left on the part, between the grip height and the top of the lead-in
 BRIDGE_CLEARANCE_MM = 0.5  # in another pose, the part's top stays at least this far below the bridge
 SEAT_HEIGHTS = 5  # heights (fingertips to the part's top) where seat() looks for the first touch

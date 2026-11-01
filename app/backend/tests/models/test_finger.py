@@ -284,12 +284,12 @@ def test_another_pose_keeps_the_pieces_and_moves_the_jaws_and_fingertips():
 def test_a_shorter_pose_keeps_its_pad_above_the_lead_in():
     leaded = vpad(lead_in_mm=2.0)
     built = build_finger(CUBE, leaded)
-    shorter = Part(shape="box", height_mm=6)
+    shorter = Part(shape="box", height_mm=7)
 
     down = regrip(CUBE, shorter, leaded, built=built)
 
-    # lowered from 4 mm to 2 mm: 2 mm of pad on the part above the 2 mm lead-in
-    assert (down.tip_height_mm, down.contact_mm) == pytest.approx((2, 2))
+    # lowered from 4 mm to 3 mm: 2 mm of pad on the part above the 2 mm lead-in
+    assert (down.tip_height_mm, down.contact_mm) == pytest.approx((3, 2))
     assert problems(shorter, down) == []
 
 

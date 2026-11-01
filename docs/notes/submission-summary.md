@@ -51,7 +51,7 @@ or STL file, the gripper, and how accurately the cell grasps.
 | | Stock fingers | Imprint | Generated (D1) |
 | --- | --- | --- | --- |
 | Predicted success at 3 mm, 8° (Isaac) | TBD | TBD | TBD |
-| Measured on the real arm (n, 95% interval) | TBD | not run | TBD |
+| Measured on the real arm (n, 95% interval) | 4/10, 40% (17–69%) | not run | not run |
 
 - **Success vs grasp error, 0.5 to 6 mm:** chart TBD.
 - **Timing:** TBD fingers ranked in TBD min; TBD designs generated in TBD min.
@@ -60,7 +60,8 @@ or STL file, the gripper, and how accurately the cell grasps.
   this gripper can do, and Auto-Grasp says so before anyone prints a finger.
 - **Where generation pays off: the cell's 16 mm cube** (Isaac, 3 mm / 8°). It's as wide as the stock tips open, so stock
   scores 0% and the best library finger 17.6%. A generated finger reaches **92.3%** and holds every grasp out to 4.5 mm,
-  found in 33 minutes of simulation.
+  found in 33 minutes of simulation. **Printed and run on the real arm, it held 7 of 8 scored rollouts (87.5%,
+  53–98%)**, every position offset out to 4 mm. The one miss, at 12° of yaw, came with a controller fault.
 
 ## Limitations
 
@@ -72,4 +73,5 @@ or STL file, the gripper, and how accurately the cell grasps.
   - **Friction:** the twin's stock tips are 1.5, our printed-finger estimate is 0.4.
   - **Knocks:** whether a real arm survives the size of knock we count as a miss.
 - **Weak simulated grip:** about 2.5 N per jaw, fine for the 7.5 g screw but not for heavy parts.
-- **Unvalidated:** the predictions stand unconfirmed until the real-arm trials are logged.
+- **Small real-arm samples:** one session, 10 rollouts per run, one per offset. The cube agrees with the prediction.
+  The stock fingers on the screw scored below it (4/10), and no printed screw finger has run yet.

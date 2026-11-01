@@ -32,6 +32,9 @@ def obs(tcp, instruction="", trial_id="t00"):
 
 HOME = [300.0, 0.0, -20.0, -180.0, 0.0, 0.0]
 TAGGED = "Put the screw into the yellow bin. " + make_placement.tag("T0007", 3.0, 0.0, 0.0, (420, -40, 90), (480, 120, 0))
+CUBE_TAGGED = "Put the 16 mm cube into the yellow bin. " + make_placement.tag(
+    "T0003", -2.0, 0.0, 0.0, (420, -40, 0), (480, 120, 0), kind="cube", tip=2.0
+)
 
 
 class InstructionTest(unittest.TestCase):
@@ -39,12 +42,19 @@ class InstructionTest(unittest.TestCase):
         rollout = policy.parse_instruction(TAGGED)
 
         self.assertEqual((rollout.trial, rollout.dx_mm, rollout.dy_mm, rollout.dyaw_deg), ("T0007", 3.0, 0.0, 0.0))
-        self.assertEqual((rollout.screw, rollout.bin), ((420.0, -40.0, 90.0), (480.0, 120.0, 0.0)))
+        self.assertEqual((rollout.part, rollout.bin), ((420.0, -40.0, 90.0), (480.0, 120.0, 0.0)))
+        self.assertEqual((rollout.kind, rollout.tip_mm), ("screw", policy.GRASP_TIP_HEIGHT_MM))
+
+    def test_a_cube_tag_carries_the_part_and_the_grip_height(self):
+        rollout = policy.parse_instruction(CUBE_TAGGED)
+
+        self.assertEqual((rollout.trial, rollout.kind, rollout.dx_mm, rollout.tip_mm), ("T0003", "cube", -2.0, 2.0))
+        self.assertEqual(rollout.part, (420.0, -40.0, 0.0))
 
     def test_no_tag_means_the_default_poses_and_no_offset(self):
         rollout = policy.parse_instruction("pick one countersunk screw and drop it in the yellow bin")
 
-        self.assertEqual((rollout.trial, rollout.dx_mm, rollout.screw), (None, 0.0, policy.DEFAULT_SCREW))
+        self.assertEqual((rollout.trial, rollout.dx_mm, rollout.part), (None, 0.0, policy.DEFAULT_SCREW))
 
 
 class GraspTest(unittest.TestCase):
@@ -56,11 +66,23 @@ class GraspTest(unittest.TestCase):
         self.assertAlmostEqual(y, -40.0 + policy.GRASP_ALONG_MM)
         self.assertAlmostEqual(math.cos(math.radians(r + 90.0 - 180.0)) ** 2, 1.0, msg="jaws along x, across the screw")
 
-        shifted = policy.Rollout("T2", 3.0, 2.0, 5.0, screw_along_y.screw, screw_along_y.bin)
+        shifted = policy.Rollout("T2", 3.0, 2.0, 5.0, screw_along_y.part, screw_along_y.bin)
         sx, sy, sr = policy.grasp_target(shifted, jaw_yaw_at_r0=90.0, near_r=0.0)
         self.assertAlmostEqual(abs(sx - x), 3.0, msg="dx along the jaws (base x here)")
         self.assertAlmostEqual(abs(sy - y), 2.0, msg="dy across them")
         self.assertAlmostEqual(policy.nearest_equivalent(sr - r, near=0.0), 5.0, msg="the jaws look the same every 180 deg")
+
+    def test_a_cube_is_gripped_at_its_centre_with_the_jaws_along_its_yaw(self):
+        cube = policy.Rollout("T1", 0.0, 0.0, 0.0, (420.0, -40.0, 30.0), (480.0, 120.0, 0.0), kind="cube")
+
+        x, y, r = policy.grasp_target(cube, jaw_yaw_at_r0=90.0, near_r=0.0)
+        self.assertAlmostEqual((x, y), (420.0, -40.0))
+        self.assertAlmostEqual(policy.nearest_equivalent(90.0 + r - 30.0, near=0.0), 0.0, msg="jaws close along yaw 30")
+
+        shifted = policy.Rollout("T2", 2.0, 0.0, 0.0, cube.part, cube.bin, kind="cube")
+        sx, sy, _ = policy.grasp_target(shifted, jaw_yaw_at_r0=90.0, near_r=0.0)
+        self.assertAlmostEqual(math.hypot(sx - x, sy - y), 2.0)
+        self.assertAlmostEqual(math.degrees(math.atan2(sy - y, sx - x)) % 180.0, 30.0, msg="dx along the jaws")
 
     def test_r_is_the_nearest_of_the_two_equivalent_jaw_angles(self):
         self.assertEqual(policy.nearest_equivalent(-80.0, near=170.0), 100.0)
@@ -121,6 +143,30 @@ class PolicyTest(unittest.TestCase):
         p.act(obs(above[:6], TAGGED))
         self.assertAlmostEqual(p.jaw_yaw_at_r0, 90.0)
 
+    def run_from_above(self, instruction: str):
+        """The rollout after the approach: the rows from above the part on, and the pose it stopped above it at."""
+        p = self.make(jaw_yaw_deg=90.0)
+        above = p.act(obs(HOME, instruction))[-1]
+        p.flange_pose = fake_flange_pose(90.0 + above[5])
+        rest = []
+        while len(rest) == 0 or len(p.queue):
+            rest += p.act(obs(above[:6], instruction))
+        return rest, above
+
+    def test_a_cube_rollout_grips_at_the_tagged_height_within_the_cells_limits(self):
+        rest, _ = self.run_from_above(CUBE_TAGGED)
+
+        self.assertEqual(policy.check_rows(rest), [])
+        self.assertAlmostEqual(min(row[2] for row in rest if row[6] == 1.0), policy.tip_z(2.0))
+        self.assertEqual((rest[-1][0], rest[-1][1], rest[-1][6]), (480.0, 120.0, 0.0))
+
+    def test_a_grip_lower_than_the_cell_allows_is_refused_and_the_arm_holds_above_the_part(self):
+        # EXP-0006's D1 grips the cube with its tips 1.0 mm up; the cell refuses the TCP below 1.1 mm.
+        too_low = CUBE_TAGGED.replace("tip=2]", "tip=1]")
+
+        rest, above = self.run_from_above(too_low)
+        self.assertEqual(rest, [above[:6] + [0.0]])
+
     def test_a_plan_outside_the_cell_is_refused_and_the_arm_holds(self):
         p = self.make(jaw_yaw_deg=90.0)
         far = "Go. " + make_placement.tag("T9", 0.0, 0.0, 0.0, (600, 300, 0), (480, 120, 0))
@@ -157,6 +203,22 @@ class PlacementTest(unittest.TestCase):
     def test_a_layout_out_of_reach_is_refused(self):
         self.assertIn("past 540 mm", make_placement.check_layout((420, -40, 90), (520, 200, 0))[0])
         self.assertEqual(make_placement.check_layout(make_placement.DEFAULT_SCREW, make_placement.DEFAULT_BIN), [])
+
+    def test_the_cube_sweep_is_ten_cube_rollouts_the_policy_reads(self):
+        path = Path(tempfile.mkdtemp()) / "placement.yaml"
+        make_placement.main(["--part", "cube", "--tip", "2.5", "--rollouts", "10", "-o", str(path)])
+        text = path.read_text()
+        prompts = [line.split("prompt: ", 1)[1].strip('"') for line in text.splitlines() if "prompt:" in line]
+
+        self.assertEqual(text.count("cube_16mm: [420, -40, 0]"), 10)
+        rollouts = [policy.parse_instruction(p) for p in prompts]
+        self.assertEqual({(r.kind, r.tip_mm) for r in rollouts}, {("cube", 2.5)})
+        self.assertEqual([(r.dx_mm, r.dy_mm, r.dyaw_deg) for r in rollouts], [tuple(map(float, o)) for o in make_placement.DEFAULT_CUBE_SWEEP])
+
+    def test_a_grip_below_the_cells_limit_or_a_cube_offset_past_the_fingers_slack_is_refused(self):
+        self.assertIn("refuses the TCP", make_placement.check_rollouts([("R01", 0.0, 0.0, 0.0)], "cube", 1.0)[0])
+        self.assertIn("R02", make_placement.check_rollouts([("R01", 4.5, 0, 0), ("R02", -6.0, 0, 0)], "cube", None)[0])
+        self.assertEqual(make_placement.check_rollouts([("R01", 6.0, 0, 0)], "screw", None), [], "a screw is knocked aside")
 
 
 if __name__ == "__main__":

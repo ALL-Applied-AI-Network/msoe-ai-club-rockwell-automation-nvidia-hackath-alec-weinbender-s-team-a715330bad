@@ -11,6 +11,7 @@ Log every simulation batch and every physical trial session here, including fail
 
 | Date | Experiment | Kind | Headline result |
 | --- | --- | --- | --- |
+| 2026-10-31 | [First real-cell session: screw with stock fingers, cube with printed D1](2026-10-31-real-cell-screw-and-cube.md) | physical | Screw, stock fingers: 4/10 (40%, 95% CI 17–69%), all four within 3 mm, below the sim's stock rates. Cube, printed D1: 7/8 scored (87.5%, 53–98%), every position offset to 4 mm held as the sim predicted; the one miss (+12° yaw) came with a fault and an intervention; 2 rollouts unscored |
 | 2026-10-27 | [Full-grid cube16 optimizer comparison, seed 0](2026-10-27-cube16-full-grid-comparison.md) | sim (real twin, complete) | 32 candidates/method: fresh holdout BO 92.31%, Sobol 91.18%, GA 91.04%; 2 h 49 min, one seed only; retrieved 2026-10-28 |
 | 2026-10-27 | [Noise-aware optimizer comparison pilot](2026-10-27-noise-aware-benchmark.md) | sim (real twin, sparse pilot) | Repeated finalist selection and independent holdout scoring; bounded BO/Sobol/GA implementation check, not a full-grid accuracy comparison |
 | 2026-10-27 | [GB10 access restored and local source sync](2026-10-27-gb10-access-and-sync.md) | sim (real twin) | Passwordless SSH and app GPU connection work; six landing-aware stock/imprint grasps passed on the CPU service; local main updated to 64c94a7 |

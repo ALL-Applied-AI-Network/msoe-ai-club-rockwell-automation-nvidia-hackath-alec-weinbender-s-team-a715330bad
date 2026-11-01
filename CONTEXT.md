@@ -3,7 +3,7 @@
 Living summary of where the project stands. Keep it short and current. Source documents live in [docs/](docs/README.md);
 this file records what they mean for us. Gotchas and warnings: [docs/notes/things-to-know.md](docs/notes/things-to-know.md). Update it whenever a fact, decision, deadline or open question changes.
 
-*Last updated: 2026-10-29 (the hosted app on the GB10 has the team's Isaac results)*
+*Last updated: 2026-10-31 (first real-cell session: screw with stock fingers, cube with printed D1)*
 
 ## One-line pitch
 
@@ -110,7 +110,7 @@ See the historical [software experiment log](docs/experiments/2026-10-22-optimiz
 | Digital twin starter v0.5 (cube stacking demo) | `sim/fanuc_er4ia_sim/` | Vendored from the organizers. Host tests and the headless scene build pass on Brev and the GB10 (2026-10-20); the stacking demo needs a Cosmos env and hasn't run. Only edit: the `.sh` files marked executable in git (2026-10-20, contents unchanged) |
 | CAD output | `app/backend/src/api/models/finger_cad.py`, `clients/cad.py` | CadQuery STEP (the pair) + STL per side, the cell profile's mount (default since 2026-10-20: SMC's jaw from its STEP, the root cut back for the jaw's tongue, M3 holes along the jaw travel; **confirm on the real jaw**), engraved IDs, export checks, print sheet. Checked against the STEP's jaw solid: no overlap, faces touching, holes aligned |
 | Organizers' CAD of the cell | `cad/` | Gripper STEP, M6 screw, bin, 10/16 mm cubes, vial, cap, table texture; unchanged, with SHA-256s ([page](docs/07-cad-models.md)). All import through the app's part upload |
-| Real-cell policy + submission | `cell_policy/` | Scripted fingertip policy: one screw into the bin, at each rollout's test-plan offset; placement generator; `submission.yaml` for the stock baseline. Unit tests pass, and the client's `--mock` says "Ready for the real robot" (0 of 461 actions rejected). **Not run on the real arm** |
+| Real-cell policy + submission | `cell_policy/` | Scripted fingertip policy: one screw into the bin, at each rollout's test-plan offset; placement generator; `submission.yaml` for the stock baseline. Unit tests pass, and the client's `--mock` says "Ready for the real robot" (0 of 461 actions rejected). **Ran on the real arm 2026-10-31:** the screw with stock fingers 4/10, the cube with printed D1 7/8 scored ([log](docs/experiments/2026-10-31-real-cell-screw-and-cube.md)) |
 
 ## Hardware and twin facts (from `sim/fanuc_er4ia_sim/docs/`)
 
@@ -273,8 +273,9 @@ See the historical [software experiment log](docs/experiments/2026-10-22-optimiz
 - [x] **Tried a part the stock fingers can't take** (2026-10-27, the 16 mm cube, EXP-0005 and EXP-0006):
       stock 0%, the library's best 17.6%, generated D1 92.3% (risk 13).
   - [ ] Measure the cube's material and mass at the cell. PLA (5 g) was assumed.
-  - [ ] To validate it on the arm, add the cube to `cell_policy` (built for the screw now), and print D1 after the review
-        gate.
+  - [x] Validated D1 on the arm (2026-10-31): 7 of 8 scored rollouts held (87.5%, 95% CI 53–98%), every position offset
+        out to 4 mm as the sim predicted. The one miss, at +12° yaw, came with a controller fault and an intervention.
+        Two rollouts weren't scored ([log](docs/experiments/2026-10-31-real-cell-screw-and-cube.md)).
 - [ ] Second build: failure reasons per grasp and replays (story 13; plan W7), and the pitch metrics (W8).
 - [ ] **Section grasps on the L-bracket have no buildable V-pad** (on `main` before 2026-10-26 too): its best grasp
       proposal grips one arm, and every V-pad design "would land on the centred part" there, so a generation job on it
@@ -299,9 +300,12 @@ See the historical [software experiment log](docs/experiments/2026-10-22-optimiz
       2026-10-26), and both arms have the same gripper and fingers. The app's library shows the twin's model of them
       (`api/models/finger.py`, `stock_blade`: 76 x 12 x 6 mm, an AA socket 6.97 mm above the tip, soft tips at friction
       1.5 / 1.3). Check the socket, the tip bevel and the soft tips against it in the first session.
-- [ ] **Submit to the platform**: fill in `cell_policy/submission/submission.yaml` (team letter in `task_id`, contact),
-      `uv run run.py --submit`, then book a slot in the dashboard's Calendar. The first real rollouts check the policy's
-      jaw measurement (`cad2fingers_rollouts.jsonl`).
+- [x] **Submitted to the platform and ran** (2026-10-31): the screw with stock fingers scored 4/10 (40%, 95% CI
+      17–69%), all four within 3 mm of the aim, below the sim's stock rates. The jaw readings agree with the mock
+      ([log](docs/experiments/2026-10-31-real-cell-screw-and-cube.md)).
+  - [ ] Fill in the log's TODOs from the videos: how each screw miss failed, the cube's fault, its two unscored
+        rollouts, and why some trials were re-run.
+  - [ ] Run a printed finger on the screw at the same offsets, so stock's 4/10 has a comparison.
 - [ ] Bring up the twin: `bootstrap.sh` host tests and the headless scene build pass on Brev and the GB10 (2026-10-20);
       the starter's stacking pipeline still needs a Cosmos env (optional for us).
 - [x] Run the sim server on a GPU ([docs/notes/gpu-test-plan.md](docs/notes/gpu-test-plan.md)): stages 0–3 on Brev and

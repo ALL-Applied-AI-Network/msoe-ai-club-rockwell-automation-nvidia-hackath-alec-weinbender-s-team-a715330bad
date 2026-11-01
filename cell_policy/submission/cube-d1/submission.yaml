@@ -1,0 +1,32 @@
+# The cube run with our printed fingers (copy this and placement.yaml to the client package's submission/; see
+# ../../README.md). Run: uv run run.py --submit, then keep the .request.json it writes under its own name.
+#
+# The stock fingers aren't run on the cube: their tips open about 16 mm, as wide as the cube, so they'd come down on it.
+
+team: Alec Weinbender's Team
+contact: Alec Weinbender, weinbendera@msoe.edu
+policy: CAD2Fingers-Cube16-EXP-0006-D1
+
+# Choose the closest model type. This does not affect scoring.
+model_type: Hybrid
+
+# --- Task ---
+task_id: cube-bin-A
+task: Pick up the 16 mm cube and drop it into the yellow bin, with the grasp aimed at a set offset each rollout.
+
+# --- Test Setup ---
+# The cube and the bin go in the same place every rollout. Only each rollout's prompt differs: it tells our policy which
+# grasp offset to command (a controlled position error, to compare with the simulation at the same errors). That is why
+# layout is "different": placement.yaml needs one entry per rollout to carry its prompt.
+objects: same
+layout: different
+
+# --- Evaluation ---
+rollouts: 10
+
+# --- Hardware ---
+custom_hardware: >-
+  3D-printed fingers (PLA), engraved EXP-0006-D1-L and -R, replacing the aluminium fingers, for a 16 mm cube. Each bolts
+  to its SMC jaw with two M3 x 10 screws through the jaw's holes into the finger. Same length as the stock fingers
+  (76 mm), so the fingertip TCP (UTOOL1) is unchanged; the policy closes the fingertips 2.5 mm above the table. We bring
+  them to the slot; the stock fingers go back on after.

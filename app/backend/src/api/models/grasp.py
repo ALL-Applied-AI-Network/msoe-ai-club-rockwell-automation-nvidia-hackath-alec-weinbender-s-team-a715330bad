@@ -7,7 +7,7 @@ table frame rotated by -angle about z and shifted so the grasp centre is the ori
 
 How a direction is judged (docs/notes/input-flow-backend-plan.md, 4.2), with u the closing direction and v across it:
 
-- width: the part's extent along u, over the part above the fingertips (z >= 1 mm, or the locked grip height);
+- width: the part's extent along u, over the part above the fingertips (z >= MIN_TIP_MM, or the locked grip height);
 - contact patches: the faces within max(0.3 mm, 2% of the width) of each extreme along u whose normals lie inside the
   friction cone (within atan(mu) of +-u): what a flat pad touches first, and can push on without slipping;
 - centre: midway between the extremes along u; along v, the centre of mass, clamped to where both patches are, so the
@@ -42,7 +42,7 @@ from api.models.resting_pose import RestingPose, looks_the_same, resting_poses, 
 
 Verdict = Literal["ok", "warn", "blocked"]
 
-MIN_TIP_MM = 1.0  # the fingertips stay this far above the table, so only the part above it can be gripped
+MIN_TIP_MM = 2.5  # the fingertips stay this far above the table, so only the part above it can be gripped (finger.py's)
 MIN_CONTACT_MM2 = 1.0  # each contact patch needs at least this much area
 BAND_MM, BAND_FRACTION = 0.3, 0.02  # a face touches if it's within max(BAND_MM, BAND_FRACTION x width) of an extreme
 PARALLEL_DEG = 2.0  # parallel flat faces: both patches flat and opposed within this

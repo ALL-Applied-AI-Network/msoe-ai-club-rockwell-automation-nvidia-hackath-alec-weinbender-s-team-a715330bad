@@ -129,7 +129,7 @@ def test_a_user_range_can_reach_past_the_default_up_to_the_limits():
     space = SearchSpace(PARTS["cube"], FamilyChoice(ranges={"tip_height_mm": ParamRange(lo=5, hi=20)}))
     (tip,) = [s for s in space.describe() if s.name == "tip_height_mm"]
 
-    assert tip.default_range == (1, 6) and tip.limits == (1, 8)
+    assert tip.default_range == (2.5, 6) and tip.limits == (2.5, 8)
     assert tip.effective_range == (5, 8)
     assert tip.note == "tip height clipped to 8 mm: a higher grip leaves less than 2 mm of pad on the part"
 

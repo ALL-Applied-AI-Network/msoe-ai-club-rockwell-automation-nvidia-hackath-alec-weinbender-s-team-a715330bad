@@ -75,7 +75,7 @@ def test_the_cube_gives_two_axes_with_parallel_faces(posed):
         assert candidate.parallel_faces and candidate.opposition_deg == pytest.approx(0, abs=0.1)
         assert candidate.width_mm == pytest.approx(10) and candidate.centre_mm == pytest.approx((0, 0), abs=1e-6)
         assert (candidate.fits, candidate.stock_fits, candidate.verdict, candidate.warnings) == (True, True, "ok", [])
-        assert candidate.contact_area_mm2 == pytest.approx(10 * 9)  # a 10 x 10 face, above the 1 mm the fingertips clear
+        assert candidate.contact_area_mm2 == pytest.approx(10 * 7.5)  # a 10 x 10 face, above the 2.5 mm the fingertips clear
     assert proposals.nothing_fits is None
     assert any("friction cone" in line for line in proposals.rejected)
 
