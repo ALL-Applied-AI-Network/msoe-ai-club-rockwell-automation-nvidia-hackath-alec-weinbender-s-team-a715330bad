@@ -171,7 +171,7 @@ export function NewEvaluationPage() {
 
       <Card
         title="Fingers"
-        subtitle={which === "all" ? `All ${forCell.length} for this cell, its stock fingers included` : `${picked.size} chosen, plus the stock fingers`}
+        subtitle={which === "all" ? `All ${forCell.length} for this cell` : `${picked.size} chosen`}
         aside={
           <Segmented
             label="Which fingers"
@@ -187,7 +187,7 @@ export function NewEvaluationPage() {
       >
         {which === "some" ? (
           <FingerTable
-            fingers={forCell.filter((f) => f.source !== "stock")}
+            fingers={forCell}
             picked={picked}
             onPick={(id, on) =>
               setPicked((current) => {
@@ -201,7 +201,7 @@ export function NewEvaluationPage() {
         ) : (
           <div className={styles.chips}>
             {forCell.map((f) => (
-              <Badge key={f.id} tone={f.source === "stock" ? "neutral" : "ok"} label={`${f.code} ${f.name}`} />
+              <Badge key={f.id} tone="ok" label={`${f.code} ${f.name}`} />
             ))}
           </div>
         )}
@@ -276,7 +276,7 @@ function FingerTable({ fingers, picked, onPick }: { fingers: Finger[]; picked: S
       onSelect={onPick}
       selectLabel="Try"
       fixed
-      empty="This cell has no fingers besides its stock ones yet."
+      empty="This cell has no fingers in the library yet."
     />
   );
 }

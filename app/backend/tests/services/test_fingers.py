@@ -111,7 +111,7 @@ def test_every_cell_gets_its_stock_fingers_once(db, profile_id):
     (stock,) = [r for r, _ in fingers.list_fingers(db)]
     assert stock.source == stock.family == "stock" and stock.code == "FNG-0001" and stock.cell_profile_name == "UWM CSI cell"
     assert stock.pad_friction == (1.5, 1.3)  # the real fingers' soft tips, which the twin runs them with
-    assert (stock.name, stock.extent_mm) == ("Stock fingers", (12.0, 6.0, 76.0))
+    assert (stock.name, stock.extent_mm) == ("Hooked-tip aluminium fingers", (12.0, 6.0, 76.0))
 
 
 def test_an_uploaded_finger_is_placed_in_the_gripper_frame(db, config, cad, profile_id, step_file):

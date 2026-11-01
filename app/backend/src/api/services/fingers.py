@@ -43,6 +43,8 @@ logger = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 NUMBER_ATTEMPTS = 5  # tries at the next finger number when another finger takes it at the same moment
 MAX_NAME = 200
+# The cell's installed fingers have no part number: they're custom aluminium blades with a hooked tip (CONTEXT.md)
+STOCK_FINGER_NAME = "Hooked-tip aluminium fingers"
 EDITABLE = {"name", "family", "material", "pad_friction", "quantity_on_hand", "notes", "archived"}
 PLACEMENT_NOTE = "placed automatically: check on the 3D preview that it sits on the jaw the right way round"
 
@@ -77,8 +79,8 @@ class FingerStats:
 
 
 def ensure_stock_fingers(db: DatabaseClient) -> None:
-    """Every cell profile name gets one stock finger in the library, if it has none: the cell's own fingers, which every
-    evaluation on that cell includes. Run at startup (after the default cell profile is seeded) and when a profile is
+    """Every cell profile name gets one stock finger in the library, if it has none: the cell's installed fingers, tried
+    like any other library finger. Run at startup (after the default cell profile is seeded) and when a profile is
     created."""
     for profile in cell_profiles.list_profiles(db):
         with db.session() as s:
@@ -86,7 +88,7 @@ def ensure_stock_fingers(db: DatabaseClient) -> None:
         if found is None:
             _store(
                 db,
-                name="Stock fingers",
+                name=STOCK_FINGER_NAME,
                 source="stock",
                 cell_profile_name=profile.name,
                 family="stock",

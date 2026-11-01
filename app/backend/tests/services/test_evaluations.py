@@ -147,16 +147,20 @@ def test_planning_collects_what_blocks_it_with_the_step_that_fixes_it(evaluated_
     assert steps(spec_for(e, part_id=no_mass.id)) == [STEP_PART]
     assert steps(spec_for(e, cell_profile_id=999)) == [STEP_CELL]
     assert steps(spec_for(e, finger_ids=["nope"])) == [STEP_FINGERS]
-    assert steps(spec_for(e, cell_profile_id=other.id)) == [STEP_FINGERS], "the new cell has only its stock fingers"
+    assert steps(spec_for(e, cell_profile_id=other.id)) == [], "the new cell's installed fingers are enough"
+    assert steps(spec_for(e, finger_ids=[])) == [STEP_FINGERS], "no fingers chosen"
     assert steps(spec_for(e, cell_profile_id=other.id, finger_ids=[e.uploaded_id])) == [STEP_FINGERS], "a finger for another cell"
 
 
-def test_chosen_fingers_are_tried_with_the_cells_stock_fingers(evaluated_copy):
+def test_only_the_chosen_fingers_are_tried(evaluated_copy):
     e = evaluated_copy
 
-    plan = evaluations.plan_evaluation(e.db, e.config, spec_for(e, finger_ids=[e.uploaded_id])).plan
+    def tried(finger_ids):
+        return [f.finger_id for f in evaluations.plan_evaluation(e.db, e.config, spec_for(e, finger_ids=finger_ids)).plan.fingers]
 
-    assert [f.finger_id for f in plan.fingers] == [e.stock_id, e.uploaded_id]
+    assert tried([e.uploaded_id]) == [e.uploaded_id]
+    assert tried([e.stock_id]) == [e.stock_id], "the installed fingers alone"
+    assert tried([e.uploaded_id, e.stock_id]) == [e.stock_id, e.uploaded_id]
 
 
 def test_an_archived_finger_is_left_out_of_new_evaluations(evaluated_copy):

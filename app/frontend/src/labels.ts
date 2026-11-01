@@ -51,14 +51,14 @@ export const JOB_KINDS = {
 
 /** Where a library finger came from. */
 export const FINGER_SOURCES = {
-  stock: "Stock",
+  stock: "Installed",
   generated: "Generated",
   uploaded: "Uploaded",
 } as const;
 
 /** A finger family as people say it. */
 export const FINGER_FAMILIES: Record<string, string> = {
-  stock: "Stock blade",
+  stock: "Hooked-tip blade",
   vpad: "V-pad",
   flat: "Flat pad",
   imprint: "Imprint",

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Auto-Grasp: one-page summary</title>
+<style>
+  @page { size: letter; margin: 0.45in 0.55in; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 9.4pt; line-height: 1.32; color: #1a1a1a; margin: 0; }
+  h1 { font-size: 17pt; margin: 0 0 1pt; color: #111; }
+  .sub { color: #555; font-size: 8.8pt; margin-bottom: 7pt; }
+  h2 { font-size: 10.6pt; margin: 8pt 0 2.5pt; color: #4f7f0d; border-bottom: 0.6pt solid #cfd8c0; padding-bottom: 1pt; }
+  p { margin: 0 0 4pt; }
+  ul, ol { margin: 0 0 4pt; padding-left: 15pt; }
+  li { margin: 0 0 1.5pt; }
+  table { border-collapse: collapse; width: 100%; margin: 3pt 0 4pt; font-size: 8.9pt; }
+  th, td { border: 0.5pt solid #c8c8c8; padding: 2.5pt 5pt; text-align: left; vertical-align: top; }
+  th { background: #eef3e6; font-weight: 600; }
+  td.n { text-align: right; white-space: nowrap; }
+  .win { font-weight: 700; color: #3d6b00; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16pt; }
+  .note { color: #555; font-size: 8.4pt; }
+</style>
+</head>
+<body>
+
+<h1>Auto-Grasp: will our fingers grip the new part?</h1>
+<div class="sub">Alec Weinbender's Team &middot; Rockwell Automation + NVIDIA Innovation Lab, Fall 2026, Dataset 3 (Grasping and Sorting)</div>
+
+<h2>The problem</h2>
+<p>A new part is coming to a robot cell. <b>Can the fingers we already have grip it reliably, and if not, which finger
+should we make?</b> Today the answer comes from making fingers and trying them on the robot. That takes days, ties up the
+cell, and only tests the positions someone thought to try. No camera or robot grasps exactly where it aims, and a finger
+that works at the centre can drop the part a few millimetres off.</p>
+
+<h2>What we built</h2>
+<p>Auto-Grasp is a web app that answers that question before anything is printed. Its inputs are the part's STEP or STL
+file, the cell's gripper, and how accurately the cell grasps. It works <b>library first</b>:</p>
+<ol>
+  <li><b>Rank the library.</b> Every finger the factory owns is simulated against the new part in NVIDIA Isaac Sim, at the
+    part's candidate grasps and across the cell's grasp error, and ranked by predicted success.</li>
+  <li><b>The engineer decides</b> whether the best finger is good enough. There's no fixed pass bar.</li>
+  <li><b>Generate only if needed.</b> Bayesian optimisation (BoTorch) searches a printable finger family, several designs
+    per simulation request. The winner is exported as STEP and STL with the gripper's mount holes and an engraved ID,
+    passes a review gate, and joins the library.</li>
+</ol>
+
+<div class="cols">
+<div>
+<h2>How it scores a finger</h2>
+<ul>
+  <li><b>Digital twin:</b> the organizers' FANUC ER-4iA cell and SMC MHZL2-16D2 gripper in Isaac Sim 6.0, on the MSOE
+    NVIDIA GB10, running a top-down pick.</li>
+  <li><b>Error grid:</b> each finger is tried at 963 position and yaw offsets (out to 12 mm and 12&deg;). Stored outcomes
+    re-score at any grasp accuracy with no new simulation, which gives a success-vs-error curve.</li>
+  <li><b>Honest holds:</b> if a finger knocks the part before the jaws close, the grasp counts as a miss, even if the
+    simulator still held it.</li>
+</ul>
+</div>
+<div>
+<h2>Why it matters for manufacturers</h2>
+<ul>
+  <li>Fewer custom fingers: most new parts run on fingers already on the shelf, and the app says which.</li>
+  <li>Less time on the cell: 4 fingers ranked on a part in <b>10 min</b> of simulation; a new finger designed in
+    <b>33 min</b>.</li>
+  <li>A number to decide with, and the error it holds up to, instead of a guess.</li>
+</ul>
+</div>
+</div>
+
+<h2>Results, in simulation and on the real arm</h2>
+<p>Predicted success is at the cell's assumed grasp accuracy (3 mm and 8&deg;, one standard deviation). Measured results
+are from the organizers' platform at CSI, with 95% Wilson intervals.</p>
+<table>
+  <tr><th>Part (task: pick and drop)</th><th>Finger</th><th class="n">Predicted (Isaac)</th><th class="n">Measured on the arm</th></tr>
+  <tr><td rowspan="3"><b>16 mm cube</b>, as wide as the existing fingers open</td>
+      <td>Existing hooked-tip fingers</td><td class="n">0%</td><td class="n">not run (doesn't fit)</td></tr>
+  <tr><td>Best other library finger</td><td class="n">17.6%</td><td class="n">not run</td></tr>
+  <tr><td class="win">Generated finger (D1)</td><td class="n win">92.3%</td><td class="n win">7/8 scored, 87.5% (53&ndash;98%)</td></tr>
+  <tr><td rowspan="3"><b>M6 &times; 30 screw</b>, fits the existing fingers</td>
+      <td class="win">Existing hooked-tip fingers</td><td class="n win">79%</td><td class="n">4/10, 40% (17&ndash;69%)</td></tr>
+  <tr><td>Generated finger (D1)</td><td class="n">76%</td><td class="n">not run</td></tr>
+  <tr><td>Imprint of the part</td><td class="n">69%</td><td class="n">not run</td></tr>
+</table>
+<ul>
+  <li><b>The cube is where generation pays off.</b> The library can't grip it. The generated finger holds every simulated
+    grasp out to 4.5 mm of error. It was found from 28 candidate designs and 12,105 simulated grasps, then printed, and on
+    the real arm it held at every position offset out to 4 mm, as predicted. The one miss, at 12&deg; of yaw, came with a
+    controller fault.</li>
+  <li><b>On the screw, Auto-Grasp says not to print anything.</b> Its &Oslash;6 shank sits in the existing fingers' sweet
+    spot, and the gripper's 6 mm stroke per jaw caps any custom finger's slack. Every good generated design hit that cap,
+    and none beat the existing fingers.</li>
+</ul>
+
+<h2>Limitations, where it fails</h2>
+<ul>
+  <li><b>The screw scored lower on the arm than predicted</b> (40% against 79%). Contact with a small part lying on its side
+    is noisy in simulation: repeated runs of the same fingers on the screw scored 63&ndash;79%, and about 1 offset in 5
+    flips between runs.</li>
+  <li><b>Unmeasured inputs:</b> the 3 mm / 8&deg; grasp accuracy is a placeholder, printed-finger friction is estimated, and
+    height error isn't simulated yet. The simulated grip is weak (about 2.5 N per jaw), fine for light parts only.</li>
+  <li><b>Small real-arm samples:</b> one session, 8 to 10 rollouts per finger. No printed screw finger has run yet.</li>
+</ul>
+<p class="note">Stack: Isaac Sim 6.0, BoTorch, CadQuery, FastAPI, React. Code, experiment logs and every number above:
+github.com/ALL-Applied-AI-Network/msoe-ai-club-rockwell-automation-nvidia-hackath-alec-weinbender-s-team-a715330bad</p>
+
+</body>
+</html>

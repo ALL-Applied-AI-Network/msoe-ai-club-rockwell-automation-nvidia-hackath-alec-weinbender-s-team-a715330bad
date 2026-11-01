@@ -239,7 +239,7 @@ function CurveCard({ ranking }: { ranking: Ranking }) {
       .sort((a, b) => a.sigma - b.sigma);
   const series: CurveSeries[] = [
     ...top.map((f, i): CurveSeries => ({ key: f.finger_id, label: f.code, points: toPoints(f), color: i === 0 ? "acc" : "faint", shape: i === 0 ? "dot" : "ring", emphasis: i === 0 })),
-    ...(stock ? [{ key: stock.finger_id, label: "Stock", points: toPoints(stock), color: "baseline" as const, shape: "square" as const, dashed: true }] : []),
+    ...(stock ? [{ key: stock.finger_id, label: stock.code, points: toPoints(stock), color: "baseline" as const, shape: "square" as const, dashed: true }] : []),
   ];
   const target = ranking.error.sigma_mm;
   return (

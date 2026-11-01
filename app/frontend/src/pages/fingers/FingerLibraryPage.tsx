@@ -62,7 +62,7 @@ export function FingerLibraryPage() {
             onChange={setSource}
             options={[
               { value: "all", label: "All", count: count("all") },
-              { value: "stock", label: "Stock", count: count("stock") },
+              { value: "stock", label: "Installed", count: count("stock") },
               { value: "generated", label: "Generated", count: count("generated") },
               { value: "uploaded", label: "Uploaded", count: count("uploaded") },
             ]}

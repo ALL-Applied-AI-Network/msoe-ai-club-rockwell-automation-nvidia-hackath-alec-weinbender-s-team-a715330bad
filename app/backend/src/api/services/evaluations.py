@@ -172,7 +172,8 @@ def plan_evaluation(db: DatabaseClient, config: AppConfig, spec: EvaluationSpec)
 
 
 def _fingers(db: DatabaseClient, spec: EvaluationSpec, version: CellProfileVersion | None) -> tuple[list[FingerRecord], list[Blocker]]:
-    """The fingers to try: the spec's, or every unarchived one for the cell; the cell's stock fingers always, first."""
+    """The fingers to try: the spec's, or every unarchived one for the cell. The cell's installed (stock) fingers are a
+    finger like any other: tried when chosen, and alone if only they are."""
     if version is None:
         return [], []
     blockers = []
@@ -191,12 +192,8 @@ def _fingers(db: DatabaseClient, spec: EvaluationSpec, version: CellProfileVersi
                 blockers.append(Blocker(step=STEP_FINGERS, reason=reason))
                 continue
             chosen.append(record)
-        stock = [r for r in fingers.compatible_fingers(db, version.name) if r.source == "stock"]
-        chosen = [r for r in stock if r.id not in {c.id for c in chosen}] + chosen
-    if not any(r.source != "stock" for r in chosen) and not blockers:
-        blockers.append(
-            Blocker(step=STEP_FINGERS, reason=f"the {version.name!r} cell has no fingers in the library besides its stock fingers")
-        )
+    if not chosen and not blockers:
+        blockers.append(Blocker(step=STEP_FINGERS, reason=f"no fingers chosen for the {version.name!r} cell"))
     return sorted(chosen, key=lambda r: (r.source != "stock", r.number)), blockers
 
 
