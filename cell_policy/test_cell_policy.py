@@ -213,7 +213,10 @@ class PlacementTest(unittest.TestCase):
         self.assertEqual(text.count("cube_16mm: [420, -40, 0]"), 10)
         rollouts = [policy.parse_instruction(p) for p in prompts]
         self.assertEqual({(r.kind, r.tip_mm) for r in rollouts}, {("cube", 2.5)})
-        self.assertEqual([(r.dx_mm, r.dy_mm, r.dyaw_deg) for r in rollouts], [tuple(map(float, o)) for o in make_placement.DEFAULT_CUBE_SWEEP])
+        self.assertEqual(
+            [(r.dx_mm, r.dy_mm, r.dyaw_deg) for r in rollouts],
+            [tuple(map(float, o)) for o in make_placement.DEFAULT_CUBE_SWEEP],
+        )
 
     def test_a_grip_below_the_cells_limit_or_a_cube_offset_past_the_fingers_slack_is_refused(self):
         self.assertIn("refuses the TCP", make_placement.check_rollouts([("R01", 0.0, 0.0, 0.0)], "cube", 1.0)[0])
